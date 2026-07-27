@@ -1,0 +1,68 @@
+[
+  {
+    "timestamp": "2026-07-27T13:59:41",
+    "action": "profile_saved",
+    "description": "Modelo Teste padroniza textos longos 1",
+    "details": {
+      "profile_id": "modelo-teste-padroniza-textos-longos-1"
+    }
+  },
+  {
+    "timestamp": "2026-07-27T13:58:09",
+    "action": "document_generated",
+    "description": "Modelo Teste Padroniza Textos Longos.docx",
+    "details": {
+      "document_id": "20260727135809993024",
+      "template_id": "modelo-teste-padroniza-textos-longos",
+      "path": "C:\\Users\\ADM\\Desktop\\Modelo Teste Padroniza Textos Longos.docx"
+    }
+  },
+  {
+    "timestamp": "2026-07-24T10:44:38",
+    "action": "file_converted",
+    "description": "PDF converted to DOCX",
+    "details": {
+      "direction": "pdf_to_docx",
+      "source": "C:\\Users\\ADM\\Desktop\\Codigos\\Python\\docx-pdf-test-files\\exemplo_template_dropdowns_checkboxes.pdf",
+      "output": "C:\\Users\\ADM\\Desktop\\Codigos\\Python\\docx-pdf-test-files\\exemplo_template_dropdowns_checkboxes_converted.docx"
+    }
+  },
+  {
+    "timestamp": "2026-07-24T10:44:27",
+    "action": "file_converted",
+    "description": "DOCX converted to PDF",
+    "details": {
+      "direction": "docx_to_pdf",
+      "source": "C:\\Users\\ADM\\Desktop\\Codigos\\Python\\docx-pdf-test-files\\exemplo_template_dropdowns_checkboxes.docx",
+      "output": "C:\\Users\\ADM\\Desktop\\Codigos\\Python\\docx-pdf-test-files\\exemplo_template_dropdowns_checkboxes.pdf"
+    }
+  },
+  {
+    "timestamp": "2026-07-23T13:38:18",
+    "action": "profile_saved",
+    "description": "testdc",
+    "details": {
+      "profile_id": "testdc"
+    }
+  },
+  {
+    "timestamp": "2026-07-23T12:13:20",
+    "action": "document_generated",
+    "description": "tempçate dropdowns checkboxes.docx",
+    "details": {
+      "document_id": "20260723121320094270",
+      "template_id": "tempcate-dropdowns-checkboxes",
+      "path": "C:\\Users\\ADM\\Desktop\\tempçate dropdowns checkboxes.docx"
+    }
+  },
+  {
+    "timestamp": "2026-07-23T12:12:52",
+    "action": "document_generated",
+    "description": "tempçate dropdowns checkboxes.docx",
+    "details": {
+      "document_id": "20260723121252785688",
+      "template_id": "tempcate-dropdowns-checkboxes",
+      "path": "C:\\Users\\ADM\\Desktop\\tempçate dropdowns checkboxes.docx"
+    }
+  }
+]

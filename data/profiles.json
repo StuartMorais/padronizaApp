@@ -1,0 +1,28 @@
+[
+  {
+    "id": "testdc",
+    "name": "testdc",
+    "category": "Company",
+    "values": {
+      "company.legal_name": "Example Company Ltd.",
+      "company.cnpj": "12.345.678/0001-95",
+      "company.size": "EPP",
+      "representative.name": "Example Company Ltd.",
+      "representative.role": "Sample value"
+    },
+    "updated_at": "2026-07-23T13:38:18"
+  },
+  {
+    "id": "modelo-teste-padroniza-textos-longos-1",
+    "name": "Modelo Teste padroniza textos longos 1",
+    "category": "Teste Textos",
+    "values": {
+      "signatory.nome": "zzdcaca",
+      "signatory.matricula": "q342134234",
+      "signatory.email": "adasdcS@dafas.com",
+      "signatory.telefone": "(12) 31231-2312",
+      "signatory.cargo": "asdasdasdasd"
+    },
+    "updated_at": "2026-07-27T13:59:41"
+  }
+]

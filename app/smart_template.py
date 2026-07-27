@@ -1,0 +1,240 @@
+from __future__ import annotations
+
+import re
+import zipfile
+from pathlib import Path
+from typing import Any
+from xml.etree import ElementTree
+
+from app.placeholder_scanner import create_default_fields, scan_docx_fields
+
+VALID_FIELD_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
+PLACEHOLDER_TOKEN = re.compile(r"\{\{([^{}]+)\}\}")
+WORD_TEXT = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t"
+WORD_INSTRUCTION = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}instrText"
+
+
+# noinspection SpellCheckingInspection
+SECTION_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("company", "empresa", "supplier", "fornecedor", "vendor"), 'Empresa / Fornecedor'),
+    (("address", "endereco", "endereço", "cep", "city", "cidade", "state", "uf"), 'Endereço'),
+    (("process", "processo", "contract", "contrato", "procurement", "licitacao", "licitação"), 'Processo / Contrato'),
+    (("document", "documento", "date", "data", "number", "numero", "número"), "Documento"),
+    (("signature", "assinatura", "signatory", "responsavel", "responsável"), 'Assinaturas'),
+)
+
+PROFILE_PREFIXES = {
+    "company": "company",
+    "empresa": "company",
+    "supplier": "supplier",
+    "fornecedor": "supplier",
+    "vendor": "supplier",
+    "address": "address",
+    "endereco": "address",
+    "endereço": "address",
+    "signatory": "signatory",
+    "responsavel": "signatory",
+    "responsável": "signatory",
+}
+
+
+def smart_fields_from_docx(
+    docx_path: Path,
+    existing_fields: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Scan a DOCX and add conservative metadata suggestions to each field."""
+
+    scanned = scan_docx_fields(Path(docx_path))
+    fields = create_default_fields(scanned, existing_fields or [])
+
+    for field in fields:
+        field_id = str(field.get("id", "")).strip()
+        lowered = field_id.casefold()
+
+        field.setdefault("section", suggest_section(lowered))
+
+        profile_key = suggest_profile_key(field_id)
+        if profile_key:
+            field.setdefault("profile_key", profile_key)
+
+        # The scanner already identifies explicit Word controls. These rules
+        # improve generic text placeholders without overriding explicit types.
+        current_type = str(field.get("type", "text")).casefold()
+        if current_type == "text":
+            suggested_type = suggest_field_type(lowered)
+            field["type"] = suggested_type
+
+        if field.get("type") == "checkbox":
+            field["required"] = False
+        else:
+            field.setdefault("required", True)
+
+        if field.get("type") == "date":
+            field.setdefault("automatic", True)
+
+    return fields
+
+
+def suggest_field_type(field_id: str) -> str:
+    text = field_id.casefold()
+    last = re.split(r"[._-]", text)[-1]
+
+    if any(token in text for token in ("cnpj",)):
+        return "cnpj"
+    if any(token in text for token in ("cpf",)):
+        return "cpf"
+    if any(token in text for token in ("email", "e-mail")):
+        return "email"
+    if any(token in text for token in ("phone", "telefone", "celular", "mobile")):
+        return "phone"
+    if any(token in text for token in ("cep", "postal", "zipcode", "zip_code")):
+        return "cep"
+    if last in {"date", "data", "issued", "signed", "deadline", "validity"} or text.endswith(".date"):
+        return "date"
+    if any(token in text for token in ("percent", "percentage", "percentual", "tax_rate", "aliquota", "alíquota")):
+        return "percentage"
+    if any(token in text for token in ("amount", "value", "valor", "price", "preco", "preço", "total", "currency")):
+        return "currency"
+    if last in {"quantity", "qty", "count", "number_of", "quantidade"}:
+        return "integer"
+    if any(token in text for token in ("description", "descricao", "descrição", "notes", "observations", "observacoes", "observações", "justification")):
+        return "multiline"
+    if any(token in text for token in ("accepted", "approved", "confirmed", "declaration", "declaracao", "declaração", "checkbox")):
+        return "checkbox"
+    return "text"
+
+
+def suggest_section(field_id: str) -> str:
+    lowered = field_id.casefold()
+    for tokens, section in SECTION_RULES:
+        if any(token in lowered for token in tokens):
+            return section
+    return 'Dados do documento'
+
+
+def suggest_profile_key(field_id: str) -> str:
+    pieces = [piece for piece in re.split(r"[._-]+", field_id) if piece]
+    if not pieces:
+        return ""
+
+    prefix = PROFILE_PREFIXES.get(pieces[0].casefold())
+    if not prefix:
+        return ""
+
+    return ".".join([prefix, *pieces[1:]])
+
+
+def scan_docx_health(docx_path: Path) -> dict[str, Any]:
+    """Return structural placeholder problems that are safe to detect offline."""
+
+    path = Path(docx_path)
+    text_parts: list[str] = []
+
+    with zipfile.ZipFile(path, "r") as archive:
+        for name in archive.namelist():
+            if not (name.startswith("word/") and name.endswith(".xml")):
+                continue
+            try:
+                root = ElementTree.fromstring(archive.read(name))
+            except ElementTree.ParseError:
+                continue
+            text_parts.append("".join(node.text or "" for node in root.iter(WORD_TEXT)))
+            text_parts.append("".join(node.text or "" for node in root.iter(WORD_INSTRUCTION)))
+
+    text = "\n".join(text_parts)
+    raw_tokens = [match.group(1).strip() for match in PLACEHOLDER_TOKEN.finditer(text)]
+    normalized_ids: list[str] = []
+    malformed: list[str] = []
+
+    for raw in raw_tokens:
+        field_id = _field_id_from_token(raw)
+        if not field_id or not VALID_FIELD_ID.match(field_id):
+            malformed.append(raw)
+        elif field_id not in normalized_ids:
+            normalized_ids.append(field_id)
+
+    occurrence_counts: dict[str, int] = {}
+    for raw in raw_tokens:
+        field_id = _field_id_from_token(raw)
+        if field_id:
+            occurrence_counts[field_id] = occurrence_counts.get(field_id, 0) + 1
+
+    duplicate_occurrences = {
+        field_id: count
+        for field_id, count in occurrence_counts.items()
+        if count > 1
+    }
+
+    unmatched_open = max(0, text.count("{{") - len(raw_tokens))
+    unmatched_close = max(0, text.count("}}") - len(raw_tokens))
+
+    return {
+        "raw_tokens": raw_tokens,
+        "field_ids": normalized_ids,
+        "malformed_placeholders": sorted(set(malformed)),
+        "duplicate_occurrences": duplicate_occurrences,
+        "unmatched_open_braces": unmatched_open,
+        "unmatched_close_braces": unmatched_close,
+    }
+
+
+def readiness_report(
+    *,
+    name: str,
+    docx_path: Path | None,
+    fields: list[dict[str, Any]],
+    filename_pattern: str,
+) -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+
+    checks.append({"label": 'Nome do modelo', "ok": bool(str(name).strip())})
+    checks.append({"label": 'DOCX de origem', "ok": bool(docx_path and Path(docx_path).exists())})
+    checks.append({"label": 'Campos detectados', "ok": bool(fields), "detail": f"{len(fields)} configurados"})
+
+    ids = [str(field.get("id", "")).strip() for field in fields]
+    duplicate_ids = sorted({field_id for field_id in ids if field_id and ids.count(field_id) > 1})
+    invalid_ids = sorted({field_id for field_id in ids if field_id and not VALID_FIELD_ID.match(field_id)})
+    checks.append({"label": 'IDs de campo exclusivos', "ok": not duplicate_ids, "detail": ", ".join(duplicate_ids)})
+    checks.append({"label": 'IDs de campo válidos', "ok": not invalid_ids, "detail": ", ".join(invalid_ids)})
+
+    invalid_dropdowns = [
+        str(field.get("id", ""))
+        for field in fields
+        if str(field.get("type", "")) == "dropdown" and not field.get("options")
+    ]
+    checks.append({"label": 'Opções da lista suspensa', "ok": not invalid_dropdowns, "detail": ", ".join(invalid_dropdowns)})
+
+    known_tokens = {"template.name", "year", "sequence", *ids}
+    tokens = set(PLACEHOLDER_TOKEN.findall(str(filename_pattern)))
+    unknown_tokens = sorted(token for token in tokens if token not in known_tokens)
+    checks.append({"label": 'Marcadores do nome do arquivo', "ok": not unknown_tokens, "detail": ", ".join(unknown_tokens)})
+
+    health: dict[str, Any] = {}
+    if docx_path and Path(docx_path).exists():
+        try:
+            health = scan_docx_health(Path(docx_path))
+        except Exception as exc:
+            health = {"scan_error": str(exc)}
+
+    malformed = list(health.get("malformed_placeholders", []))
+    brace_problem = bool(
+        health.get("unmatched_open_braces", 0)
+        or health.get("unmatched_close_braces", 0)
+    )
+    checks.append({"label": 'Sintaxe dos marcadores', "ok": not malformed and not brace_problem, "detail": ", ".join(malformed)})
+
+    return {
+        "checks": checks,
+        "ready": all(bool(item.get("ok")) for item in checks),
+        "health": health,
+    }
+
+
+def _field_id_from_token(raw: str) -> str:
+    text = str(raw).strip()
+    lowered = text.casefold()
+    if lowered.startswith(("checkbox:", "date:")):
+        return text.split(":", 1)[1].strip()
+    if lowered.startswith("dropdown:"):
+        return text.split(":", 1)[1].split("|", 1)[0].strip()
+    return text

@@ -1,0 +1,435 @@
+from __future__ import annotations
+
+import re
+from decimal import Decimal, InvalidOperation
+from typing import Any
+
+
+EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+FIELD_TYPE_ALIASES = {
+    "string": "text",
+    "input": "text",
+    "lineedit": "text",
+    "textarea": "multiline",
+    "longtext": "multiline",
+    "long_text": "multiline",
+    "paragraph": "multiline",
+    "bool": "checkbox",
+    "boolean": "checkbox",
+    "check": "checkbox",
+    "select": "dropdown",
+    "choice": "dropdown",
+    "choices": "dropdown",
+    "combobox": "dropdown",
+    "combo": "dropdown",
+    "datetime": "date",
+    "money": "currency",
+    "number": "decimal",
+    "percent": "percentage",
+}
+
+
+FIELD_TYPE_ORDER = (
+    "text",
+    "multiline",
+    "date",
+    "checkbox",
+    "dropdown",
+    "currency",
+    "integer",
+    "decimal",
+    "percentage",
+    "cnpj",
+    "cpf",
+    "cep",
+    "phone",
+    "email",
+)
+
+SUPPORTED_FIELD_TYPES = set(FIELD_TYPE_ORDER)
+
+
+def normalize_dropdown_options(value: Any) -> list[dict[str, str]]:
+    """Normalize simple or structured dropdown choices.
+
+    A string remains a regular option. A mapping may provide a short visible
+    label and a different, potentially long, value inserted into the DOCX.
+    The compact text syntax ``Título => texto completo`` is also accepted.
+    """
+    if isinstance(value, str):
+        raw_options: list[Any] = value.split("|")
+    elif isinstance(value, dict):
+        structured_keys = {
+            "label",
+            "title",
+            "displayText",
+            "name",
+            "value",
+            "text",
+            "output",
+            "content",
+        }
+        raw_options = (
+            [value]
+            if structured_keys.intersection(value)
+            else list(value.values())
+        )
+    elif isinstance(value, (list, tuple)):
+        raw_options = list(value)
+    else:
+        raw_options = []
+
+    result: list[dict[str, str]] = []
+    seen_values: set[str] = set()
+    for option in raw_options:
+        if isinstance(option, dict):
+            label = _first_nonempty_text(
+                option.get("label"),
+                option.get("title"),
+                option.get("displayText"),
+                option.get("name"),
+            )
+            output = _first_nonempty_text(
+                option.get("value"),
+                option.get("text"),
+                option.get("output"),
+                option.get("content"),
+                label,
+            )
+        else:
+            text = str(option or "").strip()
+            if "=>" in text:
+                raw_label, raw_output = text.split("=>", 1)
+                label = raw_label.strip()
+                output = raw_output.strip()
+            else:
+                label = text
+                output = text
+
+        output = str(output or "").strip()
+        label = str(label or output).strip()
+        if not output or output in seen_values:
+            continue
+        seen_values.add(output)
+        result.append({"label": label or output, "value": output})
+    return result
+
+
+def compact_dropdown_options(value: Any) -> list[str | dict[str, str]]:
+    """Keep ordinary choices concise while preserving label/value pairs."""
+    compact: list[str | dict[str, str]] = []
+    for option in normalize_dropdown_options(value):
+        if option["label"] == option["value"]:
+            compact.append(option["value"])
+        else:
+            compact.append({
+                "label": option["label"],
+                "value": option["value"],
+            })
+    return compact
+
+
+def dropdown_option_values(value: Any) -> list[str]:
+    return [
+        option["value"]
+        for option in normalize_dropdown_options(value)
+    ]
+
+
+def _first_nonempty_text(*values: Any) -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def condition_matches(
+    condition: Any,
+    values: dict[str, Any],
+) -> bool:
+    """Evaluate a template field visibility condition."""
+    if not condition:
+        return True
+
+    normalized_condition = condition
+    if isinstance(normalized_condition, str):
+        if "=" not in normalized_condition:
+            return True
+        field_id, expected = normalized_condition.split("=", 1)
+        normalized_condition = {
+            "field": field_id.strip(),
+            "equals": expected.strip(),
+        }
+
+    if not isinstance(normalized_condition, dict):
+        return True
+
+    source_id = str(
+        normalized_condition.get("field", "")
+    ).strip()
+    actual = values.get(source_id)
+
+    if "equals" in normalized_condition:
+        expected = normalized_condition.get("equals")
+        if isinstance(actual, bool) and not isinstance(expected, bool):
+            expected = str(expected).casefold() in {
+                "1",
+                "true",
+                "yes",
+                "sim",
+                "checked",
+            }
+        return (
+            actual == expected
+            or str(actual).casefold() == str(expected).casefold()
+        )
+
+    if "not_equals" in normalized_condition:
+        expected = normalized_condition.get("not_equals")
+        return not (
+            actual == expected
+            or str(actual).casefold() == str(expected).casefold()
+        )
+
+    return bool(actual) if normalized_condition.get("truthy") else True
+
+
+def digits_only(value: Any) -> str:
+    return re.sub(r"\D+", "", str(value or ""))
+
+
+# noinspection SpellCheckingInspection
+def infer_field_type(field_id: str, configured_type: str = "text") -> str:
+    configured = FIELD_TYPE_ALIASES.get(str(configured_type).lower(), str(configured_type).lower())
+    if configured not in {"text", ""}:
+        return configured if configured in SUPPORTED_FIELD_TYPES else "text"
+
+    normalized = str(field_id).casefold()
+
+    if "cnpj" in normalized:
+        return "cnpj"
+    if re.search(r"(^|[._-])cpf($|[._-])", normalized):
+        return "cpf"
+    if "cep" in normalized or "postal" in normalized:
+        return "cep"
+    if any(token in normalized for token in ("phone", "telefone", "celular", "whatsapp")):
+        return "phone"
+    if "email" in normalized or "e-mail" in normalized:
+        return "email"
+    if any(token in normalized for token in ("total_value", "valor_total", "price", "preco", "preço", "currency")):
+        return "currency"
+    if any(token in normalized for token in ("percentage", "percentual", "porcentagem")):
+        return "percentage"
+
+    return configured if configured in SUPPORTED_FIELD_TYPES else "text"
+
+
+def format_cnpj(value: Any) -> str:
+    digits = digits_only(value)[:14]
+    if len(digits) <= 2:
+        return digits
+    if len(digits) <= 5:
+        return f"{digits[:2]}.{digits[2:]}"
+    if len(digits) <= 8:
+        return f"{digits[:2]}.{digits[2:5]}.{digits[5:]}"
+    if len(digits) <= 12:
+        return f"{digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:]}"
+    return f"{digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:]}"
+
+
+def format_cpf(value: Any) -> str:
+    digits = digits_only(value)[:11]
+    if len(digits) <= 3:
+        return digits
+    if len(digits) <= 6:
+        return f"{digits[:3]}.{digits[3:]}"
+    if len(digits) <= 9:
+        return f"{digits[:3]}.{digits[3:6]}.{digits[6:]}"
+    return f"{digits[:3]}.{digits[3:6]}.{digits[6:9]}-{digits[9:]}"
+
+
+def format_cep(value: Any) -> str:
+    digits = digits_only(value)[:8]
+    return f"{digits[:5]}-{digits[5:]}" if len(digits) > 5 else digits
+
+
+def format_phone(value: Any) -> str:
+    digits = digits_only(value)[:11]
+    if len(digits) <= 2:
+        return digits
+    if len(digits) <= 6:
+        return f"({digits[:2]}) {digits[2:]}"
+    if len(digits) <= 10:
+        return f"({digits[:2]}) {digits[2:6]}-{digits[6:]}"
+    return f"({digits[:2]}) {digits[2:7]}-{digits[7:]}"
+
+
+def _decimal_from_localized(value: Any) -> Decimal:
+    text = str(value or "").strip().replace("R$", "").replace("%", "").strip()
+    if not text:
+        return Decimal("0")
+
+    if "," in text:
+        text = text.replace(".", "").replace(",", ".")
+    else:
+        text = text.replace(" ", "")
+
+    return Decimal(text)
+
+
+def format_currency(value: Any) -> str:
+    digits = digits_only(value)
+    if not digits:
+        return ""
+
+    decimal_value = Decimal(digits) / Decimal("100")
+    formatted = f"{decimal_value:,.2f}"
+    formatted = formatted.replace(",", "_").replace(".", ",").replace("_", ".")
+    return f"R$ {formatted}"
+
+
+def format_decimal(value: Any, places: int = 2) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    try:
+        number = _decimal_from_localized(text)
+    except InvalidOperation:
+        filtered = re.sub(r"[^0-9,.-]", "", text)
+        try:
+            number = _decimal_from_localized(filtered)
+        except InvalidOperation:
+            return text
+
+    pattern = f"{{:,.{max(0, places)}f}}"
+    formatted = pattern.format(number)
+    return formatted.replace(",", "_").replace(".", ",").replace("_", ".")
+
+
+def format_percentage(value: Any) -> str:
+    digits = digits_only(value)
+    if not digits:
+        return ""
+    decimal_value = Decimal(digits) / Decimal("100")
+    formatted = f"{decimal_value:,.2f}"
+    formatted = formatted.replace(",", "_").replace(".", ",").replace("_", ".")
+    return f"{formatted}%"
+
+
+def format_input(field_type: str, value: Any) -> str:
+    field_type = infer_field_type("", field_type)
+    if field_type == "cnpj":
+        return format_cnpj(value)
+    if field_type == "cpf":
+        return format_cpf(value)
+    if field_type == "cep":
+        return format_cep(value)
+    if field_type == "phone":
+        return format_phone(value)
+    if field_type == "currency":
+        return format_currency(value)
+    if field_type == "integer":
+        return digits_only(value)
+    if field_type == "percentage":
+        return format_percentage(value)
+    return str(value or "")
+
+
+def validate_cnpj(value: Any) -> bool:
+    digits = digits_only(value)
+    if len(digits) != 14 or len(set(digits)) == 1:
+        return False
+
+    def digit(base: str, weights: list[int]) -> str:
+        total = sum(int(number) * weight for number, weight in zip(base, weights))
+        remainder = total % 11
+        return "0" if remainder < 2 else str(11 - remainder)
+
+    first = digit(digits[:12], [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+    second = digit(digits[:12] + first, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+    return digits[-2:] == first + second
+
+
+def validate_cpf(value: Any) -> bool:
+    digits = digits_only(value)
+    if len(digits) != 11 or len(set(digits)) == 1:
+        return False
+
+    total_1 = sum(int(digits[index]) * (10 - index) for index in range(9))
+    first = (total_1 * 10) % 11
+    first = 0 if first == 10 else first
+
+    total_2 = sum(int(digits[index]) * (11 - index) for index in range(10))
+    second = (total_2 * 10) % 11
+    second = 0 if second == 10 else second
+
+    return digits[-2:] == f"{first}{second}"
+
+
+def validate_field(field: dict[str, Any], value: Any) -> str | None:
+    field_id = str(field.get("id", ""))
+    field_type = infer_field_type(field_id, str(field.get("type", "text")))
+    label = str(field.get("label", field_id))
+
+    if field_type == "checkbox":
+        return None
+
+    text = str(value or "").strip()
+    if bool(field.get("required", False)) and not text:
+        return f"{label} é obrigatório."
+    if not text:
+        return None
+
+    if field_type == "cnpj" and not validate_cnpj(text):
+        return f"{label} contém um CNPJ inválido."
+    if field_type == "cpf" and not validate_cpf(text):
+        return f"{label} contém um CPF inválido."
+    if field_type == "cep" and len(digits_only(text)) != 8:
+        return f"{label} deve conter 8 dígitos de CEP."
+    if field_type == "phone" and len(digits_only(text)) not in {10, 11}:
+        return f"{label} deve conter um telefone brasileiro válido."
+    if field_type == "email" and not EMAIL_PATTERN.match(text):
+        return f"{label} contém um endereço de e-mail inválido."
+    if field_type == "integer" and not digits_only(text):
+        return f"{label} deve ser um número inteiro."
+    if field_type in {"currency", "decimal", "percentage"}:
+        try:
+            _decimal_from_localized(text)
+        except InvalidOperation:
+            return f"{label} deve conter um número válido."
+
+    return None
+
+
+def sample_value(field: dict[str, Any]) -> Any:
+    field_id = str(field.get("id", "")).casefold()
+    field_type = infer_field_type(field_id, str(field.get("type", "text")))
+
+    samples: dict[str, Any] = {
+        "cnpj": "12.345.678/0001-95",
+        "cpf": "529.982.247-25",
+        "cep": "70040-010",
+        "phone": "(61) 99876-5432",
+        "email": "contato@empresa.com.br",
+        "currency": "R$ 125.430,50",
+        "integer": "10",
+        "decimal": "15,50",
+        "percentage": "12,50%",
+        "multiline": 'Observações de exemplo para validação do documento.',
+        "checkbox": True,
+    }
+
+    if field_type == "dropdown":
+        values = dropdown_option_values(field.get("options", []))
+        return values[0] if values else ""
+    if field_type in samples:
+        return samples[field_type]
+    if "process" in field_id or "processo" in field_id or "edital" in field_id:
+        return "123/2026"
+    if "company" in field_id or "empresa" in field_id or "name" in field_id or "nome" in field_id:
+        return 'Empresa Exemplo Ltda.'
+    return 'Exemplo de preenchimento'

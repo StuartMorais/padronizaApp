@@ -1,0 +1,58 @@
+{
+  "check_box_nativos": {
+    "values": {
+      "process.agency": "",
+      "process.number": "",
+      "company.legal_name": "",
+      "company.cnpj": "",
+      "process.object": "",
+      "proposal.total_value": "",
+      "declaration.documents_complete": false,
+      "declaration.price_confirmed": false,
+      "declaration.deadline_accepted": false,
+      "declaration.site_visit_done": false,
+      "proposal.review_notes": "",
+      "document.city": "",
+      "document.date": "23/07/2026",
+      "representative.name": "",
+      "representative.role": "",
+      "representative.cpf": ""
+    },
+    "updated_at": "2026-07-23T10:34:06"
+  },
+  "tempcate-dropdowns-checkboxes": {
+    "values": {
+      "company.legal_name": "Example Company Ltd.",
+      "company.cnpj": "12.345.678/0001-95",
+      "process.number": "123/2026",
+      "process.modality": "Dispensa",
+      "company.size": "ME",
+      "declaration.accepted": true,
+      "declaration.documents_complete": false,
+      "declaration.no_impediment": false,
+      "declaration.notes": "Sample observations for document validation.",
+      "document.city": "Sample value",
+      "document.date": "24/07/2026",
+      "representative.name": "Example Company Ltd.",
+      "representative.role": "Sample value"
+    },
+    "updated_at": "2026-07-24T11:17:47"
+  },
+  "test-template-declaracao-impedimentos": {
+    "values": {
+      "process.agency": "",
+      "process.number": "",
+      "process.object": "",
+      "company.legal_name": "Example Company Ltd.",
+      "company.cnpj": "12.345.678/0001-95",
+      "company.address": "",
+      "representative.name": "Example Company Ltd.",
+      "representative.cpf": "",
+      "declaration.notes": "",
+      "document.city": "",
+      "document.date": "24/07/2026",
+      "representative.role": "Sample value"
+    },
+    "updated_at": "2026-07-24T14:50:47"
+  }
+}

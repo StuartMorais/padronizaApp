@@ -1,0 +1,149 @@
+{
+  "template": {
+    "id": "test-template-declaracao-impedimentos",
+    "name": "Test Template Declaracao Impedimentos",
+    "description": "",
+    "category": "",
+    "version": "1.0",
+    "source_file": "template.docx",
+    "adapter": "docx"
+  },
+  "fields": [
+    {
+      "id": "process.agency",
+      "label": "Process Agency",
+      "type": "text",
+      "required": true,
+      "section": "Process / Contract"
+    },
+    {
+      "id": "process.number",
+      "label": "Process Number",
+      "type": "text",
+      "required": true,
+      "section": "Process / Contract"
+    },
+    {
+      "id": "process.object",
+      "label": "Process Object",
+      "type": "multiline",
+      "required": true,
+      "section": "Process / Contract"
+    },
+    {
+      "id": "company.legal_name",
+      "label": "Company Legal Name",
+      "type": "text",
+      "required": true,
+      "profile_key": "company.legal.name",
+      "section": "Company / Supplier"
+    },
+    {
+      "id": "company.cnpj",
+      "label": "Company Cnpj",
+      "type": "cnpj",
+      "required": true,
+      "profile_key": "company.cnpj",
+      "section": "Company / Supplier"
+    },
+    {
+      "id": "company.address",
+      "label": "Company Address",
+      "type": "text",
+      "required": true,
+      "profile_key": "company.address",
+      "section": "Company / Supplier"
+    },
+    {
+      "id": "representative.name",
+      "label": "Representative Name",
+      "type": "text",
+      "required": true,
+      "section": "Document Data"
+    },
+    {
+      "id": "representative.cpf",
+      "label": "Representative Cpf",
+      "type": "cpf",
+      "required": true,
+      "section": "Document Data"
+    },
+    {
+      "id": "declaration.notes",
+      "label": "Declaration Notes",
+      "type": "multiline",
+      "required": true,
+      "section": "Document Data"
+    },
+    {
+      "id": "document.city",
+      "label": "Document City",
+      "type": "text",
+      "required": true,
+      "section": "Address"
+    },
+    {
+      "id": "document.date",
+      "label": "Document Date",
+      "type": "date",
+      "required": true,
+      "automatic": true,
+      "section": "Document"
+    },
+    {
+      "id": "representative.role",
+      "label": "Representative Role",
+      "type": "text",
+      "required": true,
+      "section": "Document Data"
+    }
+  ],
+  "sections": [
+    {
+      "title": "Process / Contract",
+      "fields": [
+        "process.agency",
+        "process.number",
+        "process.object"
+      ]
+    },
+    {
+      "title": "Company / Supplier",
+      "fields": [
+        "company.legal_name",
+        "company.cnpj",
+        "company.address"
+      ]
+    },
+    {
+      "title": "Document Data",
+      "fields": [
+        "representative.name",
+        "representative.cpf",
+        "declaration.notes",
+        "representative.role"
+      ]
+    },
+    {
+      "title": "Address",
+      "fields": [
+        "document.city"
+      ]
+    },
+    {
+      "title": "Document",
+      "fields": [
+        "document.date"
+      ]
+    }
+  ],
+  "output": {
+    "filename_pattern": "{{template.name}}.docx",
+    "folder_pattern": ""
+  },
+  "numbering": {
+    "enabled": false,
+    "key": "test-template-declaracao-impedimentos",
+    "padding": 4
+  }
+}

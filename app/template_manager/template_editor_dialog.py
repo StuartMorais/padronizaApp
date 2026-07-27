@@ -1,0 +1,1649 @@
+from __future__ import annotations
+
+import json
+from copy import deepcopy
+from pathlib import Path
+from typing import Any
+
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import (
+    QAction,
+    QKeySequence,
+    QShortcut,
+)
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QFormLayout,
+    QLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QInputDialog,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QMenu,
+    QPlainTextEdit,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from app.dialogs.diagnostics_dialog import DiagnosticsDialog
+from app.dialogs.filename_builder_dialog import FilenameBuilderDialog
+from app.dialogs.field_library_dialog import FieldLibraryDialog
+from app.field_library import FieldLibraryStore
+from app.field_utils import FIELD_TYPE_ORDER
+from app.smart_template import readiness_report, smart_fields_from_docx
+from app.template_diagnostics import diagnose_template, diagnostics_text
+from app.template_repository import TemplateRepository
+from app.widgets.clickable_drop_zone import ClickableDropZone
+from app.widgets.context_help import HelpIconButton, HelpLabel
+from app.widgets.toast import show_toast
+from app.widgets.searchable_dropdown import DropdownOptionsEditor
+
+
+class _TemplateDocxDropZone(ClickableDropZone):
+    SUPPORTED_SUFFIXES = frozenset({".docx"})
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+
+        self.setObjectName(
+            "templateDocxDropZone"
+        )
+        self.setAcceptDrops(True)
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor
+        )
+        self.setMinimumHeight(132)
+        self.setMaximumHeight(132)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.setToolTip(
+            'Arraste um arquivo DOCX para cá ou clique para selecioná-lo.'
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(
+            16,
+            13,
+            16,
+            13,
+        )
+        layout.setSpacing(5)
+        layout.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        self.title_label = QLabel(
+            'Arraste um modelo DOCX para cá'
+        )
+        self.title_label.setObjectName(
+            "templateDocxDropTitle"
+        )
+        self.title_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        self.subtitle_label = QLabel(
+            'ou selecione um documento do Word'
+        )
+        self.subtitle_label.setObjectName(
+            "templateDocxDropText"
+        )
+        self.subtitle_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+        self.subtitle_label.setWordWrap(True)
+
+        self.browse_button = self.create_browse_button(
+            "Selecionar DOCX"
+        )
+
+        self.add_drop_content(
+            layout,
+            self.title_label,
+            self.subtitle_label,
+            self.browse_button,
+        )
+
+    def set_selected_file(
+        self,
+        path: Path,
+    ) -> None:
+        self.setProperty(
+            "selected",
+            True,
+        )
+        self.title_label.setText(
+            path.name
+        )
+        self.subtitle_label.setText(
+            'DOCX selecionado. Arraste outro arquivo para substituí-lo.'
+        )
+        self.browse_button.setText(
+            'Substituir DOCX'
+        )
+        self.set_drag_active(False)
+
+
+
+# noinspection SpellCheckingInspection
+class TemplateEditorDialog(QDialog):
+    FIELD_TYPES = FIELD_TYPE_ORDER
+    FIELD_TYPE_LABELS = {
+        "text": "Texto",
+        "multiline": "Texto com várias linhas",
+        "date": "Data",
+        "checkbox": "Caixa de seleção",
+        "dropdown": "Lista suspensa",
+        "currency": "Moeda",
+        "integer": "Número inteiro",
+        "decimal": "Número decimal",
+        "percentage": "Porcentagem",
+        "cnpj": "CNPJ",
+        "cpf": "CPF",
+        "cep": "CEP",
+        "phone": "Telefone",
+        "email": "E-mail",
+    }
+
+    def __init__(
+        self,
+        repository: TemplateRepository,
+        template_id: str | None = None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.repository = repository
+        self.template_id = template_id
+        self.saved_template_id: str | None = template_id
+        self.selected_docx: Path | None = None
+        self.docx_was_replaced = False
+        self.data_dir = self.repository.templates_dir.parent / "data"
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.field_library = FieldLibraryStore(self.data_dir)
+        draft_name = f"{template_id or 'new-template'}.json"
+        self.editor_draft_path = self.data_dir / "template_editor_drafts" / draft_name
+        self._history: list[dict[str, Any]] = []
+        self._history_index = -1
+        self._initial_snapshot: dict[str, Any] | None = None
+        self._applying_snapshot = False
+        self._dirty = False
+        self._duplicate_matches: list[dict[str, Any]] = []
+        self._similar_name_matches: list[dict[str, Any]] = []
+        self._original_template_name = ""
+
+        self.change_timer = QTimer(self)
+        self.change_timer.setSingleShot(True)
+        self.change_timer.setInterval(450)
+        self.change_timer.timeout.connect(self._commit_editor_change)
+
+        self.setWindowTitle('Criar modelo' if template_id is None else 'Editar modelo')
+        self.resize(1260, 820)
+        self.setMinimumSize(760, 560)
+        self.setSizeGripEnabled(True)
+
+        self.name_input = QLineEdit()
+
+        self.similar_name_warning_label = QLabel()
+        self.similar_name_warning_label.setObjectName(
+            "similarTemplateNameWarning"
+        )
+        self.similar_name_warning_label.setWordWrap(True)
+        self.similar_name_warning_label.hide()
+
+        self.category_input = QLineEdit()
+        self.version_input = QLineEdit("1.0")
+        self.description_input = QPlainTextEdit()
+        self.description_input.setMinimumHeight(64)
+        self.description_input.setMaximumHeight(84)
+        self.docx_input = QLineEdit()
+        self.docx_input.setReadOnly(True)
+
+        self.duplicate_warning_label = QLabel()
+        self.duplicate_warning_label.setObjectName(
+            "duplicateTemplateWarning"
+        )
+        self.duplicate_warning_label.setWordWrap(True)
+        self.duplicate_warning_label.hide()
+
+        self.filename_input = QLineEdit("{{template.name}}.docx")
+        self.folder_pattern_input = QLineEdit()
+        self.folder_pattern_input.setPlaceholderText("Exemplo: {{year}}/{{process.number}}/{{company.legal_name}}")
+        self.numbering_checkbox = QCheckBox('Ativar numeração sequencial para este modelo')
+        self.numbering_key_input = QLineEdit()
+        self.numbering_key_input.setPlaceholderText('Por padrão, usa o ID do modelo')
+        self.numbering_padding_input = QSpinBox()
+        self.numbering_padding_input.setRange(1, 10)
+        self.numbering_padding_input.setValue(4)
+
+        self.docx_drop_zone = (
+            _TemplateDocxDropZone()
+        )
+        self.browse_button = (
+            self.docx_drop_zone.browse_button
+        )
+        self.docx_tools_button = QPushButton(
+            'Ferramentas DOCX'
+        )
+        self.docx_tools_menu = QMenu(self)
+
+        self.scan_action = QAction(
+            'Localizar campos',
+            self,
+        )
+        self.scan_action.triggered.connect(
+            self._scan_fields
+        )
+        self.docx_tools_menu.addAction(
+            self.scan_action
+        )
+
+        self.diagnostics_action = QAction(
+            'Executar diagnóstico',
+            self,
+        )
+        self.diagnostics_action.triggered.connect(
+            self._show_diagnostics
+        )
+        self.docx_tools_menu.addAction(
+            self.diagnostics_action
+        )
+
+        self.docx_tools_button.setMenu(
+            self.docx_tools_menu
+        )
+
+        self.filename_builder_button = QPushButton(
+            'Montar nome do arquivo...'
+        )
+
+        self.fields_table = QTableWidget(0, 10)
+        self.fields_table.setHorizontalHeaderLabels(
+            [
+                'ID do campo',
+                'Rótulo',
+                'Tipo',
+                'Obrigatório',
+                'Opções',
+                'Seção',
+                'Chave do perfil',
+                'Grupo',
+                'Escolha única',
+                'Visível quando',
+            ]
+        )
+        self.fields_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.fields_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.fields_table.verticalHeader().setVisible(False)
+        self.fields_table.setAlternatingRowColors(True)
+        self.fields_table.setMinimumHeight(220)
+        header = self.fields_table.horizontalHeader()
+        for column in range(self.fields_table.columnCount()):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
+        widths = [210, 210, 115, 80, 190, 150, 170, 130, 100, 190]
+        for column, width in enumerate(widths):
+            self.fields_table.setColumnWidth(column, width)
+
+        field_header_help = [
+            'Identificador usado nos marcadores, como {{company.cnpj}}.',
+            'Nome legível exibido no formulário.',
+            'Define o controle e a validação do campo.',
+            'Impede a geração enquanto o campo visível estiver vazio ou inválido.',
+            'Abre o editor de opções. Cada opção pode ter um título curto e um texto longo inserido no documento.',
+            'Grupo visual no formulário de geração.',
+            'Chave usada para preencher o campo a partir de um perfil.',
+            'Agrupa caixas de seleção relacionadas.',
+            'Permite apenas uma caixa marcada dentro do mesmo grupo.',
+            'Regra no formato campo.id=conteudo_esperado. Exemplo: declaracao.tipo=Integral.',
+        ]
+        for column, help_text in enumerate(field_header_help):
+            header_item = self.fields_table.horizontalHeaderItem(column)
+            if header_item is not None:
+                header_item.setToolTip(help_text)
+
+        self.add_field_button = QPushButton('Adicionar campo')
+        self.remove_field_button = QPushButton('Remover selecionado')
+        self.move_up_button = QPushButton('Mover para cima')
+        self.move_down_button = QPushButton('Mover para baixo')
+        self.insert_group_button = QPushButton('Inserir grupo de campos')
+        self.save_group_button = QPushButton('Salvar seleção como grupo')
+        self.undo_button = QPushButton('Desfazer')
+        self.redo_button = QPushButton('Refazer')
+        self.revert_button = QPushButton('Reverter alterações')
+        self.save_button = QPushButton('Salvar alterações' if template_id else 'Criar modelo')
+        self.save_button.setObjectName("primaryButton")
+        self.cancel_button = QPushButton('Cancelar')
+
+        self.docx_drop_zone.browse_requested.connect(
+            self._choose_docx
+        )
+        self.docx_drop_zone.file_dropped.connect(
+            self._set_docx_file
+        )
+        self.filename_builder_button.clicked.connect(
+            self._build_filename
+        )
+        self.add_field_button.clicked.connect(self._add_empty_field)
+        self.remove_field_button.clicked.connect(self._remove_selected_fields)
+        self.move_up_button.clicked.connect(lambda: self._move_selected(-1))
+        self.move_down_button.clicked.connect(lambda: self._move_selected(1))
+        self.insert_group_button.clicked.connect(self._insert_field_group)
+        self.save_group_button.clicked.connect(self._save_selected_field_group)
+        self.undo_button.clicked.connect(self._undo_editor_change)
+        self.redo_button.clicked.connect(self._redo_editor_change)
+        self.revert_button.clicked.connect(self._revert_editor_changes)
+        self.save_button.clicked.connect(self._save_template)
+        self.cancel_button.clicked.connect(self._cancel_editor)
+
+        QShortcut(QKeySequence.StandardKey.Undo, self).activated.connect(self._undo_editor_change)
+        QShortcut(QKeySequence.StandardKey.Redo, self).activated.connect(self._redo_editor_change)
+
+        general_group = self._create_general_group()
+        output_group = self._create_output_group()
+
+        top_widget = QWidget()
+        top_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
+        )
+        top_row = QHBoxLayout(top_widget)
+        top_row.setContentsMargins(0, 0, 0, 0)
+        top_row.setSpacing(12)
+        top_row.addWidget(general_group, 3)
+        top_row.addWidget(output_group, 2)
+        top_widget.setMinimumHeight(
+            max(
+                general_group.minimumSizeHint().height(),
+                output_group.minimumSizeHint().height(),
+            )
+        )
+
+        content_widget = QWidget()
+        content_widget.setObjectName("templateEditorContent")
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(12)
+        content_layout.setSizeConstraint(
+            QLayout.SizeConstraint.SetMinimumSize
+        )
+        content_layout.addWidget(top_widget)
+        content_layout.addWidget(self._create_readiness_group())
+        content_layout.addWidget(self._create_fields_group(), 1)
+
+        self.editor_scroll = QScrollArea()
+        self.editor_scroll.setObjectName("templateEditorScroll")
+        self.editor_scroll.setWidgetResizable(True)
+        self.editor_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.editor_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.editor_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.editor_scroll.setWidget(content_widget)
+
+        bottom = QHBoxLayout()
+        bottom.addStretch()
+        bottom.addWidget(self.save_button)
+        bottom.addWidget(self.cancel_button)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+        layout.addWidget(self.editor_scroll, 1)
+        layout.addLayout(bottom)
+
+        if self.template_id is not None:
+            self._applying_snapshot = True
+            try:
+                self._load_existing_template()
+            finally:
+                self._applying_snapshot = False
+                self.change_timer.stop()
+                self._dirty = False
+
+        self._connect_change_tracking()
+        self._initial_snapshot = self._snapshot_editor_state()
+        self._history = [deepcopy(self._initial_snapshot)]
+        self._history_index = 0
+        self._recover_editor_draft()
+        self._update_readiness()
+        QTimer.singleShot(
+            0,
+            self._fit_to_available_screen,
+        )
+
+    def _fit_to_available_screen(self) -> None:
+        screen = self.screen()
+        if screen is None:
+            return
+
+        available = screen.availableGeometry()
+        usable_width = max(
+            480,
+            available.width() - 24,
+        )
+        usable_height = max(
+            420,
+            available.height() - 24,
+        )
+
+        minimum_width = max(
+            480,
+            min(
+                900,
+                available.width() - 100,
+            ),
+        )
+        minimum_height = max(
+            420,
+            min(
+                620,
+                available.height() - 100,
+            ),
+        )
+        self.setMinimumSize(
+            minimum_width,
+            minimum_height,
+        )
+
+        self.resize(
+            max(
+                minimum_width,
+                min(1320, usable_width),
+            ),
+            max(
+                minimum_height,
+                min(900, usable_height),
+            ),
+        )
+
+    @staticmethod
+    def _create_form_group(
+        title: str,
+    ) -> tuple[QGroupBox, QFormLayout]:
+        form_group = QGroupBox(title)
+        form_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
+        )
+        form = QFormLayout(form_group)
+        form.setContentsMargins(14, 16, 14, 14)
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(9)
+        return form_group, form
+
+    def _create_general_group(self) -> QGroupBox:
+        form_group, form = self._create_form_group(
+            'Informações do modelo'
+        )
+
+        name_widget = QWidget()
+        name_layout = QVBoxLayout(name_widget)
+        name_layout.setContentsMargins(0, 0, 0, 0)
+        name_layout.setSpacing(5)
+        name_layout.addWidget(self.name_input)
+        name_layout.addWidget(
+            self.similar_name_warning_label
+        )
+
+        form.addRow(
+            HelpLabel(
+                'Nome do modelo:',
+                'Nome do modelo',
+                (
+                    '<p>Use um nome curto e fácil de reconhecer na biblioteca.</p>'
+                    '<p>O Padroniza compara o nome com os modelos existentes e '
+                    'avisa quando encontra nomes muito semelhantes.</p>'
+                ),
+            ),
+            name_widget,
+        )
+        form.addRow(
+            HelpLabel(
+                'Categoria:',
+                'Categoria do modelo',
+                (
+                    '<p>Use uma categoria curta para organizar e localizar modelos, '
+                    'como <b>Compras</b>, <b>Contratos</b> ou <b>Declarações</b>.</p>'
+                ),
+            ),
+            self.category_input,
+        )
+        form.addRow(
+            HelpLabel(
+                'Versão:',
+                'Versão do modelo',
+                (
+                    '<p>É uma identificação informativa, como <b>1.0</b> ou <b>2.1</b>.</p>'
+                    '<p>O histórico de versões guarda cópias anteriores quando o modelo '
+                    'é atualizado.</p>'
+                ),
+            ),
+            self.version_input,
+        )
+        form.addRow(
+            HelpLabel(
+                'Descrição:',
+                'Descrição do modelo',
+                (
+                    '<p>Explique quando o modelo deve ser usado e qual documento ele gera.</p>'
+                    '<p>A descrição ajuda outros usuários a escolher o modelo correto.</p>'
+                ),
+            ),
+            self.description_input,
+        )
+
+        docx_widget = QWidget()
+        docx_layout = QVBoxLayout(
+            docx_widget
+        )
+        docx_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+        docx_layout.setSpacing(7)
+        docx_layout.addWidget(
+            self.docx_drop_zone
+        )
+
+        selected_row = QHBoxLayout()
+        selected_row.setSpacing(6)
+        selected_row.addWidget(
+            self.docx_input,
+            1,
+        )
+        selected_row.addWidget(
+            self.docx_tools_button
+        )
+        docx_layout.addLayout(
+            selected_row
+        )
+        docx_layout.addWidget(
+            self.duplicate_warning_label
+        )
+
+        form.addRow(
+            HelpLabel(
+                'Modelo DOCX:',
+                'Documento DOCX de origem',
+                (
+                    '<p>Este arquivo contém o texto, a formatação e os marcadores '
+                    'que serão preenchidos durante a geração.</p>'
+                    '<p>Exemplo de marcador: <b>{{company.legal_name}}</b>.</p>'
+                    '<p>O Padroniza também avisa quando o mesmo conteúdo DOCX já '
+                    'está sendo usado por outro modelo.</p>'
+                ),
+            ),
+            docx_widget,
+        )
+        return form_group
+
+    def _create_readiness_group(self) -> QGroupBox:
+        group = QGroupBox('Verificação do modelo')
+        layout = QHBoxLayout(group)
+        layout.setContentsMargins(12, 12, 12, 12)
+
+        self.readiness_label = QLabel('Verificando o modelo…')
+        self.readiness_label.setObjectName("templateReadinessTitle")
+        self.readiness_details = QLabel()
+        self.readiness_details.setObjectName("mutedText")
+        self.readiness_details.setWordWrap(True)
+
+        text_layout = QVBoxLayout()
+        text_layout.addWidget(self.readiness_label)
+        text_layout.addWidget(self.readiness_details)
+
+        self.safe_fix_button = QPushButton('Aplicar correções seguras')
+        self.safe_fix_button.clicked.connect(self._apply_safe_fixes)
+
+        layout.addLayout(text_layout, 1)
+        layout.addWidget(
+            HelpIconButton(
+                'Verificação e correções seguras',
+                (
+                    '<p>A verificação resume problemas que podem impedir ou prejudicar '
+                    'a geração, como DOCX ausente, campos inválidos ou marcadores sem configuração.</p>'
+                    '<p><b>Aplicar correções seguras</b> cria ou ajusta somente itens que '
+                    'podem ser corrigidos sem apagar conteúdo manual.</p>'
+                ),
+            )
+        )
+        layout.addWidget(self.safe_fix_button)
+        return group
+
+    def _create_fields_group(self) -> QGroupBox:
+        group = QGroupBox('Campos e seções')
+
+        help_text = HelpLabel(
+            'Configuração dos campos',
+            'Campos, seções e regras',
+            (
+                '<p><b>Seção</b> organiza o formulário em grupos visuais.</p>'
+                '<p><b>Chave do perfil</b> associa o campo a dados reutilizáveis.</p>'
+                '<p>Em <b>Visível quando</b>, use o formato '
+                '<b>campo.id=conteudo_esperado</b> para criar uma regra condicional. '
+                'Exemplo: <b>declaracao.tipo=Integral</b>.</p>'
+                '<p>Caixas do mesmo grupo com <b>Escolha única</b> funcionam como '
+                'seleção exclusiva, mas todas continuam sendo impressas.</p>'
+            ),
+        )
+        help_text.label.setObjectName("mutedText")
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(6)
+        buttons.addWidget(self.add_field_button)
+        buttons.addWidget(self.remove_field_button)
+        buttons.addWidget(self.move_up_button)
+        buttons.addWidget(self.move_down_button)
+        buttons.addWidget(self.insert_group_button)
+        buttons.addWidget(self.save_group_button)
+        buttons.addStretch()
+        buttons.addWidget(self.undo_button)
+        buttons.addWidget(self.redo_button)
+        buttons.addWidget(self.revert_button)
+
+        layout = QVBoxLayout(group)
+        layout.setContentsMargins(12, 16, 12, 12)
+        layout.setSpacing(8)
+        layout.addWidget(help_text)
+        layout.addLayout(buttons)
+        layout.addWidget(self.fields_table, 1)
+        return group
+
+    def _create_output_group(self) -> QGroupBox:
+        form_group, form = self._create_form_group(
+            'Saída e numeração'
+        )
+
+        filename_widget = QWidget()
+        filename_row = QHBoxLayout(filename_widget)
+        filename_row.setContentsMargins(0, 0, 0, 0)
+        filename_row.setSpacing(6)
+        filename_row.addWidget(self.filename_input, 1)
+        filename_row.addWidget(self.filename_builder_button)
+
+        form.addRow(
+            HelpLabel(
+                'Padrão do nome do arquivo:',
+                'Nome automático do arquivo',
+                (
+                    '<p>Monte o nome final usando texto e marcadores.</p>'
+                    '<p>Exemplo: <b>{{process.number}} - {{company.legal_name}}.docx</b>.</p>'
+                    '<p>O botão <b>Montar nome do arquivo</b> ajuda a inserir '
+                    'marcadores sem digitá-los manualmente.</p>'
+                ),
+            ),
+            filename_widget,
+        )
+        form.addRow(
+            HelpLabel(
+                'Padrão de pastas:',
+                'Organização automática em pastas',
+                (
+                    '<p>Cria subpastas dentro da pasta de saída configurada.</p>'
+                    '<p>Exemplo: <b>{{year}}/{{process.number}}</b>.</p>'
+                    '<p>Deixe em branco para salvar diretamente na pasta raiz de saída.</p>'
+                ),
+            ),
+            self.folder_pattern_input,
+        )
+
+        numbering_widget = QWidget()
+        numbering_layout = QHBoxLayout(numbering_widget)
+        numbering_layout.setContentsMargins(0, 0, 0, 0)
+        numbering_layout.setSpacing(6)
+        numbering_layout.addWidget(self.numbering_checkbox)
+        numbering_layout.addWidget(
+            HelpIconButton(
+                'Numeração sequencial',
+                (
+                    '<p>Adiciona um contador crescente que pode ser usado pelo '
+                    'marcador <b>{{sequence}}</b>.</p>'
+                    '<p>A chave separa contadores de modelos ou fluxos diferentes. '
+                    'A quantidade de dígitos controla o preenchimento com zeros, '
+                    'como <b>0001</b>.</p>'
+                ),
+            )
+        )
+        numbering_layout.addStretch()
+        form.addRow("", numbering_widget)
+        form.addRow(
+            HelpLabel(
+                'Chave da sequência:',
+                'Chave da sequência',
+                (
+                    '<p>Separa contadores diferentes. Modelos com a mesma chave '
+                    'compartilham a mesma sequência.</p>'
+                    '<p>Use uma chave estável, como <b>declaracoes</b> ou <b>contratos</b>.</p>'
+                ),
+            ),
+            self.numbering_key_input,
+        )
+        form.addRow(
+            HelpLabel(
+                'Dígitos da sequência:',
+                'Quantidade de dígitos',
+                (
+                    '<p>Controla o preenchimento com zeros do marcador '
+                    '<b>{{sequence}}</b>.</p>'
+                    '<p>Com 4 dígitos, os primeiros valores serão 0001, 0002 e 0003.</p>'
+                ),
+            ),
+            self.numbering_padding_input,
+        )
+
+        tokens = QLabel(
+            "Os marcadores disponíveis incluem {{template.name}}, {{year}}, {{sequence}} e qualquer ID de campo, "
+            "como {{process.number}}. Os padrões de pasta criam subpastas dentro da pasta raiz de saída configurada."
+        )
+        tokens.setWordWrap(True)
+        tokens.setObjectName("mutedText")
+        form.addRow("", tokens)
+        return form_group
+
+    def _load_existing_template(self) -> None:
+        if self.template_id is None:
+            return
+        try:
+            config = self.repository.read_config(self.template_id)
+            template = config.get("template", {})
+            output = config.get("output", {})
+            numbering = config.get("numbering", {})
+
+            self.name_input.setText(str(template.get("name", "")))
+            self._original_template_name = self.name_input.text().strip()
+            self.category_input.setText(str(template.get("category", "")))
+            self.version_input.setText(str(template.get("version", "1.0")))
+            self.description_input.setPlainText(str(template.get("description", "")))
+            self.filename_input.setText(str(output.get("filename_pattern", "{{template.name}}.docx")))
+            self.folder_pattern_input.setText(str(output.get("folder_pattern", "")))
+            self.numbering_checkbox.setChecked(bool(numbering.get("enabled", False)))
+            self.numbering_key_input.setText(str(numbering.get("key", "")))
+            self.numbering_padding_input.setValue(int(numbering.get("padding", 4) or 4))
+
+            self.selected_docx = self.repository.get_source_path(self.template_id)
+            self.docx_input.setText(str(self.selected_docx))
+            self.docx_drop_zone.set_selected_file(
+                self.selected_docx
+            )
+            self._refresh_duplicate_status()
+
+            fields = [dict(field) for field in config.get("fields", [])]
+            section_by_field: dict[str, str] = {}
+            for section in config.get("sections", []):
+                if not isinstance(section, dict):
+                    continue
+                title = str(section.get("title", ""))
+                for field_id in section.get("fields", []):
+                    section_by_field[str(field_id)] = title
+            for field in fields:
+                field.setdefault("section", section_by_field.get(str(field.get("id", "")), ""))
+            self._load_fields_into_table(fields)
+        except Exception as exc:
+            QMessageBox.critical(self, "Não foi possível carregar o modelo", str(exc))
+            self.reject()
+
+    def _choose_docx(self) -> None:
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            'Selecionar modelo DOCX',
+            "",
+            'Documentos do Word (*.docx)',
+        )
+
+        if filename:
+            self._set_docx_file(
+                filename
+            )
+
+    def _set_docx_file(
+        self,
+        filename: str,
+    ) -> None:
+        path = Path(filename)
+
+        if not path.exists():
+            QMessageBox.warning(
+                self,
+                'DOCX não encontrado',
+                'O arquivo DOCX selecionado não foi encontrado.',
+            )
+            return
+
+        if (
+            not path.is_file()
+            or path.suffix.casefold()
+            != ".docx"
+        ):
+            QMessageBox.warning(
+                self,
+                'Arquivo não compatível',
+                'Selecione um documento do Word no formato DOCX.',
+            )
+            return
+
+        self.selected_docx = path
+        self.docx_was_replaced = True
+        if self.template_id is None and not self.name_input.text().strip():
+            suggested_name = path.stem.replace("_", " ").replace("-", " ").strip().title()
+            self.name_input.setText(suggested_name)
+        self.docx_input.setText(
+            str(path)
+        )
+        self.docx_drop_zone.set_selected_file(
+            path
+        )
+        self._refresh_duplicate_status()
+
+        if self.template_id is None or self.fields_table.rowCount() == 0:
+            self._smart_scan_fields(show_message=False)
+        self._schedule_editor_change()
+        self._update_readiness()
+
+    def _refresh_similar_name_status(self) -> None:
+        self._similar_name_matches = []
+        name = self.name_input.text().strip()
+
+        if not name:
+            self.similar_name_warning_label.hide()
+            return
+
+        self._similar_name_matches = (
+            self.repository.find_templates_with_similar_name(
+                name,
+                exclude_template_id=self.template_id,
+            )
+        )
+        if not self._similar_name_matches:
+            self.similar_name_warning_label.hide()
+            return
+
+        descriptions = []
+        for match in self._similar_name_matches:
+            percentage = round(
+                float(match.get("similarity", 0.0)) * 100
+            )
+            descriptions.append(
+                f"{match.get('name', match.get('id', 'Desconhecido'))} "
+                f"({percentage}% de semelhança)"
+            )
+
+        self.similar_name_warning_label.setText(
+            "⚠ Nome de modelo semelhante detectado: "
+            + ", ".join(descriptions)
+        )
+        self.similar_name_warning_label.setToolTip(
+            "\n".join(
+                f"{match.get('name', match.get('id', 'Desconhecido'))}: "
+                f"{round(float(match.get('similarity', 0.0)) * 100)}% — "
+                f"{match.get('similarity_reason', 'nome semelhante')}"
+                for match in self._similar_name_matches
+            )
+        )
+        self.similar_name_warning_label.show()
+
+    def _confirm_similar_name(self) -> bool:
+        name = self.name_input.text().strip()
+        name_changed = (
+            self.template_id is None
+            or self.repository.normalize_template_name(name)
+            != self.repository.normalize_template_name(
+                self._original_template_name
+            )
+        )
+        if not name_changed:
+            return True
+
+        self._refresh_similar_name_status()
+        if not self._similar_name_matches:
+            return True
+
+        lines = "\n".join(
+            f"• {match.get('name', match.get('id', 'Modelo desconhecido'))} "
+            f"— {round(float(match.get('similarity', 0.0)) * 100)}% de semelhança"
+            for match in self._similar_name_matches
+        )
+        answer = QMessageBox.question(
+            self,
+            'Nome de modelo semelhante',
+            f'O nome "{name}" é semelhante a modelos existentes:\n\n'
+            f"{lines}\n\nSalvar este nome de modelo mesmo assim?",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def _refresh_duplicate_status(self) -> None:
+        self._duplicate_matches = []
+
+        if self.selected_docx is None:
+            self.duplicate_warning_label.hide()
+            return
+
+        try:
+            self._duplicate_matches = (
+                self.repository.find_templates_using_docx(
+                    self.selected_docx,
+                    exclude_template_id=self.template_id,
+                )
+            )
+        except Exception:
+            self.duplicate_warning_label.hide()
+            return
+
+        if not self._duplicate_matches:
+            self.duplicate_warning_label.hide()
+            return
+
+        names = ", ".join(
+            str(match.get("name", match.get("id", 'Modelo desconhecido')))
+            for match in self._duplicate_matches
+        )
+        count = len(self._duplicate_matches)
+        self.duplicate_warning_label.setText(
+            f"⚠ Arquivo de modelo repetido detectado. "
+            f"Este DOCX já é usado por {count} modelo(s): {names}"
+        )
+        self.duplicate_warning_label.setToolTip(
+            "\n".join(
+                f"{match.get('name', match.get('id', 'Desconhecido'))}: "
+                f"{match.get('source_path', '')}"
+                for match in self._duplicate_matches
+            )
+        )
+        self.duplicate_warning_label.show()
+
+    def _confirm_duplicate_docx(self) -> bool:
+        should_check = (
+            self.template_id is None
+            or self.docx_was_replaced
+        )
+        if not should_check or self.selected_docx is None:
+            return True
+
+        self._refresh_duplicate_status()
+        if not self._duplicate_matches:
+            return True
+
+        names = "\n".join(
+            f"• {match.get('name', match.get('id', 'Modelo desconhecido'))}"
+            for match in self._duplicate_matches
+        )
+        answer = QMessageBox.question(
+            self,
+            'Arquivo de modelo repetido',
+            "O DOCX selecionado possui o mesmo conteúdo de um arquivo de modelo existente. "
+            f"\n\n{names}\n\n"
+            "Criar outro modelo usando este mesmo DOCX?",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def _scan_fields(self) -> None:
+        self._smart_scan_fields(show_message=True)
+
+    def _smart_scan_fields(self, *, show_message: bool) -> None:
+        if self.selected_docx is None:
+            QMessageBox.warning(self, 'Nenhum DOCX selecionado', 'Selecione primeiro um arquivo DOCX.')
+            return
+        try:
+            existing = self._collect_fields(validate=False)
+            fields = smart_fields_from_docx(self.selected_docx, existing)
+        except Exception as exc:
+            QMessageBox.critical(self, 'Não foi possível analisar o DOCX', str(exc))
+            return
+        if not fields:
+            QMessageBox.warning(self, 'Nenhum campo encontrado', 'Nenhum marcador ou controle identificado foi encontrado.')
+            return
+        self._load_fields_into_table(fields)
+        self._schedule_editor_change()
+        self._update_readiness()
+        if show_message:
+            show_toast(
+                self,
+                'Análise inteligente concluída',
+                f'{len(fields)} campo(s) foram detectados e configurados.',
+            )
+
+    def _show_diagnostics(self) -> None:
+        if self.selected_docx is None:
+            QMessageBox.warning(self, 'Nenhum DOCX selecionado', 'Selecione primeiro um arquivo DOCX.')
+            return
+        try:
+            fields = self._collect_fields(validate=False)
+            config = {
+                "fields": fields,
+                "output": {"filename_pattern": self.filename_input.text()},
+            }
+            report = diagnose_template(config, self.selected_docx)
+        except Exception as exc:
+            QMessageBox.critical(self, 'Falha no diagnóstico', str(exc))
+            return
+        DiagnosticsDialog('Diagnóstico do modelo', diagnostics_text(report), self).exec()
+
+    def _build_filename(self) -> None:
+        dialog = FilenameBuilderDialog(self.filename_input.text(), self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.filename_input.setText(dialog.pattern())
+
+    def _load_fields_into_table(self, fields: list[dict[str, Any]]) -> None:
+        previous = self.fields_table.blockSignals(True)
+        try:
+            self.fields_table.setRowCount(0)
+            for field in fields:
+                self._insert_field_row(field)
+        finally:
+            self.fields_table.blockSignals(previous)
+        if hasattr(self, "readiness_label"):
+            self._update_readiness()
+
+    def _insert_field_row(self, field: dict[str, Any] | None = None) -> None:
+        field = field or {}
+        row = self.fields_table.rowCount()
+        self.fields_table.insertRow(row)
+        self.fields_table.setItem(row, 0, QTableWidgetItem(str(field.get("id", ""))))
+        self.fields_table.setItem(row, 1, QTableWidgetItem(str(field.get("label", ""))))
+
+        type_combo = QComboBox()
+        for field_type_key in self.FIELD_TYPES:
+            type_combo.addItem(
+                self.FIELD_TYPE_LABELS.get(
+                    field_type_key,
+                    field_type_key,
+                ),
+                field_type_key,
+            )
+        field_type = str(field.get("type", "text"))
+        index = type_combo.findData(field_type)
+        type_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.fields_table.setCellWidget(row, 2, type_combo)
+
+        required = QCheckBox()
+        required.setChecked(bool(field.get("required", True)))
+        required_container = self._centered_checkbox(required)
+        self.fields_table.setCellWidget(row, 3, required_container)
+
+        options = DropdownOptionsEditor(field.get("options", []))
+        self.fields_table.setCellWidget(row, 4, options)
+        self.fields_table.setItem(row, 5, QTableWidgetItem(str(field.get("section", ""))))
+        self.fields_table.setItem(row, 6, QTableWidgetItem(str(field.get("profile_key", ""))))
+        self.fields_table.setItem(row, 7, QTableWidgetItem(str(field.get("group", ""))))
+
+        single = QCheckBox()
+        single.setChecked(str(field.get("selection", "")).casefold() in {"single", "exclusive", "radio"})
+        self.fields_table.setCellWidget(row, 8, self._centered_checkbox(single))
+
+        visible = field.get("visible_when", "")
+        if isinstance(visible, dict):
+            if "equals" in visible:
+                visible = f"{visible.get('field', '')}={visible.get('equals', '')}"
+            else:
+                visible = ""
+        self.fields_table.setItem(row, 9, QTableWidgetItem(str(visible)))
+
+        type_combo.currentIndexChanged.connect(
+            lambda _index, combo=type_combo, option_widget=options, required_widget=required, single_widget=single: self._type_changed(
+                str(combo.currentData() or "text"),
+                option_widget,
+                required_widget,
+                single_widget,
+            )
+        )
+        type_combo.currentIndexChanged.connect(
+            self._schedule_editor_change
+        )
+        options.options_changed.connect(self._schedule_editor_change)
+        required.toggled.connect(self._schedule_editor_change)
+        single.toggled.connect(self._schedule_editor_change)
+        self._type_changed(field_type, options, required, single)
+
+    @staticmethod
+    def _centered_checkbox(checkbox: QCheckBox) -> QWidget:
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(checkbox)
+        return container
+
+    def _type_changed(
+        self,
+        field_type: str,
+        options: DropdownOptionsEditor,
+        required: QCheckBox,
+        single: QCheckBox,
+    ) -> None:
+        options.setEnabled(field_type == "dropdown")
+        options.setPlaceholderText(
+            'Use Editar... para cadastrar opções'
+            if field_type == "dropdown"
+            else 'Somente lista suspensa'
+        )
+        is_checkbox = field_type == "checkbox"
+        if is_checkbox:
+            required.setChecked(False)
+        required.setEnabled(not is_checkbox)
+        single.setEnabled(is_checkbox)
+        if not is_checkbox:
+            single.setChecked(False)
+
+    def _add_empty_field(self) -> None:
+        self._insert_field_row({"type": "text", "required": True})
+
+    def _remove_selected_fields(self) -> None:
+        rows = {index.row() for index in self.fields_table.selectionModel().selectedRows()}
+        if not rows and self.fields_table.currentRow() >= 0:
+            rows.add(self.fields_table.currentRow())
+        for row in sorted(rows, reverse=True):
+            self.fields_table.removeRow(row)
+
+    def _move_selected(self, direction: int) -> None:
+        row = self.fields_table.currentRow()
+        target = row + direction
+        if row < 0 or target < 0 or target >= self.fields_table.rowCount():
+            return
+        fields = self._collect_fields(validate=False)
+        fields[row], fields[target] = fields[target], fields[row]
+        self._load_fields_into_table(fields)
+        self.fields_table.selectRow(target)
+
+    def _checkbox_at(self, row: int, column: int) -> QCheckBox | None:
+        container = self.fields_table.cellWidget(row, column)
+        return container.findChild(QCheckBox) if container is not None else None
+
+    @staticmethod
+    def _parse_visible_when(value: str) -> dict[str, Any] | None:
+        text = value.strip()
+        if not text or "=" not in text:
+            return None
+        field_id, expected = text.split("=", 1)
+        expected_text = expected.strip()
+        if expected_text.casefold() in {"true", "yes", "sim", "checked", "1"}:
+            expected_value: Any = True
+        elif expected_text.casefold() in {"false", "no", "nao", "não", "0"}:
+            expected_value = False
+        else:
+            expected_value = expected_text
+        return {"field": field_id.strip(), "equals": expected_value}
+
+    def _collect_fields(self, *, validate: bool) -> list[dict[str, Any]]:
+        fields: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        for row in range(self.fields_table.rowCount()):
+            id_item = self.fields_table.item(row, 0)
+            label_item = self.fields_table.item(row, 1)
+            type_combo = self.fields_table.cellWidget(row, 2)
+            options_input = self.fields_table.cellWidget(row, 4)
+            section_item = self.fields_table.item(row, 5)
+            profile_item = self.fields_table.item(row, 6)
+            group_item = self.fields_table.item(row, 7)
+            visible_item = self.fields_table.item(row, 9)
+            required = self._checkbox_at(row, 3)
+            single = self._checkbox_at(row, 8)
+
+            field_id = id_item.text().strip() if id_item else ""
+            label = label_item.text().strip() if label_item else ""
+            field_type = (
+                str(type_combo.currentData() or "text")
+                if isinstance(type_combo, QComboBox)
+                else "text"
+            )
+
+            if not field_id and not label:
+                continue
+            if validate and not field_id:
+                raise ValueError(f"A linha de campo {row + 1} não possui ID.")
+            if validate and field_id in seen:
+                raise ValueError(f"ID de campo duplicado: {field_id}")
+            seen.add(field_id)
+
+            field: dict[str, Any] = {
+                "id": field_id,
+                "label": label or field_id.replace(".", " ").replace("_", " ").title(),
+                "type": field_type,
+                "required": False if field_type == "checkbox" else bool(required and required.isChecked()),
+            }
+
+            if field_type == "dropdown":
+                options = (
+                    options_input.options()
+                    if isinstance(options_input, DropdownOptionsEditor)
+                    else []
+                )
+                if validate and not options:
+                    raise ValueError(
+                        f"A lista suspensa '{field_id}' exige pelo menos uma opção."
+                    )
+                field["options"] = options
+            if field_type == "date":
+                field["automatic"] = True
+
+            section = section_item.text().strip() if section_item else ""
+            profile_key = profile_item.text().strip() if profile_item else ""
+            group = group_item.text().strip() if group_item else ""
+            visible = self._parse_visible_when(visible_item.text() if visible_item else "")
+            if section:
+                field["section"] = section
+            if profile_key:
+                field["profile_key"] = profile_key
+            if group:
+                field["group"] = group
+            if field_type == "checkbox" and single and single.isChecked():
+                field["selection"] = "single"
+            if visible:
+                field["visible_when"] = visible
+
+            fields.append(field)
+
+        return fields
+
+    @staticmethod
+    def _build_sections(fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        sections: list[dict[str, Any]] = []
+        section_map: dict[str, list[str]] = {}
+        order: list[str] = []
+        for field in fields:
+            title = str(field.get("section", "")).strip() or 'Dados do documento'
+            if title not in section_map:
+                section_map[title] = []
+                order.append(title)
+            section_map[title].append(str(field["id"]))
+        return [{"title": title, "fields": section_map[title]} for title in order]
+
+    def _connect_change_tracking(self) -> None:
+        for widget in (
+            self.name_input,
+            self.category_input,
+            self.version_input,
+            self.filename_input,
+            self.folder_pattern_input,
+            self.numbering_key_input,
+        ):
+            widget.textChanged.connect(self._schedule_editor_change)
+        self.description_input.textChanged.connect(self._schedule_editor_change)
+        self.numbering_checkbox.toggled.connect(self._schedule_editor_change)
+        self.numbering_padding_input.valueChanged.connect(self._schedule_editor_change)
+        self.fields_table.cellChanged.connect(self._schedule_editor_change)
+
+    def _schedule_editor_change(self, *_args) -> None:
+        if self._applying_snapshot:
+            return
+        self._dirty = True
+        self.change_timer.start()
+        if hasattr(self, "readiness_label"):
+            self._update_readiness()
+
+    def _snapshot_editor_state(self) -> dict[str, Any]:
+        return {
+            "name": self.name_input.text(),
+            "category": self.category_input.text(),
+            "version": self.version_input.text(),
+            "description": self.description_input.toPlainText(),
+            "docx": str(self.selected_docx or ""),
+            "filename_pattern": self.filename_input.text(),
+            "folder_pattern": self.folder_pattern_input.text(),
+            "numbering_enabled": self.numbering_checkbox.isChecked(),
+            "numbering_key": self.numbering_key_input.text(),
+            "numbering_padding": self.numbering_padding_input.value(),
+            "fields": self._collect_fields(validate=False),
+        }
+
+    def _commit_editor_change(self) -> None:
+        if self._applying_snapshot:
+            return
+        snapshot = self._snapshot_editor_state()
+        if self._history and self._history[self._history_index] == snapshot:
+            self._write_editor_draft(snapshot)
+            return
+        self._history = self._history[: self._history_index + 1]
+        self._history.append(deepcopy(snapshot))
+        self._history = self._history[-80:]
+        self._history_index = len(self._history) - 1
+        self._write_editor_draft(snapshot)
+        self._update_undo_buttons()
+
+    def _write_editor_draft(self, snapshot: dict[str, Any]) -> None:
+        self.editor_draft_path.parent.mkdir(parents=True, exist_ok=True)
+        self.editor_draft_path.write_text(
+            json.dumps(snapshot, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def _recover_editor_draft(self) -> None:
+        if not self.editor_draft_path.exists():
+            self._update_undo_buttons()
+            return
+        try:
+            snapshot = json.loads(self.editor_draft_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            self._update_undo_buttons()
+            return
+        if not isinstance(snapshot, dict) or snapshot == self._initial_snapshot:
+            self._update_undo_buttons()
+            return
+        answer = QMessageBox.question(
+            self,
+            'Recuperar rascunho do modelo',
+            'Foi encontrado um rascunho salvo automaticamente pelo editor. Deseja recuperá-lo?',
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self._apply_editor_snapshot(snapshot)
+            self._dirty = True
+            self._history.append(deepcopy(snapshot))
+            self._history_index = len(self._history) - 1
+        else:
+            self.editor_draft_path.unlink(missing_ok=True)
+        self._update_undo_buttons()
+
+    def _apply_editor_snapshot(self, snapshot: dict[str, Any]) -> None:
+        self._applying_snapshot = True
+        try:
+            self.name_input.setText(str(snapshot.get("name", "")))
+            self.category_input.setText(str(snapshot.get("category", "")))
+            self.version_input.setText(str(snapshot.get("version", "1.0")))
+            self.description_input.setPlainText(str(snapshot.get("description", "")))
+            docx = Path(str(snapshot.get("docx", ""))) if snapshot.get("docx") else None
+            self.selected_docx = docx if docx and docx.exists() else self.selected_docx
+            if self.selected_docx:
+                self.docx_input.setText(str(self.selected_docx))
+                self.docx_drop_zone.set_selected_file(self.selected_docx)
+                self._refresh_duplicate_status()
+                if self.template_id is None:
+                    self.docx_was_replaced = True
+                else:
+                    try:
+                        original = self.repository.get_source_path(self.template_id).resolve()
+                        self.docx_was_replaced = self.selected_docx.resolve() != original
+                    except Exception:
+                        self.docx_was_replaced = True
+            self.filename_input.setText(str(snapshot.get("filename_pattern", "{{template.name}}.docx")))
+            self.folder_pattern_input.setText(str(snapshot.get("folder_pattern", "")))
+            self.numbering_checkbox.setChecked(bool(snapshot.get("numbering_enabled", False)))
+            self.numbering_key_input.setText(str(snapshot.get("numbering_key", "")))
+            self.numbering_padding_input.setValue(int(snapshot.get("numbering_padding", 4) or 4))
+            fields = snapshot.get("fields", [])
+            self._load_fields_into_table([dict(field) for field in fields if isinstance(field, dict)])
+        finally:
+            self._applying_snapshot = False
+        self._update_readiness()
+
+    def _undo_editor_change(self) -> None:
+        self.change_timer.stop()
+        if self._history_index <= 0:
+            return
+        self._history_index -= 1
+        self._apply_editor_snapshot(self._history[self._history_index])
+        self._dirty = self._history[self._history_index] != self._initial_snapshot
+        self._update_undo_buttons()
+
+    def _redo_editor_change(self) -> None:
+        self.change_timer.stop()
+        if self._history_index >= len(self._history) - 1:
+            return
+        self._history_index += 1
+        self._apply_editor_snapshot(self._history[self._history_index])
+        self._dirty = self._history[self._history_index] != self._initial_snapshot
+        self._update_undo_buttons()
+
+    def _update_undo_buttons(self) -> None:
+        self.undo_button.setEnabled(self._history_index > 0)
+        self.redo_button.setEnabled(self._history_index < len(self._history) - 1)
+        self.revert_button.setEnabled(bool(self._dirty))
+
+    def _revert_editor_changes(self) -> None:
+        if self._initial_snapshot is None:
+            return
+        answer = QMessageBox.question(
+            self,
+            'Reverter alterações',
+            'Descartar todas as alterações feitas desde que o editor foi aberto?',
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self._apply_editor_snapshot(deepcopy(self._initial_snapshot))
+        self._history = [deepcopy(self._initial_snapshot)]
+        self._history_index = 0
+        self._dirty = False
+        self.editor_draft_path.unlink(missing_ok=True)
+        self._update_undo_buttons()
+
+    def _insert_field_group(self) -> None:
+        dialog = FieldLibraryDialog(self.field_library, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        existing_ids = {str(field.get("id", "")) for field in self._collect_fields(validate=False)}
+        inserted = 0
+        skipped: list[str] = []
+        for field in dialog.selected_fields:
+            field_id = str(field.get("id", ""))
+            if field_id in existing_ids:
+                skipped.append(field_id)
+                continue
+            self._insert_field_row(dict(field))
+            existing_ids.add(field_id)
+            inserted += 1
+        self._schedule_editor_change()
+        message = f"Foram inseridos {inserted} campo(s)."
+        if skipped:
+            message += "\nIDs existentes ignorados: " + ", ".join(skipped)
+        show_toast(
+            self,
+            'Grupo de campos inserido',
+            message,
+            kind='warning' if skipped else 'success',
+        )
+
+    def _save_selected_field_group(self) -> None:
+        rows = sorted(index.row() for index in self.fields_table.selectionModel().selectedRows())
+        if not rows:
+            QMessageBox.warning(self, 'Selecionar campos', 'Selecione primeiro uma ou mais linhas de campos.')
+            return
+        all_fields = self._collect_fields(validate=False)
+        selected = [all_fields[row] for row in rows if 0 <= row < len(all_fields)]
+        name, accepted = QInputDialog.getText(self, 'Salvar grupo de campos', 'Nome do grupo:')
+        if not accepted or not name.strip():
+            return
+        description, accepted = QInputDialog.getText(self, 'Descrição do grupo de campos', 'Descrição:')
+        if not accepted:
+            return
+        try:
+            self.field_library.save_group(name=name.strip(), description=description.strip(), fields=selected)
+        except Exception as exc:
+            QMessageBox.critical(self, 'Não foi possível salvar o grupo', str(exc))
+            return
+        show_toast(
+            self,
+            'Grupo de campos salvo',
+            'Os campos selecionados estão disponíveis na Biblioteca de Campos.',
+        )
+
+    def _apply_safe_fixes(self) -> None:
+        if self.selected_docx is None:
+            return
+        before = len(self._collect_fields(validate=False))
+        self._smart_scan_fields(show_message=False)
+        after = len(self._collect_fields(validate=False))
+        show_toast(
+            self,
+            'Correções seguras aplicadas',
+            (
+                'Os campos foram sincronizados com o DOCX. '
+                f'A contagem mudou em {after - before:+d} e os metadados personalizados foram preservados.'
+            ),
+            duration=5200,
+        )
+
+    def _update_readiness(self) -> None:
+        if not hasattr(self, "readiness_label"):
+            return
+        try:
+            report = readiness_report(
+                name=self.name_input.text(),
+                docx_path=self.selected_docx,
+                fields=self._collect_fields(validate=False),
+                filename_pattern=self.filename_input.text(),
+            )
+        except Exception as exc:
+            self.readiness_label.setText('O modelo precisa de atenção')
+            self.readiness_details.setText(str(exc))
+            self.safe_fix_button.setEnabled(False)
+            return
+        self._refresh_duplicate_status()
+        self._refresh_similar_name_status()
+        failed = [item for item in report["checks"] if not item.get("ok")]
+        if self._similar_name_matches:
+            failed.append(
+                {
+                    "label": "Nome de modelo semelhante",
+                    "detail": (
+                        "é semelhante a "
+                        + ", ".join(
+                            str(match.get("name", match.get("id", 'Desconhecido')))
+                            for match in self._similar_name_matches
+                        )
+                    ),
+                }
+            )
+
+        if self._duplicate_matches:
+            failed.append(
+                {
+                    "label": "DOCX de origem repetido",
+                    "detail": (
+                        "também usado por "
+                        + ", ".join(
+                            str(match.get("name", match.get("id", 'Desconhecido')))
+                            for match in self._duplicate_matches
+                        )
+                    ),
+                }
+            )
+
+        if (
+            report["ready"]
+            and not self._duplicate_matches
+            and not self._similar_name_matches
+        ):
+            self.readiness_label.setText("✓ Pronto para salvar")
+            self.readiness_details.setText('Todas as verificações obrigatórias foram aprovadas.')
+        else:
+            self.readiness_label.setText(f"⚠ {len(failed)} item(ns) precisa(m) de atenção")
+            self.readiness_details.setText(
+                " • ".join(
+                    f"{item.get('label')}{': ' + str(item.get('detail')) if item.get('detail') else ''}"
+                    for item in failed
+                )
+            )
+        self.safe_fix_button.setEnabled(bool(self.selected_docx))
+        self._update_undo_buttons()
+
+    def _cancel_editor(self) -> None:
+        if self._dirty:
+            answer = QMessageBox.question(
+                self,
+                'Descartar alterações',
+                'Fechar o editor de modelo e descartar as alterações não salvas?',
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self._dirty = False
+        self.change_timer.stop()
+        self.editor_draft_path.unlink(missing_ok=True)
+        self.reject()
+
+    def closeEvent(self, event) -> None:
+        if not self._dirty:
+            event.accept()
+            return
+        answer = QMessageBox.question(
+            self,
+            'Alterações não salvas',
+            'Fechar o editor de modelo? O rascunho salvo automaticamente poderá ser recuperado na próxima vez.',
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self._commit_editor_change()
+            event.accept()
+        else:
+            event.ignore()
+
+    def _save_template(self) -> None:
+        name = self.name_input.text().strip()
+        if not name:
+            QMessageBox.warning(self, 'Nome do modelo ausente', 'Informe um nome para o modelo.')
+            return
+        if self.selected_docx is None:
+            QMessageBox.warning(self, 'DOCX ausente', 'Selecione um modelo DOCX.')
+            return
+        if not self._confirm_similar_name():
+            return
+        if not self._confirm_duplicate_docx():
+            return
+
+        try:
+            fields = self._collect_fields(validate=True)
+            sections = self._build_sections(fields)
+            numbering = {
+                "enabled": self.numbering_checkbox.isChecked(),
+                "key": self.numbering_key_input.text().strip(),
+                "padding": self.numbering_padding_input.value(),
+            }
+
+            if self.template_id is None:
+                saved_id = self.repository.create_template(
+                    name=name,
+                    source_docx=self.selected_docx,
+                    fields=fields,
+                    description=self.description_input.toPlainText(),
+                    category=self.category_input.text(),
+                    version=self.version_input.text(),
+                    filename_pattern=self.filename_input.text(),
+                    sections=sections,
+                    output_folder_pattern=self.folder_pattern_input.text(),
+                    numbering=numbering,
+                    allow_similar_name=True,
+                )
+            else:
+                saved_id = self.repository.update_template(
+                    template_id=self.template_id,
+                    name=name,
+                    fields=fields,
+                    description=self.description_input.toPlainText(),
+                    category=self.category_input.text(),
+                    version=self.version_input.text(),
+                    filename_pattern=self.filename_input.text(),
+                    replacement_docx=self.selected_docx if self.docx_was_replaced else None,
+                    sections=sections,
+                    output_folder_pattern=self.folder_pattern_input.text(),
+                    numbering=numbering,
+                    allow_similar_name=True,
+                )
+        except Exception as exc:
+            QMessageBox.critical(self, 'Não foi possível salvar o modelo', str(exc))
+            return
+
+        self.saved_template_id = saved_id
+        self._dirty = False
+        self.change_timer.stop()
+        self.editor_draft_path.unlink(missing_ok=True)
+        self.accept()
