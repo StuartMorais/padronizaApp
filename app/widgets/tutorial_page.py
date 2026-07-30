@@ -199,6 +199,19 @@ class TutorialPage(QWidget):
         warning.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(warning)
 
+        automatic_detection_note = QLabel(
+            "<b>Rótulos e tipos automáticos:</b> ao encontrar algo como "
+            "<span style='font-family: Consolas'>E-mail: {{responsavel.email}}</span>, "
+            "o Padroniza usa <b>E-mail</b> como rótulo do formulário e sugere "
+            "o tipo E-mail. O mesmo ocorre com Telefone, CPF, CNPJ, CEP, data, "
+            "porcentagem, moeda e textos longos. As sugestões podem ser revisadas "
+            "no Editor de Modelos."
+        )
+        automatic_detection_note.setObjectName("tutorialNote")
+        automatic_detection_note.setWordWrap(True)
+        automatic_detection_note.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(automatic_detection_note)
+
         long_dropdown_note = QLabel(
             "<b>Listas com textos grandes:</b> na tela Gerar, as listas suspensas "
             "possuem pesquisa, quebra de linha e visualização do conteúdo completo. "
@@ -389,7 +402,7 @@ class TutorialPage(QWidget):
             [
                 'Substitua cada informação variável do DOCX por um marcador.',
                 'Salve o arquivo como DOCX e arraste-o para Novo modelo.',
-                'Revise os tipos sugeridos no Editor de Modelo e ajuste os campos obrigatórios.',
+                'Revise os rótulos e tipos sugeridos no Editor de Modelo e ajuste os campos obrigatórios.',
                 'Use Dados de exemplo e o diagnóstico antes de usar o modelo em produção.',
             ],
         )
@@ -794,7 +807,7 @@ class TutorialPage(QWidget):
                 'Ao arrastar um DOCX para um novo modelo, o aplicativo analisa automaticamente os marcadores e controles identificados do Word.',
                 [
                     ('Análise automática', 'Cria imediatamente as definições dos campos detectados.'),
-                    ('Tipos sugeridos', 'Reconhece IDs comuns de datas, CPF, CNPJ, CEP, telefone, e-mail, moeda, porcentagens e texto com várias linhas.'),
+                    ('Rótulos e tipos sugeridos', 'Lê o texto antes do marcador, como E-mail: ou Telefone:, para criar um rótulo mais claro e sugerir datas, CPF, CNPJ, CEP, telefone, e-mail, moeda, porcentagens e texto com várias linhas.'),
                     ('Seções sugeridas', 'Agrupa os campos em seções de empresa, endereço, processo, documento, assinatura ou informações gerais.'),
                     ('Diagnóstico', 'Localiza campos ausentes, configurações não utilizadas, IDs inválidos, marcadores malformados, problemas em regras condicionais e marcadores desconhecidos no nome do arquivo.'),
                 ],
@@ -908,7 +921,7 @@ class TutorialPage(QWidget):
         description = QLabel(
             'O marcador comum continua no formato {{campo.id}}. Depois da detecção, '
             'selecione o tipo adequado no Editor de Modelo. O Padroniza também sugere '
-            'alguns tipos pelo nome do ID.'
+            'rótulos e tipos usando o ID e o texto imediatamente antes do marcador.'
         )
         description.setObjectName('tutorialRowText')
         description.setWordWrap(True)

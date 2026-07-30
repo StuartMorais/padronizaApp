@@ -327,3 +327,22 @@ Os estados vazios foram aplicados à geração sem modelos, biblioteca de modelo
 Operações concluídas com sucesso usam notificações temporárias no canto inferior direito, sem interromper o trabalho. As notificações são empilhadas, desaparecem automaticamente e podem ser fechadas manualmente.
 
 Confirmações e mensagens de erro continuam usando diálogos quando uma decisão ou atenção imediata é necessária. O guia de marcadores também permanece em uma janela informativa por conter conteúdo de referência mais longo.
+
+## Rótulos, tipos e validação inteligentes
+
+Ao analisar um DOCX, o Padroniza usa o texto imediatamente antes do marcador
+como rótulo do formulário. Por exemplo, `E-mail: {{responsavel.contato}}`
+produz o rótulo **E-mail**, mesmo quando o identificador técnico não contém a
+palavra `email`. Em tabelas, uma célula de rótulo também pode identificar o
+marcador existente na célula seguinte.
+
+O identificador e o rótulo são usados em conjunto para sugerir tipos como
+e-mail, telefone, CPF, CNPJ, CEP, moeda, porcentagem, data e texto com várias
+linhas. A detecção monetária é conservadora: um marcador genérico como
+`{{valor}}` permanece texto, enquanto `{{contrato.valor_total}}` recebe o tipo
+Moeda.
+
+Campos especializados exibem orientação de formato e mensagens de validação
+logo abaixo da entrada. Telefones, CPF, CNPJ, CEP, moeda e porcentagem recebem
+formatação durante a digitação; porcentagens são validadas entre 0% e 100% por
+padrão. Todas as sugestões podem ser revisadas no Editor de Modelos.

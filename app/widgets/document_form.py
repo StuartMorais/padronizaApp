@@ -24,6 +24,7 @@ from app.field_utils import (
     infer_field_type,
     sample_value,
     validate_field,
+    validation_hint,
 )
 from app.widgets.context_help import HelpIconButton
 from app.widgets.readable_checkbox import ReadableCheckBox
@@ -47,6 +48,8 @@ class DocumentForm(QWidget):
         self.field_widgets: dict[str, QWidget] = {}
         self.field_containers: dict[str, QWidget] = {}
         self.field_definitions: dict[str, dict[str, Any]] = {}
+        self.field_error_labels: dict[str, QLabel] = {}
+        self.field_hint_labels: dict[str, QLabel] = {}
         self.checkbox_groups: dict[str, list[str]] = {}
         self._updating = False
 
@@ -69,6 +72,8 @@ class DocumentForm(QWidget):
         self.field_widgets.clear()
         self.field_containers.clear()
         self.field_definitions.clear()
+        self.field_error_labels.clear()
+        self.field_hint_labels.clear()
         self.checkbox_groups.clear()
 
         ordered_sections = self._resolved_sections()
@@ -177,6 +182,7 @@ class DocumentForm(QWidget):
             display_label = f"{label} *" if required else label
 
             container = self._create_field_card(
+                field_id,
                 display_label,
                 widget,
                 field_type,
@@ -401,6 +407,11 @@ class DocumentForm(QWidget):
             container.setToolTip(message)
             self._repolish(container)
 
+            error_label = self.field_error_labels.get(field_id)
+            if error_label is not None:
+                error_label.setText(message)
+                error_label.setVisible(bool(message))
+
             widget = self.field_widgets.get(field_id)
             if widget is not None:
                 widget.setProperty(
@@ -572,8 +583,9 @@ class DocumentForm(QWidget):
         editor.setPlaceholderText(str(field.get("placeholder", self._placeholder_for(field_id, field_type))))
         return editor
 
-    @staticmethod
     def _create_field_card(
+        self,
+        field_id: str,
         label: str,
         widget: QWidget,
         field_type: str,
@@ -585,7 +597,7 @@ class DocumentForm(QWidget):
         layout.setContentsMargins(10, 7, 10, 9)
         layout.setSpacing(6)
 
-        help_text = DocumentForm._field_help_text(field)
+        help_text = self._field_help_text(field)
         help_title = str(
             field.get("help_title", label.rstrip(" *"))
         ).strip() or label.rstrip(" *")
@@ -624,6 +636,22 @@ class DocumentForm(QWidget):
             layout.addLayout(checkbox_row)
         else:
             layout.addWidget(widget)
+
+        hint_text = validation_hint(field)
+        if hint_text:
+            hint_label = QLabel(hint_text)
+            hint_label.setObjectName("fieldFormatHint")
+            hint_label.setWordWrap(True)
+            layout.addWidget(hint_label)
+            self.field_hint_labels[field_id] = hint_label
+
+        error_label = QLabel()
+        error_label.setObjectName("fieldValidationMessage")
+        error_label.setWordWrap(True)
+        error_label.setVisible(False)
+        layout.addWidget(error_label)
+        self.field_error_labels[field_id] = error_label
+
         return card
 
     @staticmethod
@@ -771,7 +799,17 @@ class DocumentForm(QWidget):
         if field_type == "percentage":
             return "0,00%"
         normalized = field_id.casefold()
-        if "process" in normalized or "processo" in normalized or "edital" in normalized:
+        if "matricula" in normalized or "matrícula" in normalized:
+            return "Informe a matrícula"
+        if "setor" in normalized or "unidade" in normalized:
+            return "Informe a unidade, o setor ou o departamento"
+        if "orgao" in normalized or "órgão" in normalized:
+            return "Informe o órgão"
+        if (
+            "process" in normalized
+            or "processo" in normalized
+            or "edital" in normalized
+        ):
             return 'Exemplo: 123/2026'
         if "name" in normalized or "nome" in normalized:
             return 'Informe o nome completo'

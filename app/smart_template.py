@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
+from app.field_utils import validation_hint
 from app.placeholder_scanner import create_default_fields, scan_docx_fields
 
 VALID_FIELD_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
@@ -57,12 +58,17 @@ def smart_fields_from_docx(
         if profile_key:
             field.setdefault("profile_key", profile_key)
 
-        # The scanner already identifies explicit Word controls. These rules
-        # improve generic text placeholders without overriding explicit types.
+        # Explicit Word controls keep their type. Generic text markers use
+        # both the technical ID and the nearby DOCX label as context.
         current_type = str(field.get("type", "text")).casefold()
         if current_type == "text":
-            suggested_type = suggest_field_type(lowered)
+            label = str(field.get("label", "")).strip()
+            suggested_type = suggest_field_type(
+                f"{field_id} {label}"
+            )
             field["type"] = suggested_type
+            if suggested_type != "text":
+                field["type_source"] = "automatic"
 
         if field.get("type") == "checkbox":
             field["required"] = False
@@ -72,37 +78,126 @@ def smart_fields_from_docx(
         if field.get("type") == "date":
             field.setdefault("automatic", True)
 
+        if field.get("type") == "percentage":
+            field.setdefault("min", 0)
+            field.setdefault("max", 100)
+
+        hint = validation_hint(field)
+        if hint:
+            field.setdefault("validation_hint", hint)
+
     return fields
 
 
-def suggest_field_type(field_id: str) -> str:
-    text = field_id.casefold()
-    last = re.split(r"[._-]", text)[-1]
+def suggest_field_type(field_context: str) -> str:
+    text = str(field_context).casefold()
+    parts = {
+        part
+        for part in re.split(r"[._\-\s/()]+", text)
+        if part
+    }
+    last = re.split(r"[._\-\s]+", text.strip())[-1]
 
-    if any(token in text for token in ("cnpj",)):
+    if "cnpj" in text:
         return "cnpj"
-    if any(token in text for token in ("cpf",)):
+    if re.search(r"(^|[._\-\s])cpf($|[._\-\s])", text):
         return "cpf"
-    if any(token in text for token in ("email", "e-mail")):
+    if "email" in text or "e-mail" in text:
         return "email"
-    if any(token in text for token in ("phone", "telefone", "celular", "mobile")):
+    if any(
+        token in text
+        for token in (
+            "phone",
+            "telefone",
+            "celular",
+            "mobile",
+            "whatsapp",
+        )
+    ):
         return "phone"
-    if any(token in text for token in ("cep", "postal", "zipcode", "zip_code")):
+    if "cep" in parts or "postal" in text or "zip_code" in text:
         return "cep"
-    if last in {"date", "data", "issued", "signed", "deadline", "validity"} or text.endswith(".date"):
+    if (
+        last in {
+            "date",
+            "data",
+            "issued",
+            "signed",
+            "deadline",
+            "validity",
+        }
+        or text.endswith(".date")
+    ):
         return "date"
-    if any(token in text for token in ("percent", "percentage", "percentual", "tax_rate", "aliquota", "alíquota")):
+    if any(
+        token in text
+        for token in (
+            "percent",
+            "percentage",
+            "percentual",
+            "porcentagem",
+            "tax_rate",
+            "aliquota",
+            "alíquota",
+        )
+    ):
         return "percentage"
-    if any(token in text for token in ("amount", "value", "valor", "price", "preco", "preço", "total", "currency")):
+    if any(
+        token in text
+        for token in (
+            "amount",
+            "total_value",
+            "valor_total",
+            "valor total",
+            "valor_estimado",
+            "valor estimado",
+            "price",
+            "preco",
+            "preço",
+            "montante",
+            "custo_total",
+            "custo total",
+            "currency",
+            "orcamento",
+            "orçamento",
+        )
+    ):
         return "currency"
-    if last in {"quantity", "qty", "count", "number_of", "quantidade"}:
+    if parts.intersection({"quantity", "qty", "count", "quantidade"}):
         return "integer"
-    if any(token in text for token in ("description", "descricao", "descrição", "notes", "observations", "observacoes", "observações", "justification")):
+    if any(
+        token in text
+        for token in (
+            "description",
+            "descricao",
+            "descrição",
+            "notes",
+            "observations",
+            "observacoes",
+            "observações",
+            "justification",
+            "justificativa",
+            "object",
+            "objeto",
+            "fundamentacao",
+            "fundamentação",
+        )
+    ):
         return "multiline"
-    if any(token in text for token in ("accepted", "approved", "confirmed", "declaration", "declaracao", "declaração", "checkbox")):
+    if any(
+        token in text
+        for token in (
+            "accepted",
+            "approved",
+            "confirmed",
+            "declaration",
+            "declaracao",
+            "declaração",
+            "checkbox",
+        )
+    ):
         return "checkbox"
     return "text"
-
 
 def suggest_section(field_id: str) -> str:
     lowered = field_id.casefold()

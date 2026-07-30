@@ -59,11 +59,24 @@ def scan_docx_fields(docx_path: Path) -> list[dict[str, Any]]:
         field_id: str,
         field_type: str,
         options: list[Any] | None = None,
+        label: str = "",
     ) -> None:
         field_id = normalize_control_id(field_id)
+        label = _clean_context_label(label)
 
         if not field_id:
             return
+
+        context_type = guess_field_type(
+            field_id,
+            label,
+        )
+        inferred_from_context = (
+            field_type == "text"
+            and context_type != "text"
+        )
+        if inferred_from_context:
+            field_type = context_type
 
         cleaned_options = _clean_options(options or [])
         existing_index = field_indexes.get(field_id)
@@ -71,9 +84,20 @@ def scan_docx_fields(docx_path: Path) -> list[dict[str, Any]]:
         if existing_index is not None:
             existing = ordered_fields[existing_index]
 
-            # Explicit control/placeholder types override a generic text guess.
+            # Explicit controls and stronger contextual suggestions override
+            # only a generic text guess.
             if field_type in {"checkbox", "date", "dropdown"}:
                 existing["type"] = field_type
+            elif (
+                str(existing.get("type", "text")) == "text"
+                and field_type != "text"
+            ):
+                existing["type"] = field_type
+                existing["type_source"] = "document_context"
+
+            if label and not str(existing.get("label", "")).strip():
+                existing["label"] = label
+                existing["label_source"] = "document_context"
 
             if field_type == "dropdown" and cleaned_options:
                 existing["options"] = cleaned_options
@@ -84,6 +108,13 @@ def scan_docx_fields(docx_path: Path) -> list[dict[str, Any]]:
             "id": field_id,
             "type": field_type,
         }
+
+        if label:
+            field["label"] = label
+            field["label_source"] = "document_context"
+
+        if inferred_from_context:
+            field["type_source"] = "document_context"
 
         if field_type == "dropdown":
             field["options"] = cleaned_options
@@ -150,7 +181,7 @@ def _validate_docx_path(docx_path: Path) -> None:
 
 def _scan_content_control(
     control_element,
-    add_field: Callable[[str, str, list[str] | None], None],
+    add_field: Callable[..., None],
     untagged_controls: list[str],
     scan_nested_content: Callable[[Any], None],
 ) -> None:
@@ -168,10 +199,7 @@ def _scan_content_control(
 
 def _scan_xml_container(
     element,
-    add_field: Callable[
-        [str, str, list[str] | None],
-        None,
-    ],
+    add_field: Callable[..., None],
     untagged_controls: list[str],
 ) -> None:
     """
@@ -182,6 +210,14 @@ def _scan_xml_container(
     """
 
     for child in element.iterchildren():
+        if child.tag == qn("w:tr"):
+            _scan_table_row_element(
+                child,
+                add_field,
+                untagged_controls,
+            )
+            continue
+
         if child.tag == qn("w:p"):
             _scan_paragraph_element(
                 child,
@@ -208,12 +244,72 @@ def _scan_xml_container(
         )
 
 
+
+def _scan_table_row_element(
+    row_element,
+    add_field: Callable[..., None],
+    untagged_controls: list[str],
+) -> None:
+    """Scan a table row and use the previous cell as a field label.
+
+    This supports common Word forms where one cell contains ``Órgão`` and the
+    next cell contains only ``{{orgao.nome}}``. Ordinary same-cell labels are
+    still handled by the paragraph scanner.
+    """
+
+    cells = [
+        child
+        for child in row_element.iterchildren()
+        if child.tag == qn("w:tc")
+    ]
+
+    for index, cell in enumerate(cells):
+        current_text = _xml_visible_text(cell)
+        matches = list(PLACEHOLDER_PATTERN.finditer(current_text))
+        text_without_markers = PLACEHOLDER_PATTERN.sub(
+            "",
+            current_text,
+        ).strip(" \t\r\n:：–—-")
+
+        if (
+            index > 0
+            and len(matches) == 1
+            and not text_without_markers
+        ):
+            previous_label = _clean_context_label(
+                _xml_visible_text(cells[index - 1])
+            )
+            if previous_label:
+                parsed = _parse_placeholder(
+                    matches[0].group(1)
+                )
+                add_field(
+                    parsed["id"],
+                    parsed["type"],
+                    parsed.get("options"),
+                    previous_label,
+                )
+
+        _scan_xml_container(
+            cell,
+            add_field,
+            untagged_controls,
+        )
+
+
+def _xml_visible_text(element) -> str:
+    return "".join(
+        node.text or ""
+        for node in element.iter()
+        if node.tag in {
+            qn("w:t"),
+            qn("w:instrText"),
+        }
+    )
+
 def _scan_paragraph_element(
     paragraph_element,
-    add_field: Callable[
-        [str, str, list[str] | None],
-        None,
-    ],
+    add_field: Callable[..., None],
     untagged_controls: list[str],
 ) -> None:
     """
@@ -229,16 +325,24 @@ def _scan_paragraph_element(
         text = "".join(text_buffer)
         text_buffer.clear()
 
+        previous_end = 0
         for match in PLACEHOLDER_PATTERN.finditer(text):
             parsed = _parse_placeholder(
                 match.group(1)
+            )
+            context_label = _label_from_placeholder_context(
+                text,
+                match.start(),
+                previous_end,
             )
 
             add_field(
                 parsed["id"],
                 parsed["type"],
                 parsed.get("options"),
+                context_label,
             )
+            previous_end = match.end()
 
     def walk(element) -> None:
         for child in element.iterchildren():
@@ -296,12 +400,57 @@ def _scan_paragraph_element(
     inspect_buffer()
 
 
+
+def _label_from_placeholder_context(
+    paragraph_text: str,
+    marker_start: int,
+    segment_start: int,
+) -> str:
+    """Return a conservative field label found immediately before a marker.
+
+    A label is accepted only when the visible text ends with a label separator,
+    for example ``Órgão: {{orgao.nome}}``. This avoids turning ordinary prose
+    before an embedded marker into an accidental form label.
+    """
+
+    segment = paragraph_text[segment_start:marker_start]
+    if not segment:
+        return ""
+
+    # Keep only the current visual fragment when several markers share a line.
+    segment = re.split(r"[\n\r\t]", segment)[-1]
+    candidate = re.sub(r"\s+", " ", segment).strip()
+    if not candidate:
+        return ""
+
+    separator = re.search(r"\s*[:：–—-]\s*$", candidate)
+    if separator is None:
+        return ""
+
+    candidate = candidate[:separator.start()].strip()
+    candidate = re.sub(
+        r"^[\s•·▪◦*\-–—\d.)]+",
+        "",
+        candidate,
+    ).strip()
+    return _clean_context_label(candidate)
+
+
+def _clean_context_label(value: Any) -> str:
+    label = re.sub(r"\s+", " ", str(value or "")).strip()
+    label = label.strip(" :：–—-")
+    if not label or len(label) > 100:
+        return ""
+    if "{{" in label or "}}" in label:
+        return ""
+    # Labels are short headings, not complete sentences.
+    if label.count(".") > 1 or label.endswith((".", ";", "?", "!")):
+        return ""
+    return label
+
 def _scan_native_control(
     sdt_element,
-    add_field: Callable[
-        [str, str, list[str] | None],
-        None,
-    ],
+    add_field: Callable[..., None],
     untagged_controls: list[str],
 ) -> bool:
     """
@@ -467,12 +616,11 @@ def create_default_fields(
     scanned_fields: list[str | dict[str, Any]],
     existing_fields: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Converta os campos detectados em definições editáveis do modelo.
+    """Convert detected fields into editable template definitions.
 
-    Tipos explícitos detectados no DOCX (caixa de seleção, data e lista
-    suspensa) têm prioridade sobre uma configuração antiga. Os demais dados
-    já configurados, como seção, chave de perfil, grupo e regras condicionais,
-    são preservados.
+    Labels found immediately before markers in the DOCX are preferred over
+    labels generated from technical identifiers. Explicit Word controls keep
+    precedence, while existing manual labels and field types are preserved.
     """
 
     existing_by_id = {
@@ -487,19 +635,40 @@ def create_default_fields(
     for scanned in scanned_fields:
         if isinstance(scanned, str):
             field_id = scanned.strip()
+            detected_label = ""
             detected_type = guess_field_type(field_id)
             detected_options: list[str | dict[str, str]] = []
+            label_source = "identifier"
+            type_source = "identifier"
         elif isinstance(scanned, dict):
             field_id = str(scanned.get("id", "")).strip()
+            detected_label = _clean_context_label(
+                scanned.get("label", "")
+            )
             detected_type = str(
                 scanned.get(
                     "type",
-                    guess_field_type(field_id),
+                    guess_field_type(
+                        field_id,
+                        detected_label,
+                    ),
                 )
                 or "text"
             ).strip()
             detected_options = _clean_options(
                 scanned.get("options", []) or []
+            )
+            label_source = str(
+                scanned.get(
+                    "label_source",
+                    "document_context" if detected_label else "identifier",
+                )
+            )
+            type_source = str(
+                scanned.get(
+                    "type_source",
+                    "document_context" if detected_label else "identifier",
+                )
             )
         else:
             continue
@@ -507,12 +676,17 @@ def create_default_fields(
         if not field_id:
             continue
 
+        automatic_label = create_label(field_id)
+        final_detected_label = detected_label or automatic_label
         existing = existing_by_id.get(field_id)
 
         if existing is not None:
             existing_type = str(
                 existing.get("type", detected_type)
                 or detected_type
+            ).strip()
+            existing_type_source = str(
+                existing.get("type_source", "")
             ).strip()
 
             if detected_type in {
@@ -521,21 +695,48 @@ def create_default_fields(
                 "dropdown",
             }:
                 final_type = detected_type
-            elif existing_type == "date":
-                # A configuração antiga pode ter marcado um campo comum como
-                # data. Quando o DOCX não confirma esse tipo, use a detecção.
+            elif (
+                existing_type == "text"
+                and detected_type != "text"
+                and existing_type_source in {
+                    "",
+                    "identifier",
+                    "document_context",
+                    "automatic",
+                }
+            ):
+                final_type = detected_type
+            elif existing_type == "date" and detected_type != "date":
                 final_type = detected_type
             else:
                 final_type = existing_type
+
+            existing_label = str(
+                existing.get("label", "")
+            ).strip()
+            existing_label_source = str(
+                existing.get("label_source", "")
+            ).strip()
+            may_refresh_label = (
+                not existing_label
+                or existing_label == automatic_label
+                or existing_label_source in {
+                    "identifier",
+                    "document_context",
+                    "automatic",
+                }
+            )
+            final_label = (
+                final_detected_label
+                if may_refresh_label
+                else existing_label
+            )
 
             field = dict(existing)
             field.update(
                 {
                     "id": field_id,
-                    "label": str(
-                        existing.get("label")
-                        or create_label(field_id)
-                    ),
+                    "label": final_label,
                     "type": final_type,
                     "required": (
                         False
@@ -544,15 +745,16 @@ def create_default_fields(
                     ),
                 }
             )
+            if may_refresh_label:
+                field["label_source"] = label_source
+            if final_type == detected_type and final_type != existing_type:
+                field["type_source"] = type_source
 
             if final_type == "dropdown":
                 existing_options = _clean_options(
                     existing.get("options", []) or []
                 )
-                field["options"] = (
-                    detected_options
-                    or existing_options
-                )
+                field["options"] = detected_options or existing_options
             else:
                 field.pop("options", None)
 
@@ -561,8 +763,10 @@ def create_default_fields(
 
         field: dict[str, Any] = {
             "id": field_id,
-            "label": create_label(field_id),
+            "label": final_detected_label,
+            "label_source": label_source,
             "type": detected_type,
+            "type_source": type_source,
             "required": detected_type != "checkbox",
         }
 
@@ -572,7 +776,6 @@ def create_default_fields(
         fields.append(field)
 
     return fields
-
 
 def create_label(field_id: str) -> str:
     """Crie um rótulo legível a partir de um ID de campo."""
@@ -599,22 +802,26 @@ def create_label(field_id: str) -> str:
     )
 
 
-def guess_field_type(field_id: str) -> str:
-    """
-    Infer the field type only for placeholders that actually exist in the DOCX.
+def guess_field_type(
+    field_id: str,
+    context_label: str = "",
+) -> str:
+    """Infer a field type from its identifier and nearby DOCX label.
 
-    Examples detected as date:
-
-        {{document.date}}
-        {{document.data}}
-        {{signing_date}}
-        {{company.foundation_date}}
-
-    This does not create a date field by itself. A matching placeholder must
-    be present in the DOCX, or the document must contain a native Date Picker.
+    The rules are deliberately conservative. In particular, a generic ID such
+    as ``valor`` remains text; monetary formatting is used only when the ID or
+    label clearly indicates price, amount, estimated value, or total value.
     """
 
-    normalized = field_id.strip().lower()
+    normalized = " ".join(
+        part
+        for part in (
+            str(field_id).strip().casefold(),
+            str(context_label).strip().casefold(),
+        )
+        if part
+    )
+    identifier = str(field_id).strip().casefold()
 
     checkbox_keywords = (
         "checkbox.",
@@ -624,87 +831,108 @@ def guess_field_type(field_id: str) -> str:
         ".aceito",
         ".marcado",
     )
-
-    if any(
-        keyword in normalized
-        for keyword in checkbox_keywords
-    ):
+    if any(keyword in identifier for keyword in checkbox_keywords):
         return "checkbox"
 
-    # Split the identifier into semantic parts so "document.date" and
-    # "signing_date" are recognized without matching unrelated words.
-    identifier_parts = {
+    parts = {
         part
-        for part in re.split(
-            r"[._\-\s]+",
-            normalized,
-        )
+        for part in re.split(r"[._\-\s/()]+", normalized)
         if part
     }
-
-    date_parts = {
-        "date",
-        "data",
-    }
-
-    if identifier_parts.intersection(date_parts):
-        return "date"
-
-    date_identifiers = {
-        "birthdate",
-        "dataassinatura",
-        "datanascimento",
-        "signingdate",
-    }
-
-    compact_identifier = re.sub(
+    compact = re.sub(
         r"[^a-z0-9áàâãéêíóôõúç]",
         "",
         normalized,
     )
 
-    if compact_identifier in date_identifiers:
+    if parts.intersection({"date", "data"}) or compact in {
+        "birthdate",
+        "dataassinatura",
+        "datanascimento",
+        "signingdate",
+    }:
         return "date"
-
-    multiline_keywords = (
-        "description",
-        "descricao",
-        "object",
-        "objeto",
-        "observation",
-        "observacao",
-        "notes",
-        "nota",
-        "texto",
-        "details",
-        "detalhes",
-    )
 
     if any(
         keyword in normalized
-        for keyword in multiline_keywords
+        for keyword in (
+            "description",
+            "descricao",
+            "descrição",
+            "object",
+            "objeto",
+            "observation",
+            "observacao",
+            "observação",
+            "observacoes",
+            "observações",
+            "notes",
+            "nota",
+            "details",
+            "detalhes",
+            "justification",
+            "justificativa",
+            "fundamentacao",
+            "fundamentação",
+        )
     ):
         return "multiline"
 
     if "cnpj" in normalized:
         return "cnpj"
-
-    if re.search(r"(^|[._-])cpf($|[._-])", normalized):
+    if re.search(r"(^|[._\-\s])cpf($|[._\-\s])", normalized):
         return "cpf"
-
-    if "cep" in normalized or "postal" in normalized:
+    if "cep" in parts or "postal" in normalized or "código postal" in normalized:
         return "cep"
-
-    if any(keyword in normalized for keyword in ("phone", "telefone", "celular", "whatsapp")):
+    if any(
+        keyword in normalized
+        for keyword in (
+            "phone",
+            "telefone",
+            "celular",
+            "whatsapp",
+            "mobile",
+        )
+    ):
         return "phone"
-
     if "email" in normalized or "e-mail" in normalized:
         return "email"
 
-    if any(keyword in normalized for keyword in ("total_value", "valor_total", "price", "preco", "preço")):
+    currency_keywords = (
+        "total_value",
+        "valor_total",
+        "valor total",
+        "valor estimado",
+        "valor_estimado",
+        "preco",
+        "preço",
+        "price",
+        "amount",
+        "montante",
+        "currency",
+        "custo total",
+        "custo_total",
+        "orçamento",
+        "orcamento",
+    )
+    if any(keyword in normalized for keyword in currency_keywords):
         return "currency"
 
-    if any(keyword in normalized for keyword in ("percentage", "percentual", "porcentagem")):
+    if any(
+        keyword in normalized
+        for keyword in (
+            "percentage",
+            "percentual",
+            "porcentagem",
+            "percent",
+            "alíquota",
+            "aliquota",
+        )
+    ):
         return "percentage"
 
+    if parts.intersection({"quantidade", "quantity", "qty", "count"}):
+        return "integer"
+
     return "text"
+

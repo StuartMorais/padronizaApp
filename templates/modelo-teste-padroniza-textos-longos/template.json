@@ -12,8 +12,8 @@
     {
       "id": "orgao.nome",
       "label": "Orgao Nome",
-      "type": "text",
-      "required": true,
+      "type": "integer",
+      "required": false,
       "section": "Dados do documento"
     },
     {
@@ -28,32 +28,32 @@
       "label": "Responsavel Nome",
       "type": "text",
       "required": true,
-      "section": "Assinaturas",
-      "profile_key": "signatory.nome"
+      "profile_key": "signatory.nome",
+      "section": "Assinaturas"
     },
     {
       "id": "responsavel.matricula",
       "label": "Responsavel Matricula",
       "type": "text",
       "required": true,
-      "section": "Assinaturas",
-      "profile_key": "signatory.matricula"
+      "profile_key": "signatory.matricula",
+      "section": "Assinaturas"
     },
     {
       "id": "responsavel.email",
       "label": "Responsavel Email",
       "type": "email",
       "required": true,
-      "section": "Assinaturas",
-      "profile_key": "signatory.email"
+      "profile_key": "signatory.email",
+      "section": "Assinaturas"
     },
     {
       "id": "responsavel.telefone",
       "label": "Responsavel Telefone",
       "type": "phone",
       "required": true,
-      "section": "Assinaturas",
-      "profile_key": "signatory.telefone"
+      "profile_key": "signatory.telefone",
+      "section": "Assinaturas"
     },
     {
       "id": "processo.numero",
@@ -149,8 +149,8 @@
       "label": "Responsavel Cargo",
       "type": "text",
       "required": true,
-      "section": "Assinaturas",
-      "profile_key": "signatory.cargo"
+      "profile_key": "signatory.cargo",
+      "section": "Assinaturas"
     }
   ],
   "sections": [

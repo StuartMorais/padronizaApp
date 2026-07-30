@@ -300,7 +300,7 @@ class TemplateEditorDialog(QDialog):
 
         field_header_help = [
             'Identificador usado nos marcadores, como {{company.cnpj}}.',
-            'Nome legível exibido no formulário.',
+            'Nome legível exibido no formulário. Quando possível, é identificado a partir do texto antes do marcador no DOCX.',
             'Define o controle e a validação do campo.',
             'Impede a geração enquanto o campo visível estiver vazio ou inválido.',
             'Abre o editor de opções. Cada opção pode ter um título curto e um texto longo inserido no documento.',
@@ -1019,10 +1019,27 @@ class TemplateEditorDialog(QDialog):
         self._schedule_editor_change()
         self._update_readiness()
         if show_message:
+            contextual_labels = sum(
+                1
+                for field in fields
+                if str(field.get("label_source", ""))
+                == "document_context"
+            )
+            specialized_types = sum(
+                1
+                for field in fields
+                if str(field.get("type", "text"))
+                not in {"text", "multiline"}
+            )
+            details = (
+                f"{len(fields)} campo(s) configurados; "
+                f"{contextual_labels} rótulo(s) lidos do DOCX e "
+                f"{specialized_types} tipo(s) especializado(s)."
+            )
             show_toast(
                 self,
                 'Análise inteligente concluída',
-                f'{len(fields)} campo(s) foram detectados e configurados.',
+                details,
             )
 
     def _show_diagnostics(self) -> None:
@@ -1061,8 +1078,27 @@ class TemplateEditorDialog(QDialog):
         field = field or {}
         row = self.fields_table.rowCount()
         self.fields_table.insertRow(row)
-        self.fields_table.setItem(row, 0, QTableWidgetItem(str(field.get("id", ""))))
-        self.fields_table.setItem(row, 1, QTableWidgetItem(str(field.get("label", ""))))
+        id_item = QTableWidgetItem(
+            str(field.get("id", ""))
+        )
+        label_item = QTableWidgetItem(
+            str(field.get("label", ""))
+        )
+        label_source = str(
+            field.get("label_source", "")
+        )
+        if label_source == "document_context":
+            label_item.setToolTip(
+                "Rótulo identificado no texto imediatamente antes "
+                "do marcador no documento modelo."
+            )
+        else:
+            label_item.setToolTip(
+                "Rótulo exibido no formulário. Pode ser editado "
+                "sem alterar o identificador do marcador."
+            )
+        self.fields_table.setItem(row, 0, id_item)
+        self.fields_table.setItem(row, 1, label_item)
 
         type_combo = QComboBox()
         for field_type_key in self.FIELD_TYPES:
@@ -1076,6 +1112,20 @@ class TemplateEditorDialog(QDialog):
         field_type = str(field.get("type", "text"))
         index = type_combo.findData(field_type)
         type_combo.setCurrentIndex(index if index >= 0 else 0)
+        if str(field.get("type_source", "")) in {
+            "document_context",
+            "automatic",
+            "identifier",
+        }:
+            type_combo.setToolTip(
+                "Tipo sugerido automaticamente pelo identificador "
+                "e pelo rótulo encontrado no DOCX. Revise e altere "
+                "quando necessário."
+            )
+        else:
+            type_combo.setToolTip(
+                "Escolha o controle e a validação usados no formulário."
+            )
         self.fields_table.setCellWidget(row, 2, type_combo)
 
         required = QCheckBox()

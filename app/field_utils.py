@@ -202,30 +202,111 @@ def digits_only(value: Any) -> str:
 
 
 # noinspection SpellCheckingInspection
-def infer_field_type(field_id: str, configured_type: str = "text") -> str:
-    configured = FIELD_TYPE_ALIASES.get(str(configured_type).lower(), str(configured_type).lower())
+def infer_field_type(
+    field_id: str,
+    configured_type: str = "text",
+) -> str:
+    configured = FIELD_TYPE_ALIASES.get(
+        str(configured_type).lower(),
+        str(configured_type).lower(),
+    )
     if configured not in {"text", ""}:
-        return configured if configured in SUPPORTED_FIELD_TYPES else "text"
+        return (
+            configured
+            if configured in SUPPORTED_FIELD_TYPES
+            else "text"
+        )
 
     normalized = str(field_id).casefold()
+    parts = {
+        part
+        for part in re.split(r"[._\-\s/()]+", normalized)
+        if part
+    }
 
     if "cnpj" in normalized:
         return "cnpj"
-    if re.search(r"(^|[._-])cpf($|[._-])", normalized):
+    if re.search(r"(^|[._\-])cpf($|[._\-])", normalized):
         return "cpf"
-    if "cep" in normalized or "postal" in normalized:
+    if "cep" in parts or "postal" in normalized:
         return "cep"
-    if any(token in normalized for token in ("phone", "telefone", "celular", "whatsapp")):
+    if any(
+        token in normalized
+        for token in (
+            "phone",
+            "telefone",
+            "celular",
+            "whatsapp",
+            "mobile",
+        )
+    ):
         return "phone"
     if "email" in normalized or "e-mail" in normalized:
         return "email"
-    if any(token in normalized for token in ("total_value", "valor_total", "price", "preco", "preço", "currency")):
+    if any(
+        token in normalized
+        for token in (
+            "total_value",
+            "valor_total",
+            "valor_estimado",
+            "price",
+            "preco",
+            "preço",
+            "amount",
+            "montante",
+            "currency",
+            "custo_total",
+            "orcamento",
+            "orçamento",
+        )
+    ):
         return "currency"
-    if any(token in normalized for token in ("percentage", "percentual", "porcentagem")):
+    if any(
+        token in normalized
+        for token in (
+            "percentage",
+            "percentual",
+            "porcentagem",
+            "percent",
+            "aliquota",
+            "alíquota",
+        )
+    ):
         return "percentage"
+    if parts.intersection({"quantidade", "quantity", "qty", "count"}):
+        return "integer"
 
     return configured if configured in SUPPORTED_FIELD_TYPES else "text"
 
+
+def validation_hint(field: dict[str, Any]) -> str:
+    """Return a short user-facing format hint for a field definition."""
+
+    field_id = str(field.get("id", ""))
+    field_type = infer_field_type(
+        field_id,
+        str(field.get("type", "text")),
+    )
+    custom = str(
+        field.get("validation_hint", "")
+        or field.get("format_hint", "")
+    ).strip()
+    if custom:
+        return custom
+
+    hints = {
+        "cnpj": "Formato esperado: 00.000.000/0000-00",
+        "cpf": "Formato esperado: 000.000.000-00",
+        "cep": "Formato esperado: 00000-000",
+        "phone": "Informe DDD e número. Exemplo: (83) 99999-9999",
+        "email": "Exemplo: nome@orgao.gov.br",
+        "currency": "Digite os centavos normalmente. Exemplo: R$ 1.250,00",
+        "integer": "Use somente números inteiros.",
+        "decimal": "Use vírgula ou ponto para as casas decimais.",
+        "percentage": "Informe uma porcentagem entre 0% e 100%.",
+        "date": "Formato exibido: dia/mês/ano.",
+    }
+    return hints.get(field_type, "")
 
 def format_cnpj(value: Any) -> str:
     digits = digits_only(value)[:14]
@@ -311,12 +392,26 @@ def format_decimal(value: Any, places: int = 2) -> str:
 
 
 def format_percentage(value: Any) -> str:
-    digits = digits_only(value)
-    if not digits:
+    text = str(value or "").replace("%", "").strip()
+    text = re.sub(r"[^0-9,.-]", "", text)
+    if not text:
         return ""
-    decimal_value = Decimal(digits) / Decimal("100")
-    formatted = f"{decimal_value:,.2f}"
-    formatted = formatted.replace(",", "_").replace(".", ",").replace("_", ".")
+
+    # Percentage input behaves like an ordinary number, not currency cents.
+    # Typing 25 therefore produces 25%, rather than 0,25%.
+    if "," in text:
+        integer_part, decimal_part = text.split(",", 1)
+    elif "." in text:
+        integer_part, decimal_part = text.split(".", 1)
+    else:
+        integer_part, decimal_part = text, ""
+
+    integer_digits = digits_only(integer_part) or "0"
+    integer_digits = str(int(integer_digits))
+    decimal_digits = digits_only(decimal_part)[:2]
+    formatted = integer_digits
+    if decimal_digits:
+        formatted += f",{decimal_digits}"
     return f"{formatted}%"
 
 
@@ -370,9 +465,15 @@ def validate_cpf(value: Any) -> bool:
     return digits[-2:] == f"{first}{second}"
 
 
-def validate_field(field: dict[str, Any], value: Any) -> str | None:
+def validate_field(
+    field: dict[str, Any],
+    value: Any,
+) -> str | None:
     field_id = str(field.get("id", ""))
-    field_type = infer_field_type(field_id, str(field.get("type", "text")))
+    field_type = infer_field_type(
+        field_id,
+        str(field.get("type", "text")),
+    )
     label = str(field.get("label", field_id))
 
     if field_type == "checkbox":
@@ -391,19 +492,68 @@ def validate_field(field: dict[str, Any], value: Any) -> str | None:
     if field_type == "cep" and len(digits_only(text)) != 8:
         return f"{label} deve conter 8 dígitos de CEP."
     if field_type == "phone" and len(digits_only(text)) not in {10, 11}:
-        return f"{label} deve conter um telefone brasileiro válido."
-    if field_type == "email" and not EMAIL_PATTERN.match(text):
+        return (
+            f"{label} deve conter DDD e um telefone "
+            "brasileiro válido."
+        )
+    if field_type == "email" and not EMAIL_PATTERN.fullmatch(text):
         return f"{label} contém um endereço de e-mail inválido."
-    if field_type == "integer" and not digits_only(text):
+    if field_type == "integer" and not re.fullmatch(r"[+-]?\d+", text):
         return f"{label} deve ser um número inteiro."
+
+    numeric_value: Decimal | None = None
     if field_type in {"currency", "decimal", "percentage"}:
         try:
-            _decimal_from_localized(text)
+            numeric_value = _decimal_from_localized(text)
         except InvalidOperation:
             return f"{label} deve conter um número válido."
 
-    return None
+    if field_type == "percentage" and numeric_value is not None:
+        minimum = Decimal(str(field.get("min", 0)))
+        maximum = Decimal(str(field.get("max", 100)))
+        if numeric_value < minimum or numeric_value > maximum:
+            return (
+                f"{label} deve estar entre "
+                f"{format_decimal(minimum)}% e "
+                f"{format_decimal(maximum)}%."
+            )
 
+    minimum_length = field.get("min_length")
+    maximum_length = field.get("max_length")
+    if minimum_length not in {None, ""}:
+        try:
+            minimum_length_value = int(minimum_length)
+        except (TypeError, ValueError):
+            minimum_length_value = 0
+        if minimum_length_value > 0 and len(text) < minimum_length_value:
+            return (
+                f"{label} deve conter pelo menos "
+                f"{minimum_length_value} caracteres."
+            )
+    if maximum_length not in {None, ""}:
+        try:
+            maximum_length_value = int(maximum_length)
+        except (TypeError, ValueError):
+            maximum_length_value = 0
+        if maximum_length_value > 0 and len(text) > maximum_length_value:
+            return (
+                f"{label} deve conter no máximo "
+                f"{maximum_length_value} caracteres."
+            )
+
+    pattern = str(field.get("pattern", "")).strip()
+    if pattern:
+        try:
+            matches_pattern = re.fullmatch(pattern, text) is not None
+        except re.error:
+            matches_pattern = True
+        if not matches_pattern:
+            return str(
+                field.get("pattern_message")
+                or f"{label} não está no formato esperado."
+            )
+
+    return None
 
 def sample_value(field: dict[str, Any]) -> Any:
     field_id = str(field.get("id", "")).casefold()

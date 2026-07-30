@@ -77,6 +77,25 @@ QLabel#fieldLabel {
     qproperty-autoFillBackground: false;
 }
 
+
+QLabel#fieldFormatHint {
+    color: #9eabb8;
+    font-size: 9pt;
+    font-weight: 400;
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+QLabel#fieldValidationMessage {
+    color: #f0a0a0;
+    font-size: 9pt;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
 QLabel#documentIcon {
     background-color: #202a35;
     color: #66adff;
