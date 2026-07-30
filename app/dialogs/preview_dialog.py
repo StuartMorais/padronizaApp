@@ -64,6 +64,8 @@ class PreviewDialog(QDialog):
             label = labels.get(field_id, field_id)
             if isinstance(value, bool):
                 rendered = '☑ Selecionado' if value else '☐ Não selecionado'
+            elif isinstance(value, list):
+                rendered = self._render_repeatable_rows(value)
             else:
                 rendered = str(value or "")
 
@@ -102,3 +104,28 @@ class PreviewDialog(QDialog):
         layout.addLayout(details)
         layout.addWidget(table, 1)
         layout.addWidget(buttons)
+
+    @staticmethod
+    def _render_repeatable_rows(value: list[Any]) -> str:
+        rows = [row for row in value if isinstance(row, dict)]
+        if not rows:
+            return "Nenhum item"
+
+        lines = [f"{len(rows)} item(ns)"]
+        for index, row in enumerate(rows[:5], start=1):
+            preferred = next(
+                (
+                    str(cell).strip()
+                    for key, cell in row.items()
+                    if not str(key).startswith("__")
+                    and str(cell or "").strip()
+                ),
+                "",
+            )
+            number = str(row.get("__row_number__") or f"{index:02d}")
+            lines.append(
+                f"{number} — {preferred or 'Item preenchido'}"
+            )
+        if len(rows) > 5:
+            lines.append(f"… e mais {len(rows) - 5} item(ns)")
+        return "\n".join(lines)

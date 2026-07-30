@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,16 @@ from app.word_control_utils import (
 PLACEHOLDER_PATTERN = re.compile(
     r"\{\{([^{}]+)\}\}"
 )
+REPEAT_MARKER_PATTERN = re.compile(
+    r"\{\{\s*repeat:([A-Za-z][A-Za-z0-9_.-]*)\s*\}\}",
+    re.IGNORECASE,
+)
+ROW_NUMBER_IDS = {
+    "row.number",
+    "row.index",
+    "linha.numero",
+    "linha.número",
+}
 
 
 class DocumentGenerationError(RuntimeError):
@@ -52,6 +63,11 @@ def generate_docx(
         document = Document(str(template_path))
 
         for root in iter_unique_story_roots(document):
+            _expand_repeatable_rows(
+                root,
+                values,
+            )
+
             _replace_placeholders_in_root(
                 root,
                 values,
@@ -91,6 +107,128 @@ def generate_docx(
         raise DocumentGenerationError(
             f"Não foi possível gerar o documento: {exc}"
         ) from exc
+
+
+def _expand_repeatable_rows(
+    root,
+    values: dict[str, Any],
+) -> None:
+    """Duplicate Word table rows marked with ``{{repeat:field.id}}``.
+
+    The complete ``w:tr`` element is copied, preserving borders, widths,
+    shading, paragraph formatting, and merged header rows. Only the marked
+    model row is repeated; headers remain untouched.
+    """
+
+    template_rows = [
+        row
+        for row in root.iter(qn("w:tr"))
+        if REPEAT_MARKER_PATTERN.search(
+            _visible_element_text(row)
+        )
+    ]
+
+    for template_row in template_rows:
+        row_text = _visible_element_text(template_row)
+        repeat_matches = list(
+            REPEAT_MARKER_PATTERN.finditer(row_text)
+        )
+        table_ids = {
+            match.group(1).strip()
+            for match in repeat_matches
+        }
+        if len(table_ids) != 1:
+            raise DocumentGenerationError(
+                "Uma linha repetível deve usar apenas um marcador repeat."
+            )
+
+        table_id = next(iter(table_ids))
+        if table_id not in values:
+            raise DocumentGenerationError(
+                f"Nenhuma linha foi informada para a tabela repetível '{table_id}'."
+            )
+
+        raw_rows = values.get(table_id)
+        if not isinstance(raw_rows, list):
+            raise DocumentGenerationError(
+                f"A tabela repetível '{table_id}' recebeu dados em formato inválido."
+            )
+
+        parent = template_row.getparent()
+        if parent is None:
+            continue
+        insert_at = parent.index(template_row)
+
+        for row_index, row_values in enumerate(raw_rows, start=1):
+            if not isinstance(row_values, dict):
+                raise DocumentGenerationError(
+                    f"O item {row_index} da tabela '{table_id}' não é uma linha válida."
+                )
+
+            cloned_row = deepcopy(template_row)
+            scoped_values = dict(values)
+            for column_id, value in row_values.items():
+                scoped_values[
+                    f"{table_id}.{str(column_id).strip()}"
+                ] = value
+
+            number = str(
+                row_values.get("__row_number__")
+                or f"{row_index:02d}"
+            )
+            for number_id in ROW_NUMBER_IDS:
+                scoped_values[number_id] = number
+
+            _replace_placeholders_in_root(
+                cloned_row,
+                scoped_values,
+            )
+            _replace_native_controls(
+                cloned_row,
+                scoped_values,
+            )
+            _replace_legacy_checkbox_controls(
+                cloned_row,
+                scoped_values,
+            )
+
+            unresolved = _unresolved_in_element(
+                cloned_row
+            )
+            if unresolved:
+                raise DocumentGenerationError(
+                    f"A linha {row_index} da tabela '{table_id}' possui "
+                    "marcadores sem conteúdo: "
+                    + ", ".join(sorted(unresolved))
+                )
+
+            parent.insert(insert_at, cloned_row)
+            insert_at += 1
+
+        parent.remove(template_row)
+
+
+def _visible_element_text(element) -> str:
+    return "".join(
+        node.text or ""
+        for node in element.iter()
+        if node.tag in {
+            qn("w:t"),
+            qn("w:instrText"),
+        }
+    )
+
+
+def _unresolved_in_element(element) -> set[str]:
+    unresolved: set[str] = set()
+    for paragraph in element.iter(qn("w:p")):
+        text = "".join(
+            node.text or ""
+            for node in _paragraph_text_elements(paragraph)
+        )
+        for match in PLACEHOLDER_PATTERN.finditer(text):
+            unresolved.add(match.group(1).strip())
+    return unresolved
 
 
 def _replace_placeholders_in_root(
@@ -180,6 +318,9 @@ def _replace_placeholder(
     values: dict[str, Any],
 ) -> str:
     raw_value = match.group(1).strip()
+
+    if raw_value.casefold().startswith("repeat:"):
+        return ""
 
     if raw_value.lower().startswith("checkbox:"):
         field_id = raw_value.split(":", 1)[1].strip()

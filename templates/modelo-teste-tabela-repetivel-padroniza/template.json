@@ -1,0 +1,110 @@
+{
+  "template": {
+    "id": "modelo-teste-tabela-repetivel-padroniza",
+    "name": "Modelo Teste Tabela Repetivel Padroniza",
+    "description": "",
+    "category": "",
+    "version": "1.0",
+    "source_file": "template.docx",
+    "adapter": "docx"
+  },
+  "fields": [
+    {
+      "id": "itens",
+      "label": "Itens",
+      "type": "repeatable_table",
+      "required": true,
+      "columns": [
+        {
+          "id": "item",
+          "label": "Item",
+          "type": "auto_number",
+          "required": false,
+          "marker": "row.number"
+        },
+        {
+          "id": "descricao",
+          "label": "Descrição",
+          "type": "multiline",
+          "required": true,
+          "marker": "itens.descricao"
+        },
+        {
+          "id": "unidade",
+          "label": "UND",
+          "type": "dropdown",
+          "required": true,
+          "marker": "itens.unidade",
+          "options": [
+            "UND",
+            "KG",
+            "L",
+            "M",
+            "M²",
+            "CX",
+            "PCT"
+          ]
+        },
+        {
+          "id": "quantidade_2023",
+          "label": "Quantidade — 2023",
+          "type": "integer",
+          "required": true,
+          "marker": "itens.quantidade_2023"
+        },
+        {
+          "id": "quantidade_2024",
+          "label": "Quantidade — 2024",
+          "type": "integer",
+          "required": true,
+          "marker": "itens.quantidade_2024"
+        },
+        {
+          "id": "quantidade_2025",
+          "label": "Quantidade — 2025",
+          "type": "integer",
+          "required": true,
+          "marker": "itens.quantidade_2025"
+        },
+        {
+          "id": "quantidade_solicitada",
+          "label": "Quantidade Solicitada",
+          "type": "integer",
+          "required": true,
+          "marker": "itens.quantidade_solicitada"
+        },
+        {
+          "id": "pca_2026",
+          "label": "Consta no PCA para 2026?SIM / NÃO",
+          "type": "dropdown",
+          "required": true,
+          "marker": "itens.pca_2026",
+          "options": [
+            "SIM",
+            "NÃO"
+          ]
+        }
+      ],
+      "minimum_rows": 1,
+      "numbering_padding": 2,
+      "section": "Dados do documento"
+    }
+  ],
+  "sections": [
+    {
+      "title": "Dados do documento",
+      "fields": [
+        "itens"
+      ]
+    }
+  ],
+  "output": {
+    "filename_pattern": "{{template.name}}.docx",
+    "folder_pattern": ""
+  },
+  "numbering": {
+    "enabled": false,
+    "key": "modelo-teste-tabela-repetivel-padroniza",
+    "padding": 4
+  }
+}

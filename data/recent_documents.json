@@ -1,5 +1,83 @@
 [
   {
+    "template_id": "modelo-teste-tabela-repetivel-padroniza",
+    "template_name": "Modelo Teste Tabela Repetivel Padroniza",
+    "template_version": "1.0",
+    "filename": "Modelo Teste Tabela Repetivel Padroniza.pdf",
+    "docx_path": "",
+    "pdf_path": "C:\\Users\\ADM\\Desktop\\Modelo Teste Tabela Repetivel Padroniza.pdf",
+    "zip_path": "",
+    "values": {
+      "itens": [
+        {
+          "descricao": "test1",
+          "unidade": "KG",
+          "quantidade_2023": "212",
+          "quantidade_2024": "123123",
+          "quantidade_2025": "123123",
+          "quantidade_solicitada": "12312",
+          "pca_2026": "SIM",
+          "__row_number__": "01"
+        },
+        {
+          "descricao": "test2",
+          "unidade": "M²",
+          "quantidade_2023": "123123",
+          "quantidade_2024": "213213",
+          "quantidade_2025": "123123",
+          "quantidade_solicitada": "12331",
+          "pca_2026": "NÃO",
+          "__row_number__": "02"
+        }
+      ]
+    },
+    "pdf_error": "",
+    "created_at": "2026-07-30T11:45:41",
+    "process_number": "",
+    "profile_id": "",
+    "profile_name": "",
+    "id": "20260730114541022499"
+  },
+  {
+    "template_id": "modelo-teste-tabela-repetivel-padroniza",
+    "template_name": "Modelo Teste Tabela Repetivel Padroniza",
+    "template_version": "1.0",
+    "filename": "Modelo Teste Tabela Repetivel Padroniza.docx",
+    "docx_path": "C:\\Users\\ADM\\Desktop\\Modelo Teste Tabela Repetivel Padroniza.docx",
+    "pdf_path": "",
+    "zip_path": "",
+    "values": {
+      "itens": [
+        {
+          "descricao": "test1",
+          "unidade": "KG",
+          "quantidade_2023": "212",
+          "quantidade_2024": "123123",
+          "quantidade_2025": "123123",
+          "quantidade_solicitada": "12312",
+          "pca_2026": "SIM",
+          "__row_number__": "01"
+        },
+        {
+          "descricao": "test2",
+          "unidade": "M²",
+          "quantidade_2023": "123123",
+          "quantidade_2024": "213213",
+          "quantidade_2025": "123123",
+          "quantidade_solicitada": "12331",
+          "pca_2026": "NÃO",
+          "__row_number__": "02"
+        }
+      ]
+    },
+    "pdf_error": "",
+    "created_at": "2026-07-30T11:44:29",
+    "process_number": "",
+    "profile_id": "",
+    "profile_name": "",
+    "id": "20260730114429789915"
+  },
+  {
     "template_id": "modelo-teste-padroniza-textos-longos",
     "template_name": "Modelo Teste Padroniza Textos Longos",
     "template_version": "1.0",

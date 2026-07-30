@@ -19,6 +19,7 @@ from app.field_utils import (
     SUPPORTED_FIELD_TYPES,
     compact_dropdown_options,
     infer_field_type,
+    normalize_repeatable_columns,
 )
 from app.json_utils import atomic_write_json
 
@@ -1021,6 +1022,17 @@ class TemplateRepository:
             "height",
             "validation",
             "format",
+            "minimum_rows",
+            "numbering_padding",
+            "marker",
+            "validation_hint",
+            "format_hint",
+            "min",
+            "max",
+            "min_length",
+            "max_length",
+            "pattern",
+            "pattern_message",
         }
 
         for index, raw_field in enumerate(fields, start=1):
@@ -1075,6 +1087,28 @@ class TemplateRepository:
                     field["type"] = "text"
                 else:
                     field["options"] = options
+
+            if field_type == "repeatable_table":
+                columns = normalize_repeatable_columns(
+                    raw_field.get("columns", [])
+                )
+                if not columns:
+                    if strict:
+                        raise ValueError(
+                            f"A tabela repetível '{field_id}' deve conter pelo menos uma coluna."
+                        )
+                    field_type = "text"
+                    field["type"] = "text"
+                else:
+                    field["columns"] = columns
+                    field["minimum_rows"] = max(
+                        0,
+                        int(raw_field.get("minimum_rows", 1) or 0),
+                    )
+                    field["numbering_padding"] = max(
+                        1,
+                        int(raw_field.get("numbering_padding", 2) or 2),
+                    )
 
             for key in preserved_keys:
                 if key in raw_field and raw_field[key] not in (None, "", [], {}):

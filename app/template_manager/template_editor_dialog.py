@@ -50,7 +50,7 @@ from app.template_repository import TemplateRepository
 from app.widgets.clickable_drop_zone import ClickableDropZone
 from app.widgets.context_help import HelpIconButton, HelpLabel
 from app.widgets.toast import show_toast
-from app.widgets.searchable_dropdown import DropdownOptionsEditor
+from app.widgets.repeatable_table import FieldConfigurationEditor
 
 
 class _TemplateDocxDropZone(ClickableDropZone):
@@ -158,6 +158,7 @@ class TemplateEditorDialog(QDialog):
         "cep": "CEP",
         "phone": "Telefone",
         "email": "E-mail",
+        "repeatable_table": "Tabela repetível",
     }
 
     def __init__(
@@ -278,7 +279,7 @@ class TemplateEditorDialog(QDialog):
                 'Rótulo',
                 'Tipo',
                 'Obrigatório',
-                'Opções',
+                'Opções / colunas',
                 'Seção',
                 'Chave do perfil',
                 'Grupo',
@@ -294,7 +295,7 @@ class TemplateEditorDialog(QDialog):
         header = self.fields_table.horizontalHeader()
         for column in range(self.fields_table.columnCount()):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
-        widths = [210, 210, 115, 80, 190, 150, 170, 130, 100, 190]
+        widths = [210, 210, 150, 80, 245, 150, 170, 130, 100, 190]
         for column, width in enumerate(widths):
             self.fields_table.setColumnWidth(column, width)
 
@@ -303,7 +304,7 @@ class TemplateEditorDialog(QDialog):
             'Nome legível exibido no formulário. Quando possível, é identificado a partir do texto antes do marcador no DOCX.',
             'Define o controle e a validação do campo.',
             'Impede a geração enquanto o campo visível estiver vazio ou inválido.',
-            'Abre o editor de opções. Cada opção pode ter um título curto e um texto longo inserido no documento.',
+            'Abre o editor de opções da lista suspensa ou das colunas de uma tabela repetível.',
             'Grupo visual no formulário de geração.',
             'Chave usada para preencher o campo a partir de um perfil.',
             'Agrupa caixas de seleção relacionadas.',
@@ -1133,8 +1134,14 @@ class TemplateEditorDialog(QDialog):
         required_container = self._centered_checkbox(required)
         self.fields_table.setCellWidget(row, 3, required_container)
 
-        options = DropdownOptionsEditor(field.get("options", []))
-        self.fields_table.setCellWidget(row, 4, options)
+        configuration = FieldConfigurationEditor(
+            field_type,
+            options=field.get("options", []),
+            columns=field.get("columns", []),
+            minimum_rows=int(field.get("minimum_rows", 1) or 0),
+            numbering_padding=int(field.get("numbering_padding", 2) or 2),
+        )
+        self.fields_table.setCellWidget(row, 4, configuration)
         self.fields_table.setItem(row, 5, QTableWidgetItem(str(field.get("section", ""))))
         self.fields_table.setItem(row, 6, QTableWidgetItem(str(field.get("profile_key", ""))))
         self.fields_table.setItem(row, 7, QTableWidgetItem(str(field.get("group", ""))))
@@ -1152,9 +1159,9 @@ class TemplateEditorDialog(QDialog):
         self.fields_table.setItem(row, 9, QTableWidgetItem(str(visible)))
 
         type_combo.currentIndexChanged.connect(
-            lambda _index, combo=type_combo, option_widget=options, required_widget=required, single_widget=single: self._type_changed(
+            lambda _index, combo=type_combo, configuration_widget=configuration, required_widget=required, single_widget=single: self._type_changed(
                 str(combo.currentData() or "text"),
-                option_widget,
+                configuration_widget,
                 required_widget,
                 single_widget,
             )
@@ -1162,10 +1169,10 @@ class TemplateEditorDialog(QDialog):
         type_combo.currentIndexChanged.connect(
             self._schedule_editor_change
         )
-        options.options_changed.connect(self._schedule_editor_change)
+        configuration.configuration_changed.connect(self._schedule_editor_change)
         required.toggled.connect(self._schedule_editor_change)
         single.toggled.connect(self._schedule_editor_change)
-        self._type_changed(field_type, options, required, single)
+        self._type_changed(field_type, configuration, required, single)
 
     @staticmethod
     def _centered_checkbox(checkbox: QCheckBox) -> QWidget:
@@ -1179,16 +1186,11 @@ class TemplateEditorDialog(QDialog):
     def _type_changed(
         self,
         field_type: str,
-        options: DropdownOptionsEditor,
+        configuration: FieldConfigurationEditor,
         required: QCheckBox,
         single: QCheckBox,
     ) -> None:
-        options.setEnabled(field_type == "dropdown")
-        options.setPlaceholderText(
-            'Use Editar... para cadastrar opções'
-            if field_type == "dropdown"
-            else 'Somente lista suspensa'
-        )
+        configuration.set_field_type(field_type)
         is_checkbox = field_type == "checkbox"
         if is_checkbox:
             required.setChecked(False)
@@ -1244,7 +1246,7 @@ class TemplateEditorDialog(QDialog):
             id_item = self.fields_table.item(row, 0)
             label_item = self.fields_table.item(row, 1)
             type_combo = self.fields_table.cellWidget(row, 2)
-            options_input = self.fields_table.cellWidget(row, 4)
+            configuration_input = self.fields_table.cellWidget(row, 4)
             section_item = self.fields_table.item(row, 5)
             profile_item = self.fields_table.item(row, 6)
             group_item = self.fields_table.item(row, 7)
@@ -1277,8 +1279,8 @@ class TemplateEditorDialog(QDialog):
 
             if field_type == "dropdown":
                 options = (
-                    options_input.options()
-                    if isinstance(options_input, DropdownOptionsEditor)
+                    configuration_input.options()
+                    if isinstance(configuration_input, FieldConfigurationEditor)
                     else []
                 )
                 if validate and not options:
@@ -1286,6 +1288,27 @@ class TemplateEditorDialog(QDialog):
                         f"A lista suspensa '{field_id}' exige pelo menos uma opção."
                     )
                 field["options"] = options
+            if field_type == "repeatable_table":
+                columns = (
+                    configuration_input.columns()
+                    if isinstance(configuration_input, FieldConfigurationEditor)
+                    else []
+                )
+                if validate and not columns:
+                    raise ValueError(
+                        f"A tabela repetível '{field_id}' exige pelo menos uma coluna."
+                    )
+                field["columns"] = columns
+                field["minimum_rows"] = (
+                    configuration_input.minimum_rows()
+                    if isinstance(configuration_input, FieldConfigurationEditor)
+                    else 1
+                )
+                field["numbering_padding"] = (
+                    configuration_input.numbering_padding()
+                    if isinstance(configuration_input, FieldConfigurationEditor)
+                    else 2
+                )
             if field_type == "date":
                 field["automatic"] = True
 

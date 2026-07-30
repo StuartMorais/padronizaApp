@@ -64,7 +64,12 @@ def diagnose_template(config: dict[str, Any], source_path: Path) -> dict[str, An
     for field_id in sorted(configured_ids & scanned_ids):
         configured_type = str(configured_by_id[field_id].get("type", "text"))
         scanned_type = str(scanned_by_id[field_id].get("type", "text"))
-        if scanned_type in {"checkbox", "date", "dropdown"} and configured_type != scanned_type:
+        if scanned_type in {
+            "checkbox",
+            "date",
+            "dropdown",
+            "repeatable_table",
+        } and configured_type != scanned_type:
             type_mismatches.append(
                 {
                     "id": field_id,
@@ -95,6 +100,12 @@ def diagnose_template(config: dict[str, Any], source_path: Path) -> dict[str, An
         str(field.get("id", ""))
         for field in configured_fields
         if str(field.get("type", "")) == "dropdown" and not field.get("options")
+    )
+    invalid_repeatable_tables = sorted(
+        str(field.get("id", ""))
+        for field in configured_fields
+        if str(field.get("type", "")) == "repeatable_table"
+        and not field.get("columns")
     )
 
     output = config.get("output", {}) if isinstance(config.get("output"), dict) else {}
@@ -127,6 +138,10 @@ def diagnose_template(config: dict[str, Any], source_path: Path) -> dict[str, An
         warnings.append(f"Foram detectados {len(invalid_conditions)} problema(s) em regras condicionais.")
     if invalid_dropdowns:
         warnings.append(f"{len(invalid_dropdowns)} lista(s) suspensa(s) não possuem opções.")
+    if invalid_repeatable_tables:
+        warnings.append(
+            f"{len(invalid_repeatable_tables)} tabela(s) repetível(is) não possuem colunas."
+        )
     if invalid_filename_tokens:
         warnings.append(f"{len(invalid_filename_tokens)} marcador(es) do nome do arquivo são desconhecidos.")
     if health.get("malformed_placeholders"):
@@ -146,6 +161,7 @@ def diagnose_template(config: dict[str, Any], source_path: Path) -> dict[str, An
         "invalid_config_ids": invalid_config_ids,
         "invalid_conditions": invalid_conditions,
         "invalid_dropdowns": invalid_dropdowns,
+        "invalid_repeatable_tables": invalid_repeatable_tables,
         "invalid_filename_tokens": invalid_filename_tokens,
         "malformed_placeholders": health.get("malformed_placeholders", []),
         "duplicate_occurrences": health.get("duplicate_occurrences", {}),
@@ -194,6 +210,7 @@ def diagnostics_text(report: dict[str, Any]) -> str:
         ("invalid_config_ids", 'IDs configurados inválidos'),
         ("invalid_conditions", 'Problemas nas regras condicionais'),
         ("invalid_dropdowns", 'Listas suspensas sem opções'),
+        ("invalid_repeatable_tables", 'Tabelas repetíveis sem colunas'),
         ("invalid_filename_tokens", 'Marcadores desconhecidos no nome do arquivo'),
         ("malformed_placeholders", 'Marcadores malformados'),
     ):
@@ -278,6 +295,8 @@ def _placeholder_id(raw: str) -> str:
         return raw.split(":", 1)[1].strip()
     if lowered.startswith("dropdown:"):
         return raw.split(":", 1)[1].split("|", 1)[0].strip()
+    if lowered.startswith("repeat:"):
+        return raw.split(":", 1)[1].strip()
     return raw
 
 

@@ -16,7 +16,8 @@
 Tipos compatíveis:
 
 `text`, `multiline`, `date`, `checkbox`, `dropdown`, `currency`, `integer`,
-`decimal`, `percentage`, `cnpj`, `cpf`, `cep`, `phone` e `email`.
+`decimal`, `percentage`, `cnpj`, `cpf`, `cep`, `phone`, `email` e
+`repeatable_table`.
 
 Os nomes técnicos permanecem em inglês para manter a compatibilidade dos
 arquivos `template.json`. Na interface, esses tipos são exibidos em português.
@@ -71,6 +72,69 @@ Marcadores inline também aceitam a forma:
 O caractere `|` separa as opções e não deve aparecer dentro do conteúdo de uma
 opção inline. Para textos com várias linhas, configure as opções no Editor de
 Modelos.
+
+## Tabelas repetíveis
+
+Uma linha de tabela do Word pode ser usada como linha modelo. Coloque o
+marcador `{{repeat:itens}}` em qualquer célula dessa linha e use marcadores com
+o mesmo prefixo nas demais células:
+
+```text
+{{repeat:itens}}{{row.number}}
+{{itens.descricao}}
+{{dropdown:itens.unidade|UND|KG|L|M|M²|CX|PCT}}
+{{itens.quantidade_solicitada}}
+{{dropdown:itens.pca_2026|SIM|NÃO}}
+```
+
+Na geração, a linha inteira é copiada para cada item preenchido. Bordas,
+larguras, fontes, alinhamentos e sombreamentos da linha modelo são preservados.
+`{{row.number}}` produz numeração automática, como `01`, `02` e `03`.
+
+Configuração equivalente:
+
+```json
+{
+  "id": "itens",
+  "label": "Itens da contratação",
+  "type": "repeatable_table",
+  "required": true,
+  "minimum_rows": 1,
+  "numbering_padding": 2,
+  "columns": [
+    {
+      "id": "item",
+      "label": "Item",
+      "type": "auto_number",
+      "marker": "row.number"
+    },
+    {
+      "id": "descricao",
+      "label": "Descrição",
+      "type": "multiline",
+      "required": true,
+      "marker": "itens.descricao"
+    },
+    {
+      "id": "unidade",
+      "label": "UND",
+      "type": "dropdown",
+      "required": true,
+      "options": ["UND", "KG", "L", "M", "M²", "CX", "PCT"],
+      "marker": "itens.unidade"
+    }
+  ]
+}
+```
+
+Na tela **Gerar**, a tabela permite adicionar, duplicar, remover e reordenar
+itens. O preenchimento acontece diretamente nas células, sem abrir outra
+janela. Campos com várias linhas expandem a célula durante a edição; `Enter`
+insere uma quebra de linha e `Ctrl+Enter` conclui. Listas suspensas também são
+escolhidas dentro da própria célula. Dados tabulados copiados do Excel podem
+ser colados com `Ctrl+V`.
+Controles nativos do Word e mesclagens verticais dentro da linha repetível não
+são recomendados nesta primeira versão.
 
 ## Seções do formulário
 

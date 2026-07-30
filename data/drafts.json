@@ -54,5 +54,22 @@
       "representative.role": "Sample value"
     },
     "updated_at": "2026-07-24T14:50:47"
+  },
+  "modelo-teste-tabela-repetivel-padroniza": {
+    "values": {
+      "itens": [
+        {
+          "descricao": "Observações de exemplo para validação do documento.",
+          "unidade": "UND",
+          "quantidade_2023": "10",
+          "quantidade_2024": "10",
+          "quantidade_2025": "10",
+          "quantidade_solicitada": "10",
+          "pca_2026": "SIM",
+          "__row_number__": "01"
+        }
+      ]
+    },
+    "updated_at": "2026-07-30T11:46:57"
   }
 }

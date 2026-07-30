@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 import re
 import tempfile
-import zipfile
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -41,7 +39,6 @@ from app.backup_manager import (
     restore_backup,
 )
 from app.dialogs.backup_contents_dialog import BackupContentsDialog
-from app.dialogs.batch_generation_dialog import BatchGenerationDialog
 from app.dialogs.global_search_dialog import GlobalSearchDialog
 from app.dialogs.profile_manager_dialog import ProfileManagerDialog
 from app.docx_engine import DocumentGenerationError, generate_docx
@@ -758,9 +755,6 @@ class MainWindow(QMainWindow):
         self.sample_button = QPushButton(
             'Dados de exemplo'
         )
-        self.batch_button = QPushButton(
-            'Gerar pacote'
-        )
         self.generate_button = QPushButton(
             'Gerar DOCX'
         )
@@ -768,12 +762,10 @@ class MainWindow(QMainWindow):
             'Gerar PDF'
         )
         self.generation_formats_help_button = HelpIconButton(
-            'Formatos, pacote e destino',
+            'Formatos e destino',
             (
                 '<p><b>Gerar DOCX</b> cria um arquivo editável. '
                 '<b>Gerar PDF</b> cria uma versão pronta para compartilhar.</p>'
-                '<p><b>Gerar pacote</b> usa os dados atuais em vários modelos '
-                'selecionados e pode reunir os resultados em um ZIP.</p>'
                 '<p>O destino segue a pasta e a regra de conflito definidas em '
                 '<b>Configurações → Saída padrão</b>.</p>'
             ),
@@ -791,9 +783,6 @@ class MainWindow(QMainWindow):
         self.sample_button.clicked.connect(
             self._load_sample_data
         )
-        self.batch_button.clicked.connect(
-            self._generate_batch
-        )
         self.generate_button.clicked.connect(
             self._generate_document
         )
@@ -803,7 +792,6 @@ class MainWindow(QMainWindow):
 
         button_row.addWidget(self.clear_button)
         button_row.addWidget(self.sample_button)
-        button_row.addWidget(self.batch_button)
         button_row.addWidget(self.generate_button)
         button_row.addWidget(self.pdf_button)
         button_row.addWidget(
@@ -1527,7 +1515,12 @@ class MainWindow(QMainWindow):
         self.template_combo.blockSignals(False)
 
         enabled = bool(self.templates)
-        for button in (self.generate_button, self.pdf_button, self.batch_button, self.sample_button, self.clear_button):
+        for button in (
+            self.generate_button,
+            self.pdf_button,
+            self.sample_button,
+            self.clear_button,
+        ):
             button.setEnabled(enabled)
         self.template_count_label.setText(f"Modelos: {len(self.templates)}")
         self.favorite_store.prune(package.template_id for package in self.templates)
@@ -2089,7 +2082,6 @@ class MainWindow(QMainWindow):
             for button in (
                 self.clear_button,
                 self.sample_button,
-                self.batch_button,
                 self.generate_button,
                 self.pdf_button,
             ):
@@ -2191,7 +2183,6 @@ class MainWindow(QMainWindow):
         self.sample_button.setEnabled(
             not self._draft_choice_pending
         )
-        self.batch_button.setEnabled(ready)
         self.generate_button.setEnabled(ready)
         self.pdf_button.setEnabled(ready)
 
@@ -2201,7 +2192,6 @@ class MainWindow(QMainWindow):
             else "Escolha como continuar o rascunho."
         )
         for button in (
-            self.batch_button,
             self.generate_button,
             self.pdf_button,
         ):
@@ -2372,8 +2362,6 @@ class MainWindow(QMainWindow):
             package,
             values,
             output_path,
-            create_pdf=False,
-            create_zip=False,
         )
         if result is None:
             return
@@ -2525,33 +2513,23 @@ class MainWindow(QMainWindow):
         package: TemplatePackage,
         values: dict[str, Any],
         output_path: Path,
-        *,
-        create_pdf: bool,
-        create_zip: bool,
     ) -> dict[str, Any] | None:
         try:
-            generate_docx(package.source_path, output_path, values)
+            generate_docx(
+                package.source_path,
+                output_path,
+                values,
+            )
         except DocumentGenerationError as exc:
-            QMessageBox.critical(self, 'Falha na geração', str(exc))
-            self.status_message.setText('Falha na geração')
+            QMessageBox.critical(
+                self,
+                'Falha na geração',
+                str(exc),
+            )
+            self.status_message.setText(
+                'Falha na geração'
+            )
             return None
-
-        pdf_path: Path | None = None
-        pdf_error = ""
-        if create_pdf:
-            try:
-                pdf_path = convert_docx_to_pdf(output_path)
-            except PdfConversionError as exc:
-                pdf_error = str(exc)
-                QMessageBox.warning(self, 'O PDF não foi criado', pdf_error)
-
-        zip_path: Path | None = None
-        if create_zip:
-            zip_path = output_path.with_suffix(".zip")
-            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-                archive.write(output_path, output_path.name)
-                if pdf_path and pdf_path.exists():
-                    archive.write(pdf_path, pdf_path.name)
 
         record = {
             "template_id": package.template_id,
@@ -2559,20 +2537,30 @@ class MainWindow(QMainWindow):
             "template_version": package.version,
             "filename": output_path.name,
             "docx_path": str(output_path),
-            "pdf_path": str(pdf_path) if pdf_path else "",
-            "zip_path": str(zip_path) if zip_path else "",
+            "pdf_path": "",
+            "zip_path": "",
             "values": values,
-            "pdf_error": pdf_error,
-            "created_at": datetime.now().replace(microsecond=0).isoformat(),
+            "pdf_error": "",
+            "created_at": datetime.now()
+            .replace(microsecond=0)
+            .isoformat(),
             **self._document_history_metadata(values),
         }
-        document_id = self.local_store.add_recent(record)
+        document_id = self.local_store.add_recent(
+            record
+        )
         self.local_store.add_audit(
             "document_generated",
             output_path.name,
-            {"document_id": document_id, "template_id": package.template_id, "path": str(output_path)},
+            {
+                "document_id": document_id,
+                "template_id": package.template_id,
+                "path": str(output_path),
+            },
         )
-        return {"pdf_path": pdf_path, "zip_path": zip_path, "document_id": document_id}
+        return {
+            "document_id": document_id
+        }
 
     def _document_history_metadata(self, values: dict[str, Any]) -> dict[str, str]:
         process_number = ""
@@ -2598,111 +2586,6 @@ class MainWindow(QMainWindow):
             "profile_id": self._active_profile_id or "",
             "profile_name": self._active_profile_name,
         }
-
-    def _generate_batch(self) -> None:
-        current = self._selected_template()
-        if current is None:
-            return
-        current_values = self._collect_form_values()
-        if current_values is None:
-            return
-
-        dialog = BatchGenerationDialog(self.templates, current.template_id, self)
-        if dialog.exec() != BatchGenerationDialog.DialogCode.Accepted:
-            return
-
-        package_name = self._sanitize_segment(dialog.package_name()) or 'Documentos do processo'
-        package_folder = self._output_root() / package_name
-        counter = 2
-        original_folder = package_folder
-        while package_folder.exists() and any(package_folder.iterdir()):
-            package_folder = original_folder.with_name(f"{original_folder.name} {counter}")
-            counter += 1
-        package_folder.mkdir(parents=True, exist_ok=True)
-
-        selected_ids = set(dialog.selected_template_ids())
-        shared_values = dict(current_values)
-        for field in current.fields:
-            field_id = str(field.get("id", ""))
-            profile_key = str(field.get("profile_key", "")).strip()
-            if profile_key and field_id in current_values:
-                shared_values[profile_key] = current_values[field_id]
-
-        generated_paths: list[Path] = []
-        errors: list[str] = []
-        package_data: dict[str, Any] = {
-            "created_at": datetime.now().replace(microsecond=0).isoformat(),
-            "source_template": current.template_id,
-            "values": current_values,
-            "documents": [],
-        }
-
-        for package in self.templates:
-            if package.template_id not in selected_ids:
-                continue
-            target_values = self._values_for_template(package, shared_values)
-            missing = self._missing_required_for_package(package, target_values)
-            if missing:
-                errors.append(f"{package.name}: {'; '.join(missing)}")
-                continue
-
-            filename, _ = self._planned_output(package, target_values, consume_sequence=True, override_root=package_folder)
-            filename = self._resolve_output_conflict(package_folder / filename.name)
-            if filename is None:
-                continue
-            result = self._generate_one(
-                package,
-                target_values,
-                filename,
-                create_pdf=dialog.create_pdf(),
-                create_zip=False,
-            )
-            if result:
-                generated_paths.append(filename)
-                package_data["documents"].append(
-                    {
-                        "template_id": package.template_id,
-                        "docx": filename.name,
-                        "pdf": str(result.get("pdf_path") or ""),
-                    }
-                )
-
-        data_path = package_folder / "process-data.json"
-        data_path.write_text(json.dumps(package_data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-        zip_path: Path | None = None
-        if dialog.create_zip() and generated_paths:
-            zip_path = package_folder.with_suffix(".zip")
-            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-                for path in package_folder.rglob("*"):
-                    if path.is_file():
-                        archive.write(path, path.relative_to(package_folder.parent))
-
-        self.local_store.add_audit(
-            "package_generated",
-            package_folder.name,
-            {"folder": str(package_folder), "documents": len(generated_paths), "zip": str(zip_path or "")},
-        )
-        self._refresh_recent_page()
-        self._refresh_audit_page()
-
-        message = (
-            f"{len(generated_paths)} documento(s) gerado(s) em:\n{package_folder}"
-        )
-        if zip_path:
-            message += f"\nZIP: {zip_path.name}"
-        if errors:
-            message += f"\n{len(errors)} item(ns) foi(foram) ignorado(s)."
-        self.status_message.setText(
-            f"Pacote concluído: {len(generated_paths)} documento(s)"
-        )
-        show_toast(
-            self,
-            'Geração do pacote concluída',
-            message,
-            kind='warning' if errors else 'success',
-            duration=7000,
-        )
 
     def _planned_output(
         self,

@@ -294,6 +294,67 @@ class TutorialPage(QWidget):
         )
         layout.addWidget(example_group)
 
+        repeat_group = QGroupBox('Tabelas que crescem conforme os itens')
+        repeat_layout = QVBoxLayout(repeat_group)
+        repeat_layout.setContentsMargins(16, 16, 16, 16)
+        repeat_layout.setSpacing(10)
+
+        repeat_description = QLabel(
+            'Para permitir que uma tabela do Word receba qualquer quantidade de '
+            'itens, deixe os cabeçalhos fixos e transforme uma única linha de dados '
+            'na linha modelo. Insira {{repeat:itens}} em qualquer célula dessa linha '
+            'e use o prefixo itens. nos demais marcadores da mesma linha.'
+        )
+        repeat_description.setObjectName('tutorialRowText')
+        repeat_description.setWordWrap(True)
+        repeat_layout.addWidget(repeat_description)
+
+        repeat_example = (
+            '{{repeat:itens}}  {{row.number}}\n'
+            '{{itens.descricao}}\n'
+            '{{dropdown:itens.unidade|UND|KG|L|M|M²|CX|PCT}}\n'
+            '{{itens.quantidade_2023}}\n'
+            '{{itens.quantidade_2024}}\n'
+            '{{itens.quantidade_2025}}\n'
+            '{{itens.quantidade_solicitada}}\n'
+            '{{dropdown:itens.pca_2026|SIM|NÃO}}'
+        )
+        repeat_layout.addWidget(self._code_block(repeat_example))
+
+        repeat_rules = QLabel(
+            '<b>Como funciona:</b> o Padroniza copia a linha modelo para cada item, '
+            'preserva bordas, larguras, fontes e alinhamentos e numera as linhas como '
+            '01, 02, 03... O marcador {{row.number}} é opcional. Marcadores comuns e '
+            'listas suspensas podem ser usados nas colunas. Na tela Gerar, clique em uma célula para editar ali mesmo; campos com várias linhas se expandem durante a digitação, Enter cria uma nova linha e Ctrl+Enter conclui. Use '
+            '<b>Adicionar item</b>, <b>Duplicar item</b> ou cole linhas copiadas do Excel.'
+        )
+        repeat_rules.setObjectName('tutorialNote')
+        repeat_rules.setWordWrap(True)
+        repeat_rules.setTextFormat(Qt.TextFormat.RichText)
+        repeat_layout.addWidget(repeat_rules)
+
+        repeat_limit = QLabel(
+            '<b>Primeira versão:</b> use apenas marcadores de texto na linha repetível. '
+            'Controles nativos do Word e células mescladas verticalmente dentro da linha '
+            'modelo não são recomendados.'
+        )
+        repeat_limit.setObjectName('tutorialNote')
+        repeat_limit.setWordWrap(True)
+        repeat_limit.setTextFormat(Qt.TextFormat.RichText)
+        repeat_layout.addWidget(repeat_limit)
+
+        copy_repeat = QPushButton('Copiar exemplo de tabela repetível')
+        copy_repeat.setObjectName('copyMarkerButton')
+        copy_repeat.clicked.connect(
+            lambda _checked=False, value=repeat_example: self._copy_marker(value)
+        )
+        repeat_layout.addWidget(
+            copy_repeat,
+            0,
+            Qt.AlignmentFlag.AlignLeft,
+        )
+        layout.addWidget(repeat_group)
+
         layout.addWidget(self._field_types_group())
 
         filename_group = QGroupBox('Marcadores para nomes de arquivos e pastas')
@@ -486,10 +547,6 @@ class TutorialPage(QWidget):
                     (
                         'Dados de exemplo',
                         'Preenche o formulário com dados de exemplo para testar o modelo selecionado.',
-                    ),
-                    (
-                        'Gerar pacote',
-                        'Cria documentos de vários modelos selecionados usando um único conjunto de dados.',
                     ),
                     (
                         'Gerar DOCX',
@@ -868,7 +925,6 @@ class TutorialPage(QWidget):
                     ("Ctrl+Shift+F", 'Abrir favoritos'),
                     ("Ctrl+G", 'Gerar DOCX'),
                     ("Ctrl+Shift+P", 'Gerar PDF'),
-                    ("Ctrl+Shift+G", 'Gerar um pacote de documentos'),
                     ("F1", 'Abrir este tutorial'),
                 ]
             )
@@ -942,6 +998,7 @@ class TutorialPage(QWidget):
             ('CEP', '{{endereco.cep}}', 'Aplica a máscara 00000-000 e exige oito dígitos.'),
             ('Telefone', '{{responsavel.telefone}}', 'Formata telefone brasileiro com DDD.'),
             ('E-mail', '{{responsavel.email}}', 'Verifica o formato básico do endereço de e-mail.'),
+            ('Tabela repetível', '{{repeat:itens}}', 'Cria uma grade editável diretamente nas células, permite adicionar quantas linhas forem necessárias e copia a linha modelo do Word para cada item.'),
         ]
 
         grid = QGridLayout()

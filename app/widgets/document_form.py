@@ -28,6 +28,7 @@ from app.field_utils import (
 )
 from app.widgets.context_help import HelpIconButton
 from app.widgets.readable_checkbox import ReadableCheckBox
+from app.widgets.repeatable_table import RepeatableTableWidget
 from app.widgets.smart_line_edit import SmartLineEdit
 from app.widgets.searchable_dropdown import SearchableDropdown
 
@@ -276,6 +277,8 @@ class DocumentForm(QWidget):
                 values[field_id] = (
                     False
                     if field_type == "checkbox"
+                    else []
+                    if field_type == "repeatable_table"
                     else ""
                 )
 
@@ -314,6 +317,8 @@ class DocumentForm(QWidget):
                 values[field_id] = widget.current_value().strip()
             elif isinstance(widget, QPlainTextEdit):
                 values[field_id] = widget.toPlainText().strip()
+            elif isinstance(widget, RepeatableTableWidget):
+                values[field_id] = widget.rows()
             elif isinstance(widget, SmartLineEdit):
                 values[field_id] = widget.text().strip()
             elif isinstance(widget, QDateEdit):
@@ -436,6 +441,8 @@ class DocumentForm(QWidget):
             widget.selectAll()
         elif isinstance(widget, SearchableDropdown):
             widget.focus_selector()
+        elif isinstance(widget, RepeatableTableWidget):
+            widget.focus_table()
         container = self.field_containers.get(field_id)
         return container if container is not None else widget
 
@@ -459,6 +466,19 @@ class DocumentForm(QWidget):
             if isinstance(value, bool):
                 if value:
                     return True
+            elif isinstance(value, list):
+                if any(
+                    isinstance(row, dict)
+                    and any(
+                        bool(cell)
+                        if isinstance(cell, bool)
+                        else bool(str(cell or "").strip())
+                        for key, cell in row.items()
+                        if not str(key).startswith("__")
+                    )
+                    for row in value
+                ):
+                    return True
             elif str(value or "").strip():
                 return True
         return False
@@ -481,6 +501,11 @@ class DocumentForm(QWidget):
                     widget.set_value(value)
                 elif isinstance(widget, QPlainTextEdit):
                     widget.setPlainText(str(value or ""))
+                elif isinstance(widget, RepeatableTableWidget):
+                    widget.set_rows(
+                        value if isinstance(value, list) else [],
+                        emit_signal=False,
+                    )
                 elif isinstance(widget, SmartLineEdit):
                     widget.set_value(value)
                 elif isinstance(widget, QDateEdit):
@@ -529,6 +554,8 @@ class DocumentForm(QWidget):
                     widget.clear()
                 elif isinstance(widget, QPlainTextEdit):
                     widget.clear()
+                elif isinstance(widget, RepeatableTableWidget):
+                    widget.clear(emit_signal=False)
                 elif isinstance(widget, SmartLineEdit):
                     widget.clear()
                 elif isinstance(widget, QDateEdit):
@@ -566,6 +593,9 @@ class DocumentForm(QWidget):
                     )
                 ),
             )
+
+        if field_type == "repeatable_table":
+            return RepeatableTableWidget(field)
 
         if field_type == "multiline":
             editor = QPlainTextEdit()
@@ -668,6 +698,12 @@ class DocumentForm(QWidget):
                 if example:
                     return f"{value} Exemplo: {example}"
                 return value
+        if str(field.get("type", "")) == "repeatable_table":
+            return (
+                "Adicione uma linha para cada item da contratação. "
+                "Também é possível duplicar, reordenar ou colar dados "
+                "tabulados copiados do Excel."
+            )
         return ""
 
     def _connect_widget(self, widget: QWidget) -> None:
@@ -677,6 +713,8 @@ class DocumentForm(QWidget):
             widget.value_changed.connect(self._widget_changed)
         elif isinstance(widget, QPlainTextEdit):
             widget.textChanged.connect(self._widget_changed)
+        elif isinstance(widget, RepeatableTableWidget):
+            widget.values_changed.connect(self._widget_changed)
         elif isinstance(widget, SmartLineEdit):
             widget.value_changed.connect(self._widget_changed)
         elif isinstance(widget, QDateEdit):
@@ -748,7 +786,7 @@ class DocumentForm(QWidget):
     def _should_span_full_width(field_id: str, field_type: str, field: dict[str, Any]) -> bool:
         if bool(field.get("full_width", False)):
             return True
-        if field_type in {"multiline"}:
+        if field_type in {"multiline", "repeatable_table"}:
             return True
         if field_type == "dropdown":
             option_values = dropdown_option_values(

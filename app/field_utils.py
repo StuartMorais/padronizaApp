@@ -28,6 +28,9 @@ FIELD_TYPE_ALIASES = {
     "money": "currency",
     "number": "decimal",
     "percent": "percentage",
+    "table": "repeatable_table",
+    "repeating_table": "repeatable_table",
+    "repeatable": "repeatable_table",
 }
 
 
@@ -46,9 +49,112 @@ FIELD_TYPE_ORDER = (
     "cep",
     "phone",
     "email",
+    "repeatable_table",
 )
 
 SUPPORTED_FIELD_TYPES = set(FIELD_TYPE_ORDER)
+
+
+REPEATABLE_COLUMN_TYPE_ALIASES = {
+    **FIELD_TYPE_ALIASES,
+    "auto": "auto_number",
+    "numbering": "auto_number",
+    "row_number": "auto_number",
+}
+
+REPEATABLE_COLUMN_TYPES = (
+    "auto_number",
+    "text",
+    "multiline",
+    "date",
+    "checkbox",
+    "dropdown",
+    "currency",
+    "integer",
+    "decimal",
+    "percentage",
+    "cnpj",
+    "cpf",
+    "cep",
+    "phone",
+    "email",
+)
+
+
+def normalize_repeatable_columns(value: Any) -> list[dict[str, Any]]:
+    """Normalize repeatable-table column definitions.
+
+    Columns are stored as small field definitions. The ``marker`` key keeps
+    the complete marker identifier used inside the Word model, while ``id``
+    is the short key stored in each generated row.
+    """
+
+    if not isinstance(value, (list, tuple)):
+        return []
+
+    columns: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for raw_column in value:
+        if not isinstance(raw_column, dict):
+            continue
+
+        column_id = str(raw_column.get("id", "")).strip()
+        if not column_id or column_id in seen_ids:
+            continue
+
+        configured_type = str(raw_column.get("type", "text")).casefold()
+        column_type = REPEATABLE_COLUMN_TYPE_ALIASES.get(
+            configured_type,
+            configured_type,
+        )
+        if column_type not in REPEATABLE_COLUMN_TYPES:
+            column_type = "text"
+
+        column: dict[str, Any] = {
+            "id": column_id,
+            "label": str(
+                raw_column.get(
+                    "label",
+                    column_id.replace("_", " ").replace("-", " ").title(),
+                )
+            ).strip()
+            or column_id,
+            "type": column_type,
+            "required": (
+                False
+                if column_type in {"auto_number", "checkbox"}
+                else bool(raw_column.get("required", False))
+            ),
+        }
+
+        marker = str(raw_column.get("marker", "")).strip()
+        if marker:
+            column["marker"] = marker
+
+        if column_type == "dropdown":
+            column["options"] = compact_dropdown_options(
+                raw_column.get("options", [])
+            )
+
+        for key in (
+            "placeholder",
+            "validation_hint",
+            "format_hint",
+            "min",
+            "max",
+            "min_length",
+            "max_length",
+            "pattern",
+            "pattern_message",
+            "width",
+        ):
+            if key in raw_column:
+                column[key] = raw_column[key]
+
+        seen_ids.add(column_id)
+        columns.append(column)
+
+    return columns
 
 
 def normalize_dropdown_options(value: Any) -> list[dict[str, str]]:
@@ -294,6 +400,15 @@ def validation_hint(field: dict[str, Any]) -> str:
     if custom:
         return custom
 
+    if field_type == "repeatable_table":
+        minimum_rows = max(0, int(field.get("minimum_rows", 1) or 0))
+        if minimum_rows:
+            return (
+                "Adicione pelo menos "
+                f"{minimum_rows} item(ns). É possível colar linhas copiadas do Excel."
+            )
+        return "Adicione, duplique, remova ou cole linhas conforme necessário."
+
     hints = {
         "cnpj": "Formato esperado: 00.000.000/0000-00",
         "cpf": "Formato esperado: 000.000.000-00",
@@ -476,6 +591,67 @@ def validate_field(
     )
     label = str(field.get("label", field_id))
 
+    if field_type == "repeatable_table":
+        rows = value if isinstance(value, list) else []
+        minimum_rows = max(
+            0,
+            int(
+                field.get(
+                    "minimum_rows",
+                    1 if field.get("required", False) else 0,
+                )
+                or 0
+            ),
+        )
+        meaningful_rows = [
+            row
+            for row in rows
+            if isinstance(row, dict)
+            and any(
+                bool(cell)
+                if isinstance(cell, bool)
+                else bool(str(cell or "").strip())
+                for key, cell in row.items()
+                if not str(key).startswith("__")
+            )
+        ]
+
+        if len(meaningful_rows) < minimum_rows:
+            return (
+                f"{label} exige pelo menos "
+                f"{minimum_rows} item(ns) preenchido(s)."
+            )
+
+        columns = normalize_repeatable_columns(
+            field.get("columns", [])
+        )
+        if not columns:
+            return f"{label} não possui colunas configuradas."
+
+        for row_index, row in enumerate(meaningful_rows, start=1):
+            for column in columns:
+                column_type = str(column.get("type", "text"))
+                if column_type == "auto_number":
+                    continue
+
+                column_id = str(column.get("id", "")).strip()
+                column_label = str(
+                    column.get("label", column_id)
+                ).strip() or column_id
+                validation_column = dict(column)
+                validation_column["id"] = f"{field_id}.{column_id}"
+                validation_column["label"] = (
+                    f"{label}, item {row_index}, {column_label}"
+                )
+                error = validate_field(
+                    validation_column,
+                    row.get(column_id),
+                )
+                if error:
+                    return error
+
+        return None
+
     if field_type == "checkbox":
         return None
 
@@ -558,6 +734,15 @@ def validate_field(
 def sample_value(field: dict[str, Any]) -> Any:
     field_id = str(field.get("id", "")).casefold()
     field_type = infer_field_type(field_id, str(field.get("type", "text")))
+
+    if field_type == "repeatable_table":
+        row: dict[str, Any] = {}
+        for column in normalize_repeatable_columns(field.get("columns", [])):
+            column_type = str(column.get("type", "text"))
+            if column_type == "auto_number":
+                continue
+            row[str(column.get("id", ""))] = sample_value(column)
+        return [row]
 
     samples: dict[str, Any] = {
         "cnpj": "12.345.678/0001-95",

@@ -1162,3 +1162,57 @@ QLineEdit#dropdownOptionsSummary {
 QPushButton#dropdownOptionsEditButton {
     min-width: 72px;
 }
+
+/* Repeatable Word tables -------------------------------------------------- */
+QFrame#repeatableTableEditor {
+    border: none;
+    background: transparent;
+}
+
+QTableWidget#repeatableDataTable {
+    border: 1px solid #c4cfda;
+    border-radius: 8px;
+    background-color: #ffffff;
+    alternate-background-color: #ffffff;
+    color: #203244;
+    gridline-color: #d9e1e8;
+    selection-background-color: #dceeff;
+    selection-color: #164f82;
+}
+
+QTableWidget#repeatableDataTable::item {
+    padding: 7px;
+}
+
+QTableWidget#repeatableDataTable QLineEdit,
+QPlainTextEdit#repeatableInlineMultilineEditor,
+QComboBox#repeatableInlineDropdown {
+    background-color: #ffffff;
+    color: #203244;
+    border: 2px solid #1677d2;
+    border-radius: 4px;
+    padding: 5px;
+    selection-background-color: #dceeff;
+}
+
+QPlainTextEdit#repeatableInlineMultilineEditor {
+    padding: 7px;
+}
+
+QTableWidget#repeatableDataTable::item:hover {
+    background-color: #edf5fc;
+}
+
+QLabel#repeatableTableStatus {
+    color: #607183;
+    font-size: 9pt;
+}
+
+QLineEdit#repeatableColumnsSummary {
+    background-color: #f5f7f9;
+    color: #586979;
+}
+
+QPushButton#repeatableColumnsEditButton {
+    min-width: 72px;
+}

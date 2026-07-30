@@ -1,5 +1,26 @@
 [
   {
+    "timestamp": "2026-07-30T11:45:41",
+    "action": "document_generated",
+    "description": "Modelo Teste Tabela Repetivel Padroniza.pdf",
+    "details": {
+      "document_id": "20260730114541022499",
+      "template_id": "modelo-teste-tabela-repetivel-padroniza",
+      "path": "C:\\Users\\ADM\\Desktop\\Modelo Teste Tabela Repetivel Padroniza.pdf",
+      "format": "pdf"
+    }
+  },
+  {
+    "timestamp": "2026-07-30T11:44:29",
+    "action": "document_generated",
+    "description": "Modelo Teste Tabela Repetivel Padroniza.docx",
+    "details": {
+      "document_id": "20260730114429789915",
+      "template_id": "modelo-teste-tabela-repetivel-padroniza",
+      "path": "C:\\Users\\ADM\\Desktop\\Modelo Teste Tabela Repetivel Padroniza.docx"
+    }
+  },
+  {
     "timestamp": "2026-07-27T13:59:41",
     "action": "profile_saved",
     "description": "Modelo Teste padroniza textos longos 1",

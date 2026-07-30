@@ -299,6 +299,18 @@ def readiness_report(
     ]
     checks.append({"label": 'Opções da lista suspensa', "ok": not invalid_dropdowns, "detail": ", ".join(invalid_dropdowns)})
 
+    invalid_repeatable_tables = [
+        str(field.get("id", ""))
+        for field in fields
+        if str(field.get("type", "")) == "repeatable_table"
+        and not field.get("columns")
+    ]
+    checks.append({
+        "label": 'Colunas das tabelas repetíveis',
+        "ok": not invalid_repeatable_tables,
+        "detail": ", ".join(invalid_repeatable_tables),
+    })
+
     known_tokens = {"template.name", "year", "sequence", *ids}
     tokens = set(PLACEHOLDER_TOKEN.findall(str(filename_pattern)))
     unknown_tokens = sorted(token for token in tokens if token not in known_tokens)
@@ -332,4 +344,6 @@ def _field_id_from_token(raw: str) -> str:
         return text.split(":", 1)[1].strip()
     if lowered.startswith("dropdown:"):
         return text.split(":", 1)[1].split("|", 1)[0].strip()
+    if lowered.startswith("repeat:"):
+        return text.split(":", 1)[1].strip()
     return text
