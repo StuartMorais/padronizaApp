@@ -1,0 +1,6 @@
+
+# Windows build outputs
+build/
+dist/
+release/
+*.spec

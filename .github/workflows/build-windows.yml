@@ -1,0 +1,46 @@
+name: Compilar Padroniza para Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Gerar aplicativo e instalador
+    runs-on: windows-2022
+    timeout-minutes: 40
+
+    steps:
+      - name: Baixar o código do repositório
+        uses: actions/checkout@v6
+
+      - name: Preparar Python no servidor do GitHub
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Compilar o Padroniza
+        shell: pwsh
+        run: ./build_github.ps1
+
+      - name: Disponibilizar o instalador
+        uses: actions/upload-artifact@v4
+        with:
+          name: Padroniza-Instalador-Windows
+          path: release/Padroniza-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Disponibilizar a versão portátil
+        uses: actions/upload-artifact@v4
+        with:
+          name: Padroniza-Portatil-Windows
+          path: dist/Padroniza/
+          if-no-files-found: error
+          retention-days: 30
