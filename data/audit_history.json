@@ -1,5 +1,25 @@
 [
   {
+    "timestamp": "2026-07-31T10:15:20",
+    "action": "file_converted",
+    "description": "DOCX convertido para PDF",
+    "details": {
+      "direction": "docx_to_pdf",
+      "source": "C:\\Users\\ADM\\Desktop\\check box nativos.docx",
+      "output": "C:\\Users\\ADM\\Desktop\\check box nativos_converted.pdf"
+    }
+  },
+  {
+    "timestamp": "2026-07-31T10:09:39",
+    "action": "file_converted",
+    "description": "DOCX convertido para PDF",
+    "details": {
+      "direction": "docx_to_pdf",
+      "source": "C:\\Users\\ADM\\Desktop\\check box nativos.docx",
+      "output": "C:\\Users\\ADM\\Desktop\\check box nativos.pdf"
+    }
+  },
+  {
     "timestamp": "2026-07-30T11:45:41",
     "action": "document_generated",
     "description": "Modelo Teste Tabela Repetivel Padroniza.pdf",

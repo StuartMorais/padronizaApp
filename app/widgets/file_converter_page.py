@@ -11,6 +11,7 @@ from PySide6.QtCore import (
     QSettings,
     QThreadPool,
     QTimer,
+    QUrl,
     Qt,
     Signal,
     Slot,
@@ -1378,7 +1379,9 @@ class FileConverterPage(QWidget):
         self,
         path: Path,
     ) -> None:
-        if not path.exists():
+        resolved = path.expanduser().resolve()
+
+        if not resolved.is_file():
             QMessageBox.warning(
                 self,
                 'Arquivo não encontrado',
@@ -1386,17 +1389,26 @@ class FileConverterPage(QWidget):
             )
             return
 
-        QDesktopServices.openUrl(
-            QUrl.fromLocalFile(
-                str(path.resolve())
+        if not QDesktopServices.openUrl(
+            QUrl.fromLocalFile(str(resolved))
+        ):
+            QMessageBox.warning(
+                self,
+                'Não foi possível abrir o arquivo',
+                (
+                    'O Windows não encontrou um aplicativo associado a este '
+                    'tipo de arquivo. Você ainda pode acessá-lo pelo caminho:\n\n'
+                    f'{resolved}'
+                ),
             )
-        )
 
     def _open_folder(
         self,
         folder: Path,
     ) -> None:
-        if not folder.exists():
+        resolved = folder.expanduser().resolve()
+
+        if not resolved.is_dir():
             QMessageBox.warning(
                 self,
                 'Pasta não encontrada',
@@ -1404,11 +1416,18 @@ class FileConverterPage(QWidget):
             )
             return
 
-        QDesktopServices.openUrl(
-            QUrl.fromLocalFile(
-                str(folder.resolve())
+        if not QDesktopServices.openUrl(
+            QUrl.fromLocalFile(str(resolved))
+        ):
+            QMessageBox.warning(
+                self,
+                'Não foi possível abrir a pasta',
+                (
+                    'O sistema não conseguiu abrir esta pasta. '
+                    'Você ainda pode acessá-la pelo caminho:\n\n'
+                    f'{resolved}'
+                ),
             )
-        )
 
     def _load_history(
         self,
