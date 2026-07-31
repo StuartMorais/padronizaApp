@@ -1,5 +1,15 @@
 [
   {
+    "timestamp": "2026-07-31T10:30:39",
+    "action": "file_converted",
+    "description": "DOCX convertido para PDF",
+    "details": {
+      "direction": "docx_to_pdf",
+      "source": "C:\\Users\\ADM\\Desktop\\check box nativos.docx",
+      "output": "C:\\Users\\ADM\\Desktop\\check box nativos_converted.pdf"
+    }
+  },
+  {
     "timestamp": "2026-07-31T10:15:20",
     "action": "file_converted",
     "description": "DOCX convertido para PDF",

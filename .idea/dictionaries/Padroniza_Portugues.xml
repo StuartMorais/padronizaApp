@@ -3,18 +3,18 @@
     <words>
       <w>cnpj</w>
       <w>cpf</w>
-      <w>descricao</w>
-      <w>descrição</w>
-      <w>docx</w>
       <w>edital</w>
-      <w>fornecedor</w>
-      <w>justificativa</w>
-      <w>licitacao</w>
-      <w>licitação</w>
       <w>objeto</w>
       <w>processo</w>
       <w>razao</w>
       <w>razão</w>
+      <w>descricao</w>
+      <w>descrição</w>
+      <w>justificativa</w>
+      <w>licitacao</w>
+      <w>licitação</w>
+      <w>fornecedor</w>
+      <w>docx</w>
     </words>
   </dictionary>
 </component>

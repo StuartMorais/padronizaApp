@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QUrl
-from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -32,6 +32,7 @@ from app.widgets.context_help import HelpIconButton
 from app.widgets.empty_state import EmptyState
 from app.widgets.toast import show_toast
 from app.runtime_settings import APPLICATION, ORGANIZATION
+from app.system_open import SystemOpenError, open_file, open_folder
 from app.template_repository import (
     DuplicateTemplateFileError,
     SimilarTemplateNameError,
@@ -897,12 +898,26 @@ class TemplateManagerDialog(QDialog):
     def _open_source(self) -> None:
         path = self._selected_source()
         if path and path.exists():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.resolve())))
+            try:
+                open_file(path)
+            except SystemOpenError as exc:
+                QMessageBox.warning(
+                    self,
+                    'Não foi possível abrir o arquivo',
+                    str(exc),
+                )
 
     def _open_folder(self) -> None:
         path = self._selected_source()
         if path and path.parent.exists():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent.resolve())))
+            try:
+                open_folder(path.parent)
+            except SystemOpenError as exc:
+                QMessageBox.warning(
+                    self,
+                    'Não foi possível abrir a pasta',
+                    str(exc),
+                )
 
     def _show_context_menu(self, position) -> None:
         if self.table.itemAt(position) is None:

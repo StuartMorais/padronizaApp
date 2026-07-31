@@ -11,12 +11,10 @@ from PySide6.QtCore import (
     QSettings,
     QThreadPool,
     QTimer,
-    QUrl,
     Qt,
     Signal,
     Slot,
 )
-from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -37,6 +35,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.runtime_settings import APPLICATION, ORGANIZATION
+from app.system_open import SystemOpenError, open_file, open_folder
 from app.widgets.clickable_drop_zone import ClickableDropZone
 from app.widgets.context_help import HelpIconButton, HelpLabel
 from app.widgets.empty_state import EmptyState
@@ -1379,54 +1378,26 @@ class FileConverterPage(QWidget):
         self,
         path: Path,
     ) -> None:
-        resolved = path.expanduser().resolve()
-
-        if not resolved.is_file():
-            QMessageBox.warning(
-                self,
-                'Arquivo não encontrado',
-                'O arquivo convertido não está mais em seu local original.',
-            )
-            return
-
-        if not QDesktopServices.openUrl(
-            QUrl.fromLocalFile(str(resolved))
-        ):
+        try:
+            open_file(path)
+        except SystemOpenError as exc:
             QMessageBox.warning(
                 self,
                 'Não foi possível abrir o arquivo',
-                (
-                    'O Windows não encontrou um aplicativo associado a este '
-                    'tipo de arquivo. Você ainda pode acessá-lo pelo caminho:\n\n'
-                    f'{resolved}'
-                ),
+                str(exc),
             )
 
     def _open_folder(
         self,
         folder: Path,
     ) -> None:
-        resolved = folder.expanduser().resolve()
-
-        if not resolved.is_dir():
-            QMessageBox.warning(
-                self,
-                'Pasta não encontrada',
-                'A pasta não está mais disponível.',
-            )
-            return
-
-        if not QDesktopServices.openUrl(
-            QUrl.fromLocalFile(str(resolved))
-        ):
+        try:
+            open_folder(folder)
+        except SystemOpenError as exc:
             QMessageBox.warning(
                 self,
                 'Não foi possível abrir a pasta',
-                (
-                    'O sistema não conseguiu abrir esta pasta. '
-                    'Você ainda pode acessá-la pelo caminho:\n\n'
-                    f'{resolved}'
-                ),
+                str(exc),
             )
 
     def _load_history(

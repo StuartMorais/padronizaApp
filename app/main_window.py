@@ -6,8 +6,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QSettings, Qt, QTimer, QUrl
-from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -46,6 +46,7 @@ from app.favorite_store import FavoriteStore
 from app.field_utils import condition_matches, validate_field
 from app.local_data import LocalDataStore
 from app.pdf_converter import PdfConversionError, available_converter, convert_docx_to_pdf
+from app.system_open import SystemOpenError, open_file, open_folder
 from app.runtime_settings import (
     APPLICATION,
     ORGANIZATION,
@@ -2803,11 +2804,14 @@ class MainWindow(QMainWindow):
         record = self._selected_recent()
         path = self._recent_output_path(record)
         if path and path.exists():
-            QDesktopServices.openUrl(
-                QUrl.fromLocalFile(
-                    str(path.resolve())
+            try:
+                open_file(path)
+            except SystemOpenError as exc:
+                QMessageBox.warning(
+                    self,
+                    'Não foi possível abrir o arquivo',
+                    str(exc),
                 )
-            )
         elif record:
             QMessageBox.warning(
                 self,
@@ -2820,11 +2824,14 @@ class MainWindow(QMainWindow):
         record = self._selected_recent()
         path = self._recent_output_path(record)
         if path and path.parent.exists():
-            QDesktopServices.openUrl(
-                QUrl.fromLocalFile(
-                    str(path.parent.resolve())
+            try:
+                open_folder(path.parent)
+            except SystemOpenError as exc:
+                QMessageBox.warning(
+                    self,
+                    'Não foi possível abrir a pasta',
+                    str(exc),
                 )
-            )
 
     def _edit_recent_data(self) -> None:
         record = self._selected_recent()
@@ -2971,7 +2978,14 @@ class MainWindow(QMainWindow):
         if archive_id:
             folder = self.repository.archive_dir / archive_id
             if folder.exists():
-                QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder.resolve())))
+                try:
+                    open_folder(folder)
+                except SystemOpenError as exc:
+                    QMessageBox.warning(
+                        self,
+                        'Não foi possível abrir a pasta',
+                        str(exc),
+                    )
 
     def _refresh_audit_page(self) -> None:
         if not hasattr(self, "audit_table"):
@@ -3510,7 +3524,14 @@ class MainWindow(QMainWindow):
     def _open_output_folder(self) -> None:
         folder = self._output_root()
         folder.mkdir(parents=True, exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder.resolve())))
+        try:
+            open_folder(folder)
+        except SystemOpenError as exc:
+            QMessageBox.warning(
+                self,
+                'Não foi possível abrir a pasta',
+                str(exc),
+            )
 
     def _show_placeholder_guide(self) -> None:
         self._show_tutorial_page()
