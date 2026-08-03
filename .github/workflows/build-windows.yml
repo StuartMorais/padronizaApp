@@ -17,10 +17,10 @@ jobs:
 
     steps:
       - name: Baixar o código do repositório
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Preparar Python no servidor do GitHub
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
@@ -30,17 +30,19 @@ jobs:
         run: ./build_github.ps1
 
       - name: Disponibilizar o instalador
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Padroniza-Instalador-Windows
           path: release/Padroniza-Setup-*.exe
           if-no-files-found: error
           retention-days: 30
+          compression-level: 0
 
-      - name: Disponibilizar a versão portátil
-        uses: actions/upload-artifact@v4
+      - name: Disponibilizar o executável portátil
+        uses: actions/upload-artifact@v7
         with:
           name: Padroniza-Portatil-Windows
-          path: dist/Padroniza/
+          path: dist/portable/Padroniza.exe
           if-no-files-found: error
           retention-days: 30
+          compression-level: 0
