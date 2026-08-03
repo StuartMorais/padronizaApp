@@ -8,15 +8,16 @@ python -m pip install -r requirements-build.txt
 
 Write-Host "Limpando compilações anteriores..."
 Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force "dist\Padroniza" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force release -ErrorAction SilentlyContinue
 Remove-Item -Force Padroniza.spec -ErrorAction SilentlyContinue
 
-$pyInstallerArguments = @(
+New-Item -ItemType Directory -Force release | Out-Null
+
+$commonArguments = @(
     "--noconfirm",
     "--clean",
     "--windowed",
-    "--onefile",
     "--name", "Padroniza",
     "--add-data", "app/styles;app/styles",
     "--add-data", "templates;templates",
@@ -24,21 +25,40 @@ $pyInstallerArguments = @(
 )
 
 if (Test-Path "assets\padroniza.ico") {
-    $pyInstallerArguments += @(
+    $commonArguments += @(
         "--icon",
         "assets\padroniza.ico"
     )
 }
 
-$pyInstallerArguments += "main.py"
+# ------------------------------------------------------------
+# Versão em pasta usada pelo instalador
+# ------------------------------------------------------------
 
-Write-Host "Gerando o aplicativo..."
-python -m PyInstaller @pyInstallerArguments
+Write-Host "Gerando a versão usada pelo instalador..."
+
+$installerBuildArguments = @(
+    "--onedir",
+    "--contents-directory", ".",
+    "--distpath", "dist",
+    "--workpath", "build\installer"
+) + $commonArguments + @(
+    "main.py"
+)
+
+python -m PyInstaller @installerBuildArguments
+
+if (-not (Test-Path "dist\Padroniza\Padroniza.exe")) {
+    throw "A versão em pasta do Padroniza não foi gerada."
+}
 
 New-Item -ItemType Directory -Force "dist\Padroniza\data" | Out-Null
 New-Item -ItemType Directory -Force "dist\Padroniza\output" | Out-Null
 New-Item -ItemType Directory -Force "dist\Padroniza\backups" | Out-Null
-New-Item -ItemType Directory -Force release | Out-Null
+
+# ------------------------------------------------------------
+# Gerar o instalador com Inno Setup
+# ------------------------------------------------------------
 
 $isccCandidates = @(
     "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
@@ -72,4 +92,31 @@ if (-not $installer) {
     throw "O instalador do Padroniza não foi gerado."
 }
 
-Write-Host "Instalador gerado em: $($installer.FullName)"
+# ------------------------------------------------------------
+# Versão portátil em um único arquivo EXE
+# ------------------------------------------------------------
+
+Write-Host "Gerando a versão portátil em um único arquivo..."
+
+Remove-Item -Force Padroniza.spec -ErrorAction SilentlyContinue
+
+$portableBuildArguments = @(
+    "--onefile",
+    "--distpath", "dist\portable",
+    "--workpath", "build\portable"
+) + $commonArguments + @(
+    "main.py"
+)
+
+python -m PyInstaller @portableBuildArguments
+
+$portableExecutable = "dist\portable\Padroniza.exe"
+
+if (-not (Test-Path $portableExecutable)) {
+    throw "O executável portátil do Padroniza não foi gerado."
+}
+
+Write-Host ""
+Write-Host "Compilação concluída."
+Write-Host "Instalador: $($installer.FullName)"
+Write-Host "Portátil: $((Resolve-Path $portableExecutable).Path)"
