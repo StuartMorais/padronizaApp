@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.app_paths import is_transient_pyinstaller_path
 from app.backup_manager import (
     create_backup,
     create_scheduled_backup,
@@ -69,13 +70,23 @@ from app.widgets.tutorial_page import TutorialPage
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, project_root: Path, theme_manager: ThemeManager) -> None:
+    def __init__(
+        self,
+        project_root: Path,
+        theme_manager: ThemeManager,
+        *,
+        default_output_dir: Path | None = None,
+        managed_storage: bool = False,
+    ) -> None:
         super().__init__()
         self.project_root = Path(project_root)
         self.theme_manager = theme_manager
+        self.managed_storage = bool(managed_storage)
         self.templates_dir = self.project_root / "templates"
         self.data_dir = self.project_root / "data"
-        self.default_output_dir = self.project_root / "output"
+        self.default_output_dir = Path(
+            default_output_dir or (self.project_root / "output")
+        )
         self.settings = QSettings(ORGANIZATION, APPLICATION)
         self.favorite_store = FavoriteStore(self.settings)
         self.local_store = LocalDataStore(self.data_dir)
@@ -1167,34 +1178,52 @@ class MainWindow(QMainWindow):
         output_layout.addWidget(self.converter_label)
         layout.addWidget(output)
 
-        portable = QGroupBox('Modo portátil')
+        portable = QGroupBox('Armazenamento do aplicativo')
         portable_layout = QVBoxLayout(portable)
         self.portable_checkbox = QCheckBox(
-            'Armazenar as configurações junto ao aplicativo para uso em USB ou pasta compartilhada'
+            'Armazenar as configurações junto à pasta de dados do projeto'
         )
         self.portable_checkbox.toggled.connect(self._save_preferences)
-        portable_note = QLabel(
-            "A alteração do modo portátil será aplicada na próxima inicialização. "
-            "Modelos, perfis, históricos e backups permanecem disponíveis nas pastas do projeto."
-        )
+        portable_note = QLabel()
         portable_note.setObjectName("mutedText")
         portable_note.setWordWrap(True)
         portable_row = QHBoxLayout()
         portable_row.addWidget(self.portable_checkbox)
         portable_row.addWidget(
             HelpIconButton(
-                'Modo portátil',
+                'Armazenamento persistente',
                 (
-                    '<p>Armazena as preferências junto ao aplicativo, facilitando o '
-                    'uso em pendrive ou pasta compartilhada.</p>'
-                    '<p>A mudança é aplicada após reiniciar. Os modelos e dados do '
-                    'projeto permanecem nas pastas atuais.</p>'
+                    '<p>Na versão instalada ou portátil em arquivo único, modelos, '
+                    'históricos, backups e configurações são mantidos em uma pasta '
+                    'gravável do Windows.</p>'
+                    '<p>Isso impede que os dados sejam perdidos quando o executável '
+                    'temporário for fechado ou atualizado.</p>'
                 ),
             )
         )
         portable_row.addStretch()
         portable_layout.addLayout(portable_row)
+
+        if self.managed_storage:
+            self.portable_checkbox.blockSignals(True)
+            self.portable_checkbox.setChecked(True)
+            self.portable_checkbox.blockSignals(False)
+            self.portable_checkbox.setEnabled(False)
+            portable_note.setText(
+                'A versão compilada usa armazenamento persistente automaticamente. '
+                f'Pasta de dados: {self.project_root}'
+            )
+        else:
+            portable_note.setText(
+                'A alteração será aplicada na próxima inicialização. '
+                'Modelos, perfis, históricos e backups permanecem disponíveis '
+                'nas pastas do projeto.'
+            )
+
+        open_data_folder_button = QPushButton('Abrir pasta de dados')
+        open_data_folder_button.clicked.connect(self._open_data_folder)
         portable_layout.addWidget(portable_note)
+        portable_layout.addWidget(open_data_folder_button, 0, Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(portable)
 
         backup = QGroupBox('Backup e restauração')
@@ -1387,7 +1416,12 @@ class MainWindow(QMainWindow):
         self.output_conflict_combo.setCurrentIndex(max(0, conflict_index))
 
         self.portable_checkbox.blockSignals(True)
-        self.portable_checkbox.setChecked((self.project_root / PORTABLE_MARKER).exists())
+        if self.managed_storage:
+            self.portable_checkbox.setChecked(True)
+        else:
+            self.portable_checkbox.setChecked(
+                (self.project_root / PORTABLE_MARKER).exists()
+            )
         self.portable_checkbox.blockSignals(False)
 
         self.auto_backup_checkbox.setChecked(
@@ -1396,9 +1430,20 @@ class MainWindow(QMainWindow):
         self.before_destructive_checkbox.setChecked(
             bool(self.settings.value("backup/before_destructive_actions", True, type=bool))
         )
-        self.backup_folder_input.setText(
-            str(self.settings.value("backup/folder", str(self.project_root / "backups")))
-        )
+        configured_backup_folder = str(
+            self.settings.value(
+                "backup/folder",
+                str(self.project_root / "backups"),
+            )
+            or ""
+        ).strip()
+        if (
+            not configured_backup_folder
+            or is_transient_pyinstaller_path(configured_backup_folder)
+        ):
+            configured_backup_folder = str(self.project_root / "backups")
+            self.settings.remove("backup/folder")
+        self.backup_folder_input.setText(configured_backup_folder)
         self.backup_retention_spin.setValue(
             int(
                 self.settings.value(
@@ -1432,7 +1477,11 @@ class MainWindow(QMainWindow):
             self.backup_retention_spin.value(),
         )
         self.settings.sync()
-        set_portable_mode(self.project_root, self.portable_checkbox.isChecked())
+        if not self.managed_storage:
+            set_portable_mode(
+                self.project_root,
+                self.portable_checkbox.isChecked(),
+            )
         self.theme_manager.apply_theme(self.theme_manager.current_theme())
 
     def _browse_backup_folder(self) -> None:
@@ -1454,8 +1503,12 @@ class MainWindow(QMainWindow):
             or ""
         ).strip()
 
-        if configured:
+        if configured and not is_transient_pyinstaller_path(configured):
             return Path(configured).expanduser()
+
+        if configured:
+            self.settings.remove("output/root")
+            self.settings.sync()
 
         return self.default_output_dir
 
@@ -3520,6 +3573,17 @@ class MainWindow(QMainWindow):
             profile_count=len(profiles),
             recent_documents=recent_documents,
         )
+
+    def _open_data_folder(self) -> None:
+        self.project_root.mkdir(parents=True, exist_ok=True)
+        try:
+            open_folder(self.project_root)
+        except SystemOpenError as exc:
+            QMessageBox.warning(
+                self,
+                'Não foi possível abrir a pasta de dados',
+                str(exc),
+            )
 
     def _open_output_folder(self) -> None:
         folder = self._output_root()

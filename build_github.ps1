@@ -52,10 +52,6 @@ if (-not (Test-Path "dist\Padroniza\Padroniza.exe")) {
     throw "A versão em pasta do Padroniza não foi gerada."
 }
 
-New-Item -ItemType Directory -Force "dist\Padroniza\data" | Out-Null
-New-Item -ItemType Directory -Force "dist\Padroniza\output" | Out-Null
-New-Item -ItemType Directory -Force "dist\Padroniza\backups" | Out-Null
-
 # ------------------------------------------------------------
 # Gerar o instalador com Inno Setup
 # ------------------------------------------------------------

@@ -1,5 +1,27 @@
 [
   {
+    "timestamp": "2026-08-03T13:09:14",
+    "action": "profile_deleted",
+    "description": "testdc",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-08-03T13:09:12",
+    "action": "profile_deleted",
+    "description": "modelo-teste-padroniza-textos-longos-1",
+    "details": {}
+  },
+  {
+    "timestamp": "2026-08-03T12:17:50",
+    "action": "document_generated",
+    "description": "Modelo Teste Padroniza Textos Longos_2.docx",
+    "details": {
+      "document_id": "20260803121750270221",
+      "template_id": "modelo-teste-padroniza-textos-longos",
+      "path": "C:\\Users\\ADM\\Desktop\\Modelo Teste Padroniza Textos Longos_2.docx"
+    }
+  },
+  {
     "timestamp": "2026-07-31T10:30:39",
     "action": "file_converted",
     "description": "DOCX convertido para PDF",

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 from PySide6.QtCore import QLibraryInfo, QLocale, QSettings, QTranslator
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
+from app.app_paths import (
+    StorageInitializationError,
+    initialize_persistent_storage,
+    resolve_application_paths,
+)
 from app.main_window import MainWindow
 from app.runtime_settings import (
     APPLICATION,
@@ -18,9 +22,21 @@ from app.theme_manager import ThemeManager
 
 
 def main() -> int:
-    project_root = Path(__file__).resolve().parent
-    configure_settings_storage(project_root)
-    migrate_legacy_settings(project_root)
+    paths = resolve_application_paths()
+
+    try:
+        initialize_persistent_storage(paths)
+    except StorageInitializationError as exc:
+        emergency_app = QApplication.instance() or QApplication(sys.argv)
+        QMessageBox.critical(
+            None,
+            "Não foi possível iniciar o Padroniza",
+            str(exc),
+        )
+        return 1
+
+    configure_settings_storage(paths.storage_root)
+    migrate_legacy_settings(paths.storage_root)
 
     QLocale.setDefault(
         QLocale(
@@ -29,7 +45,7 @@ def main() -> int:
         )
     )
 
-    app = QApplication(sys.argv)
+    app = QApplication.instance() or QApplication(sys.argv)
 
     qt_translator = QTranslator(app)
     translations_path = QLibraryInfo.path(
@@ -51,15 +67,17 @@ def main() -> int:
 
     theme_manager = ThemeManager(
         app=app,
-        project_root=project_root,
+        project_root=paths.resource_root,
     )
     theme_manager.apply_theme(
         theme_manager.current_theme()
     )
 
     window = MainWindow(
-        project_root=project_root,
+        project_root=paths.storage_root,
         theme_manager=theme_manager,
+        default_output_dir=paths.default_output_root,
+        managed_storage=paths.frozen,
     )
     window.show()
 

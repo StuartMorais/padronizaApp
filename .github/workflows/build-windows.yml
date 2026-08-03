@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Baixar o código do repositório
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
 
       - name: Preparar Python no servidor do GitHub
         uses: actions/setup-python@v6
@@ -36,7 +36,6 @@ jobs:
           path: release/Padroniza-Setup-*.exe
           if-no-files-found: error
           retention-days: 30
-          compression-level: 0
 
       - name: Disponibilizar o executável portátil
         uses: actions/upload-artifact@v7
@@ -45,4 +44,3 @@ jobs:
           path: dist/portable/Padroniza.exe
           if-no-files-found: error
           retention-days: 30
-          compression-level: 0

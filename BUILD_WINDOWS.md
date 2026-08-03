@@ -56,3 +56,15 @@ Use o fluxo do GitHub Actions incluído em:
 `.github\workflows\build-windows.yml`
 
 Consulte `BUILD_SEM_PYTHON_LOCAL.md` para o passo a passo.
+
+## Dados persistentes nas versões compiladas
+
+Nas versões instaladas e portáteis, arquivos graváveis não são salvos dentro
+do pacote temporário criado pelo PyInstaller. O Padroniza utiliza:
+
+- `%LOCALAPPDATA%\Padroniza` para modelos, perfis, históricos e backups;
+- `%USERPROFILE%\Documents\Padroniza` como pasta de saída padrão.
+
+A tela **Configurações** possui o botão **Abrir pasta de dados**. Ao iniciar uma
+versão nova, o aplicativo também copia dados existentes de versões antigas que
+estavam ao lado de `Padroniza.exe`, sem substituir arquivos já existentes.

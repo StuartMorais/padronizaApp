@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -65,6 +66,8 @@ class TutorialPage(QWidget):
         root.addWidget(hero)
 
         self.tabs = QTabWidget()
+        self.tabs.setUsesScrollButtons(True)
+        self.tabs.setElideMode(Qt.TextElideMode.ElideRight)
         self.tabs.addTab(self._quick_start_tab(), 'Início rápido')
         self._markers_tab_index = self.tabs.addTab(
             self._markers_tab(),
@@ -75,6 +78,8 @@ class TutorialPage(QWidget):
         self.tabs.addTab(self._advanced_features_tab(), 'Recursos avançados')
         self.tabs.addTab(self._shortcuts_and_tips_tab(), 'Atalhos e dicas')
         root.addWidget(self.tabs, 1)
+
+        self._prepare_responsive_tree()
 
     def show_markers_tab(self) -> None:
         self.tabs.setCurrentIndex(self._markers_tab_index)
@@ -385,8 +390,9 @@ class TutorialPage(QWidget):
         for row, (name, marker) in enumerate(filename_examples):
             name_label = QLabel(name)
             name_label.setObjectName('tutorialRowTitle')
-            marker_label = QLabel(marker)
+            marker_label = QLabel(self._wrappable_code(marker))
             marker_label.setObjectName('tutorialCode')
+            self._prepare_wrapping_label(marker_label)
             marker_label.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse
             )
@@ -1014,20 +1020,26 @@ class TutorialPage(QWidget):
         for row, (field_type, marker, explanation) in enumerate(rows, start=1):
             type_label = QLabel(field_type)
             type_label.setObjectName('tutorialRowTitle')
-            marker_label = QLabel(marker)
+            self._prepare_wrapping_label(type_label)
+
+            marker_label = QLabel(self._wrappable_code(marker))
             marker_label.setObjectName('tutorialCode')
+            self._prepare_wrapping_label(marker_label)
             marker_label.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse
             )
+
             explanation_label = QLabel(explanation)
             explanation_label.setObjectName('tutorialRowText')
-            explanation_label.setWordWrap(True)
+            self._prepare_wrapping_label(explanation_label)
 
             grid.addWidget(type_label, row, 0, Qt.AlignmentFlag.AlignTop)
             grid.addWidget(marker_label, row, 1, Qt.AlignmentFlag.AlignTop)
             grid.addWidget(explanation_label, row, 2)
 
-        grid.setColumnStretch(2, 1)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 2)
+        grid.setColumnStretch(2, 3)
         layout.addLayout(grid)
         return group
 
@@ -1039,6 +1051,11 @@ class TutorialPage(QWidget):
     ) -> QFrame:
         card = QFrame()
         card.setObjectName('markerExampleCard')
+        card.setMinimumWidth(0)
+        card.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(8)
@@ -1049,13 +1066,14 @@ class TutorialPage(QWidget):
 
         explanation_label = QLabel(explanation)
         explanation_label.setObjectName('markerExampleDescription')
-        explanation_label.setWordWrap(True)
+        self._prepare_wrapping_label(explanation_label)
         layout.addWidget(explanation_label)
 
         code_row = QHBoxLayout()
         code_row.setSpacing(10)
-        code_label = QLabel(marker)
+        code_label = QLabel(self._wrappable_code(marker))
         code_label.setObjectName('tutorialCodeBlock')
+        self._prepare_wrapping_label(code_label)
         code_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
@@ -1070,11 +1088,11 @@ class TutorialPage(QWidget):
         layout.addLayout(code_row)
         return card
 
-    @staticmethod
-    def _code_block(value: str) -> QLabel:
-        label = QLabel(value)
+    @classmethod
+    def _code_block(cls, value: str) -> QLabel:
+        label = QLabel(cls._wrappable_code(value))
         label.setObjectName('tutorialCodeBlock')
-        label.setWordWrap(True)
+        cls._prepare_wrapping_label(label)
         label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
@@ -1092,8 +1110,57 @@ class TutorialPage(QWidget):
 
     # Reusable UI helpers -------------------------------------------------------
     @staticmethod
+    def _wrappable_code(value: str) -> str:
+        """Add invisible break opportunities without changing appearance."""
+        display = str(value)
+        for token in ("=>", "|", ".", "_", ":"):
+            display = display.replace(token, f"{token}\u200b")
+        return display
+
+    def _prepare_responsive_tree(self) -> None:
+        responsive_names = {
+            "markerExampleDescription",
+            "tutorialButtonName",
+            "tutorialCardText",
+            "tutorialCode",
+            "tutorialCodeBlock",
+            "tutorialHeroText",
+            "tutorialNote",
+            "tutorialRowText",
+            "tutorialRowTitle",
+            "tutorialTableHeader",
+        }
+
+        for label in self.findChildren(QLabel):
+            if label.wordWrap() or label.objectName() in responsive_names:
+                self._prepare_wrapping_label(label)
+
+        for group in self.findChildren(QGroupBox):
+            group.setMinimumWidth(0)
+            group.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Preferred,
+            )
+
+    @staticmethod
+    def _prepare_wrapping_label(label: QLabel) -> QLabel:
+        """Allow long tutorial text and markers to shrink and wrap."""
+        label.setWordWrap(True)
+        label.setMinimumWidth(0)
+        label.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
+        return label
+
+    @staticmethod
     def _scroll_content() -> tuple[QWidget, QVBoxLayout]:
         content = QWidget()
+        content.setMinimumWidth(0)
+        content.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         layout = QVBoxLayout(content)
         layout.setContentsMargins(14, 14, 14, 18)
         layout.setSpacing(12)
@@ -1104,6 +1171,13 @@ class TutorialPage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        scroll.setSizeAdjustPolicy(
+            QScrollArea.SizeAdjustPolicy.AdjustIgnored
+        )
+        scroll.setMinimumWidth(0)
         scroll.setWidget(content)
         return scroll
 
@@ -1118,6 +1192,11 @@ class TutorialPage(QWidget):
     ) -> QFrame:
         card = QFrame()
         card.setObjectName("tutorialCard")
+        card.setMinimumWidth(0)
+        card.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         row = QHBoxLayout(card)
         row.setContentsMargins(16, 14, 16, 14)
         row.setSpacing(14)
@@ -1136,7 +1215,7 @@ class TutorialPage(QWidget):
 
         description_label = QLabel(description)
         description_label.setObjectName("tutorialCardText")
-        description_label.setWordWrap(True)
+        self._prepare_wrapping_label(description_label)
 
         text_layout.addWidget(title_label)
         text_layout.addWidget(description_label)
@@ -1151,13 +1230,19 @@ class TutorialPage(QWidget):
 
         return card
 
-    @staticmethod
+    @classmethod
     def _guide_group(
+        cls,
         title: str,
         description: str,
         items: Iterable[tuple[str, str]],
     ) -> QGroupBox:
         group = QGroupBox(title)
+        group.setMinimumWidth(0)
+        group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         layout = QVBoxLayout(group)
         layout.setContentsMargins(14, 16, 14, 14)
         layout.setSpacing(8)
@@ -1165,7 +1250,7 @@ class TutorialPage(QWidget):
         if description:
             description_label = QLabel(description)
             description_label.setObjectName("mutedText")
-            description_label.setWordWrap(True)
+            cls._prepare_wrapping_label(description_label)
             layout.addWidget(description_label)
 
         grid = QGridLayout()
@@ -1175,24 +1260,28 @@ class TutorialPage(QWidget):
         for row, (name, explanation) in enumerate(items):
             name_label = QLabel(name)
             name_label.setObjectName("tutorialButtonName")
-            name_label.setMinimumWidth(190)
+            cls._prepare_wrapping_label(name_label)
             name_label.setAlignment(
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
             )
 
             explanation_label = QLabel(explanation)
             explanation_label.setObjectName("tutorialRowText")
-            explanation_label.setWordWrap(True)
+            cls._prepare_wrapping_label(explanation_label)
 
             grid.addWidget(name_label, row, 0, Qt.AlignmentFlag.AlignTop)
             grid.addWidget(explanation_label, row, 1)
 
-        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 3)
         layout.addLayout(grid)
         return group
 
-    @staticmethod
-    def _shortcut_group(items: Iterable[tuple[str, str]]) -> QGroupBox:
+    @classmethod
+    def _shortcut_group(
+        cls,
+        items: Iterable[tuple[str, str]],
+    ) -> QGroupBox:
         group = QGroupBox('Atalhos de teclado')
         grid = QGridLayout(group)
         grid.setContentsMargins(14, 16, 14, 14)
@@ -1202,20 +1291,25 @@ class TutorialPage(QWidget):
         for row, (shortcut, explanation) in enumerate(items):
             shortcut_label = QLabel(shortcut)
             shortcut_label.setObjectName("tutorialShortcut")
-            shortcut_label.setMinimumWidth(120)
+            cls._prepare_wrapping_label(shortcut_label)
 
             explanation_label = QLabel(explanation)
             explanation_label.setObjectName("tutorialRowText")
-            explanation_label.setWordWrap(True)
+            cls._prepare_wrapping_label(explanation_label)
 
             grid.addWidget(shortcut_label, row, 0)
             grid.addWidget(explanation_label, row, 1)
 
-        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 3)
         return group
 
-    @staticmethod
-    def _tips_group(title: str, tips: Iterable[str]) -> QGroupBox:
+    @classmethod
+    def _tips_group(
+        cls,
+        title: str,
+        tips: Iterable[str],
+    ) -> QGroupBox:
         group = QGroupBox(title)
         layout = QVBoxLayout(group)
         layout.setContentsMargins(14, 16, 14, 14)
@@ -1224,7 +1318,7 @@ class TutorialPage(QWidget):
         for tip in tips:
             label = QLabel(f"•  {tip}")
             label.setObjectName("tutorialRowText")
-            label.setWordWrap(True)
+            cls._prepare_wrapping_label(label)
             layout.addWidget(label)
 
         return group

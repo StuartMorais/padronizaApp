@@ -1,85 +1,86 @@
 {
-  "template": {
-    "id": "modelo-teste-padroniza-textos-longos",
-    "name": "Modelo Teste Padroniza Textos Longos",
-    "description": "",
-    "category": "",
-    "version": "1.0",
-    "source_file": "template.docx",
-    "adapter": "docx"
-  },
+  "name": "Modelo Teste Padroniza Textos Longos",
+  "category": "",
+  "version": "1.0",
+  "description": "",
+  "docx": "C:\\Users\\ADM\\Desktop\\Codigos\\Python\\docx-pdf-test-files\\modelo_teste_padroniza_textos_longos.docx",
+  "filename_pattern": "{{template.name}}.docx",
+  "folder_pattern": "",
+  "numbering_enabled": false,
+  "numbering_key": "",
+  "numbering_padding": 4,
   "fields": [
     {
       "id": "orgao.nome",
-      "label": "Orgao Nome",
-      "type": "integer",
-      "required": false,
+      "label": "Órgão",
+      "type": "text",
+      "required": true,
       "section": "Dados do documento"
     },
     {
       "id": "setor.requisitante",
-      "label": "Setor Requisitante",
+      "label": "Setor Requisitante (Unidade/Setor/Depto)",
       "type": "text",
       "required": true,
       "section": "Dados do documento"
     },
     {
       "id": "responsavel.nome",
-      "label": "Responsavel Nome",
+      "label": "Responsável pela Demanda",
       "type": "text",
       "required": true,
-      "profile_key": "signatory.nome",
-      "section": "Assinaturas"
+      "section": "Assinaturas",
+      "profile_key": "signatory.nome"
     },
     {
       "id": "responsavel.matricula",
-      "label": "Responsavel Matricula",
+      "label": "Matrícula",
       "type": "text",
       "required": true,
-      "profile_key": "signatory.matricula",
-      "section": "Assinaturas"
+      "section": "Assinaturas",
+      "profile_key": "signatory.matricula"
     },
     {
       "id": "responsavel.email",
-      "label": "Responsavel Email",
+      "label": "E-mail",
       "type": "email",
       "required": true,
-      "profile_key": "signatory.email",
-      "section": "Assinaturas"
+      "section": "Assinaturas",
+      "profile_key": "signatory.email"
     },
     {
       "id": "responsavel.telefone",
-      "label": "Responsavel Telefone",
+      "label": "Telefone",
       "type": "phone",
       "required": true,
-      "profile_key": "signatory.telefone",
-      "section": "Assinaturas"
+      "section": "Assinaturas",
+      "profile_key": "signatory.telefone"
     },
     {
       "id": "processo.numero",
-      "label": "Processo Numero",
+      "label": "Número do processo",
       "type": "text",
       "required": true,
       "section": "Processo / Contrato"
     },
     {
       "id": "documento.data",
-      "label": "Documento Data",
+      "label": "Data da solicitação",
       "type": "date",
       "required": true,
-      "section": "Documento",
-      "automatic": true
+      "automatic": true,
+      "section": "Documento"
     },
     {
       "id": "contratacao.valor_total",
-      "label": "Contratacao Valor Total",
+      "label": "Valor estimado",
       "type": "currency",
       "required": true,
       "section": "Dados do documento"
     },
     {
       "id": "contratacao.quantidade",
-      "label": "Contratacao Quantidade",
+      "label": "Quantidade estimada",
       "type": "integer",
       "required": true,
       "section": "Dados do documento"
@@ -146,57 +147,11 @@
     },
     {
       "id": "responsavel.cargo",
-      "label": "Responsavel Cargo",
+      "label": "Cargo/Função",
       "type": "text",
       "required": true,
-      "profile_key": "signatory.cargo",
-      "section": "Assinaturas"
+      "section": "Assinaturas",
+      "profile_key": "signatory.cargo"
     }
-  ],
-  "sections": [
-    {
-      "title": "Dados do documento",
-      "fields": [
-        "orgao.nome",
-        "setor.requisitante",
-        "contratacao.valor_total",
-        "contratacao.quantidade",
-        "contratacao.objeto",
-        "contratacao.justificativa",
-        "contratacao.resultado_esperado",
-        "declaracao.concordancia"
-      ]
-    },
-    {
-      "title": "Assinaturas",
-      "fields": [
-        "responsavel.nome",
-        "responsavel.matricula",
-        "responsavel.email",
-        "responsavel.telefone",
-        "responsavel.cargo"
-      ]
-    },
-    {
-      "title": "Processo / Contrato",
-      "fields": [
-        "processo.numero"
-      ]
-    },
-    {
-      "title": "Documento",
-      "fields": [
-        "documento.data"
-      ]
-    }
-  ],
-  "output": {
-    "filename_pattern": "{{template.name}}.docx",
-    "folder_pattern": ""
-  },
-  "numbering": {
-    "enabled": false,
-    "key": "modelo-teste-padroniza-textos-longos",
-    "padding": 4
-  }
+  ]
 }

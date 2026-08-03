@@ -410,3 +410,11 @@ Campos especializados exibem orientação de formato e mensagens de validação
 logo abaixo da entrada. Telefones, CPF, CNPJ, CEP, moeda e porcentagem recebem
 formatação durante a digitação; porcentagens são validadas entre 0% e 100% por
 padrão. Todas as sugestões podem ser revisadas no Editor de Modelos.
+
+## Armazenamento persistente em executáveis compilados
+
+A versão portátil de arquivo único e a versão instalada separam recursos
+internos dos dados graváveis. Modelos, históricos, rascunhos e backups ficam em
+`%LOCALAPPDATA%\Padroniza`; documentos gerados usam
+`%USERPROFILE%\Documents\Padroniza` por padrão. Dados de versões antigas ao
+lado do executável são migrados por cópia na primeira inicialização.
