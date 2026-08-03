@@ -1,0 +1,59 @@
+{
+  "name": "Modelo Teste Padroniza Textos Longos",
+  "category": "",
+  "version": "1.0",
+  "description": "",
+  "docx": "C:\\Users\\ADM\\Desktop\\Codigos\\Python\\padronizacao\\templates\\modelo-teste-padroniza-textos-longos\\template.docx",
+  "filename_pattern": "{{template.name}}.docx",
+  "folder_pattern": "",
+  "numbering_enabled": false,
+  "numbering_key": "modelo-teste-padroniza-textos-longos",
+  "numbering_padding": 4,
+  "fields": [
+    {
+      "id": "setor.nome",
+      "label": "Setor Requisitante (Unidade/Setor/Depto)",
+      "type": "text",
+      "required": true,
+      "section": "Dados do documento"
+    },
+    {
+      "id": "responsável.nome",
+      "label": "Responsável pela Demanda",
+      "type": "text",
+      "required": true,
+      "section": "Assinaturas",
+      "profile_key": "signatory.nome"
+    },
+    {
+      "id": "responsável.matricula",
+      "label": "Matrícula",
+      "type": "text",
+      "required": true,
+      "section": "Assinaturas",
+      "profile_key": "signatory.matricula"
+    },
+    {
+      "id": "requisitante.email",
+      "label": "E-mail",
+      "type": "email",
+      "required": true,
+      "section": "Dados do documento"
+    },
+    {
+      "id": "responsavel.numero",
+      "label": "Telefone",
+      "type": "phone",
+      "required": true,
+      "section": "Documento",
+      "profile_key": "signatory.numero"
+    },
+    {
+      "id": "descrição.demanda",
+      "label": "Descrição da demanda",
+      "type": "multiline",
+      "required": true,
+      "section": "Dados do documento"
+    }
+  ]
+}

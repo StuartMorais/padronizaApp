@@ -1,0 +1,163 @@
+{
+  "template": {
+    "id": "dfd-diversos-sedh-sia11div",
+    "name": "Dfd   Diversos   Sedh   Sia11Div",
+    "description": "",
+    "category": "",
+    "version": "1.0",
+    "source_file": "template.docx",
+    "adapter": "docx"
+  },
+  "fields": [
+    {
+      "id": "setor.nome",
+      "label": "Setor Requisitante (Unidade/Setor/Depto)",
+      "type": "text",
+      "required": true,
+      "section": "Dados do documento"
+    },
+    {
+      "id": "responsável.nome",
+      "label": "Responsável pela Demanda",
+      "type": "text",
+      "required": true,
+      "section": "Assinaturas",
+      "profile_key": "signatory.nome"
+    },
+    {
+      "id": "responsável.matricula",
+      "label": "Matrícula",
+      "type": "text",
+      "required": true,
+      "section": "Assinaturas",
+      "profile_key": "signatory.matricula"
+    },
+    {
+      "id": "requisitante.email",
+      "label": "E-mail",
+      "type": "email",
+      "required": true,
+      "section": "Dados do documento"
+    },
+    {
+      "id": "responsavel.numero",
+      "label": "Telefone",
+      "type": "phone",
+      "required": true,
+      "section": "Documento",
+      "profile_key": "signatory.numero"
+    },
+    {
+      "id": "descrição.demanda",
+      "label": "Descrição da demanda",
+      "type": "multiline",
+      "required": true,
+      "section": "Dados do documento"
+    },
+    {
+      "id": "itens",
+      "label": "Itens",
+      "type": "repeatable_table",
+      "required": true,
+      "columns": [
+        {
+          "id": "item",
+          "label": "Item",
+          "type": "auto_number",
+          "required": false,
+          "marker": "row.number"
+        },
+        {
+          "id": "descricao",
+          "label": "Descrição",
+          "type": "multiline",
+          "required": true,
+          "marker": "itens.descricao"
+        },
+        {
+          "id": "quantidade_2023",
+          "label": "Quantidade 2023",
+          "type": "integer",
+          "required": true,
+          "marker": "itens.quantidade_2023"
+        },
+        {
+          "id": "quantidade_2024",
+          "label": "Quantidade 2024",
+          "type": "integer",
+          "required": true,
+          "marker": "itens.quantidade_2024"
+        },
+        {
+          "id": "quantidade_2025",
+          "label": "Quantidade 2025",
+          "type": "integer",
+          "required": true,
+          "marker": "itens.quantidade_2025"
+        },
+        {
+          "id": "quantidade_solicitada",
+          "label": "Quantidade Solicitada",
+          "type": "integer",
+          "required": true,
+          "marker": "itens.quantidade_solicitada"
+        },
+        {
+          "id": "pca_2026",
+          "label": "Consta no PCA para 2026?SIM / NÃO",
+          "type": "dropdown",
+          "required": true,
+          "marker": "itens.pca_2026",
+          "options": [
+            "SIM",
+            "NÃO"
+          ]
+        }
+      ],
+      "minimum_rows": 1,
+      "numbering_padding": 2,
+      "section": "Dados do documento"
+    },
+    {
+      "id": "justificativa.demanda",
+      "label": "Justificativa Demanda",
+      "type": "multiline",
+      "required": true,
+      "section": "Dados do documento"
+    }
+  ],
+  "sections": [
+    {
+      "title": "Dados do documento",
+      "fields": [
+        "setor.nome",
+        "requisitante.email",
+        "descrição.demanda",
+        "itens",
+        "justificativa.demanda"
+      ]
+    },
+    {
+      "title": "Assinaturas",
+      "fields": [
+        "responsável.nome",
+        "responsável.matricula"
+      ]
+    },
+    {
+      "title": "Documento",
+      "fields": [
+        "responsavel.numero"
+      ]
+    }
+  ],
+  "output": {
+    "filename_pattern": "{{template.name}}.docx",
+    "folder_pattern": ""
+  },
+  "numbering": {
+    "enabled": false,
+    "key": "dfd-diversos-sedh-sia11div",
+    "padding": 4
+  }
+}

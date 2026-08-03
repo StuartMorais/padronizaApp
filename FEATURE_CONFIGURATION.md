@@ -418,3 +418,12 @@ internos dos dados graváveis. Modelos, históricos, rascunhos e backups ficam e
 `%LOCALAPPDATA%\Padroniza`; documentos gerados usam
 `%USERPROFILE%\Documents\Padroniza` por padrão. Dados de versões antigas ao
 lado do executável são migrados por cópia na primeira inicialização.
+
+## Cabeçalhos mesclados em tabelas repetíveis
+
+Quando várias colunas de dados ficam abaixo de um único cabeçalho mesclado do
+Word, o Padroniza diferencia automaticamente os rótulos exibidos na grade pelo
+identificador de cada coluna. Assim, um cabeçalho visual como **Quantidade**
+com as subdivisões 2023, 2024 e 2025 aparece no aplicativo como **Quantidade
+2023**, **Quantidade 2024** e **Quantidade 2025**, sem exigir alterações no
+DOCX ou configuração manual pelo usuário.

@@ -93,6 +93,11 @@ def generate_docx(
                 + ", ".join(sorted(unresolved))
             )
 
+        _set_document_text_color(
+            document,
+            "000000",
+        )
+
         output_path.parent.mkdir(
             parents=True,
             exist_ok=True,
@@ -673,6 +678,53 @@ def _set_text_with_breaks(
             )
         parent.insert(insert_at, next_text)
         insert_at += 1
+
+
+def _set_document_text_color(
+    document,
+    color_hex: str = "000000",
+) -> None:
+    """Apply one explicit text color to every Word run in the output.
+
+    Template authors frequently use red or another highlight color while
+    placing markers.  Generated documents should not inherit those editing
+    colors, so all text runs in the main document, tables, headers, footers,
+    text boxes, and other story parts are normalized to black while keeping
+    font family, size, emphasis, borders, and paragraph formatting intact.
+    """
+
+    normalized_color = str(color_hex).strip().lstrip("#").upper()
+    if not re.fullmatch(r"[0-9A-F]{6}", normalized_color):
+        raise ValueError(
+            "A cor do texto deve usar seis dígitos hexadecimais."
+        )
+
+    for root in iter_unique_story_roots(document):
+        for run_element in root.iter(qn("w:r")):
+            run_properties = run_element.find(qn("w:rPr"))
+            if run_properties is None:
+                run_properties = OxmlElement("w:rPr")
+                run_element.insert(0, run_properties)
+
+            color_element = run_properties.find(qn("w:color"))
+            if color_element is None:
+                color_element = OxmlElement("w:color")
+                run_properties.append(color_element)
+
+            color_element.set(
+                qn("w:val"),
+                normalized_color,
+            )
+
+            for attribute_name in (
+                "w:themeColor",
+                "w:themeTint",
+                "w:themeShade",
+            ):
+                color_element.attrib.pop(
+                    qn(attribute_name),
+                    None,
+                )
 
 
 def _find_unresolved_placeholders(

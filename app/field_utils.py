@@ -154,7 +154,89 @@ def normalize_repeatable_columns(value: Any) -> list[dict[str, Any]]:
         seen_ids.add(column_id)
         columns.append(column)
 
+    _disambiguate_repeatable_column_labels(columns)
     return columns
+
+
+def _disambiguate_repeatable_column_labels(
+    columns: list[dict[str, Any]],
+) -> None:
+    """Give repeated grid headers distinct labels derived from column IDs.
+
+    Word forms frequently use one merged header cell for several physical
+    columns, for example ``Quantidade / 2023 / 2024 / 2025``. The scanner
+    sees the same merged header for every marker below it. Showing that same
+    long label three times in the application makes the fields impossible to
+    distinguish even though document generation is correct.
+
+    Only duplicated labels are adjusted. Unique labels and manually chosen
+    labels remain untouched.
+    """
+
+    indexes_by_label: dict[str, list[int]] = {}
+    for index, column in enumerate(columns):
+        label_key = _repeatable_label_key(column.get("label", ""))
+        if label_key:
+            indexes_by_label.setdefault(label_key, []).append(index)
+
+    for duplicate_indexes in indexes_by_label.values():
+        if len(duplicate_indexes) < 2:
+            continue
+
+        candidates = [
+            _repeatable_column_label_from_id(
+                str(columns[index].get("id", ""))
+            )
+            for index in duplicate_indexes
+        ]
+        candidate_keys = [
+            _repeatable_label_key(candidate)
+            for candidate in candidates
+        ]
+
+        # Do not replace a duplicated label unless the technical identifiers
+        # can produce one clear, different label for every column.
+        if (
+            any(not key for key in candidate_keys)
+            or len(set(candidate_keys)) != len(candidate_keys)
+        ):
+            continue
+
+        for index, candidate in zip(duplicate_indexes, candidates):
+            columns[index]["label"] = candidate
+            columns[index]["label_source"] = "identifier_disambiguation"
+
+
+def _repeatable_label_key(value: Any) -> str:
+    return re.sub(
+        r"[^a-z0-9áàâãéêíóôõúç]+",
+        " ",
+        str(value or "").casefold(),
+    ).strip()
+
+
+def _repeatable_column_label_from_id(column_id: str) -> str:
+    raw_id = str(column_id or "").strip()
+    generic_labels = {
+        "item": "Item",
+        "valor": "Conteúdo",
+        "value": "Conteúdo",
+        "texto": "Conteúdo",
+        "text": "Conteúdo",
+        "campo": "Campo a preencher",
+        "field": "Campo a preencher",
+    }
+    generic = generic_labels.get(raw_id.casefold())
+    if generic is not None:
+        return generic
+
+    return (
+        raw_id
+        .replace(".", " ")
+        .replace("_", " ")
+        .replace("-", " ")
+        .title()
+    )
 
 
 def normalize_dropdown_options(value: Any) -> list[dict[str, str]]:

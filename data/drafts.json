@@ -71,25 +71,5 @@
       ]
     },
     "updated_at": "2026-07-30T11:46:57"
-  },
-  "modelo-teste-padroniza-textos-longos": {
-    "values": {
-      "orgao.nome": "2345234523",
-      "setor.requisitante": "DSFASDFA",
-      "responsavel.nome": "zzdcaca",
-      "responsavel.matricula": "q342134234",
-      "responsavel.email": "adasdcS@dafas.com",
-      "responsavel.telefone": "(12) 31231-2312",
-      "processo.numero": "1231231321123123",
-      "documento.data": "03/08/2026",
-      "contratacao.valor_total": "R$ 245.234.523,45",
-      "contratacao.quantidade": "2145324523",
-      "contratacao.objeto": "1251245124",
-      "contratacao.justificativa": "A contratação é necessária em razão do crescimento da demanda registrada nos últimos períodos, que superou a capacidade operacional atualmente disponível e exige reforço de recursos, materiais ou serviços para garantir atendimento adequado, tempestivo e compatível com as necessidades institucionais.",
-      "contratacao.resultado_esperado": "Espera-se reduzir riscos operacionais, administrativos e de continuidade, mediante a disponibilização de recursos adequados, processos mais seguros e melhores condições para o acompanhamento e controle das atividades executadas.",
-      "declaracao.concordancia": true,
-      "responsavel.cargo": "asdasdasdasd"
-    },
-    "updated_at": "2026-08-03T12:18:16"
   }
 }
