@@ -1,24 +1,57 @@
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
+# ------------------------------------------------------------
+# Versão
+# ------------------------------------------------------------
+
+$version = $env:APP_VERSION
+
+if ([string]::IsNullOrWhiteSpace($version)) {
+    $version = "1.0.0"
+}
+
+$version = $version.Trim()
+$version = $version -replace "^[vV]-?", ""
+
+if ($version -notmatch "^\d+\.\d+\.\d+$") {
+    throw "Versão inválida: '$version'. Use o formato 1.5.0."
+}
+
+Write-Host "Versão da compilação: $version"
+
+# ------------------------------------------------------------
+# Dependências
+# ------------------------------------------------------------
+
 Write-Host "Instalando dependências Python..."
+
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m pip install -r requirements-build.txt
 
+# ------------------------------------------------------------
+# Limpeza
+# ------------------------------------------------------------
+
 Write-Host "Limpando compilações anteriores..."
+
 Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force release -ErrorAction SilentlyContinue
-Remove-Item -Force Padroniza.spec -ErrorAction SilentlyContinue
+Get-ChildItem -Path . -Filter "*.spec" |
+    Remove-Item -Force -ErrorAction SilentlyContinue
 
 New-Item -ItemType Directory -Force release | Out-Null
+
+# ------------------------------------------------------------
+# Argumentos comuns do PyInstaller
+# ------------------------------------------------------------
 
 $commonArguments = @(
     "--noconfirm",
     "--clean",
     "--windowed",
-    "--name", "Padroniza",
     "--add-data", "app/styles;app/styles",
     "--add-data", "templates;templates",
     "--add-data", "examples;examples"
@@ -40,7 +73,8 @@ Write-Host "Gerando a versão usada pelo instalador..."
 $installerBuildArguments = @(
     "--onedir",
     "--contents-directory", ".",
-    "--distpath", "dist",
+    "--name", "Padroniza",
+    "--distpath", "dist\installer",
     "--workpath", "build\installer"
 ) + $commonArguments + @(
     "main.py"
@@ -48,12 +82,14 @@ $installerBuildArguments = @(
 
 python -m PyInstaller @installerBuildArguments
 
-if (-not (Test-Path "dist\Padroniza\Padroniza.exe")) {
-    throw "A versão em pasta do Padroniza não foi gerada."
+$installerApplication = "dist\installer\Padroniza\Padroniza.exe"
+
+if (-not (Test-Path $installerApplication)) {
+    throw "A versão usada pelo instalador não foi gerada."
 }
 
 # ------------------------------------------------------------
-# Gerar o instalador com Inno Setup
+# Localizar ou instalar o Inno Setup
 # ------------------------------------------------------------
 
 $isccCandidates = @(
@@ -67,6 +103,7 @@ $iscc = $isccCandidates |
 
 if (-not $iscc) {
     Write-Host "Inno Setup não encontrado. Instalando pelo Chocolatey..."
+
     choco install innosetup -y --no-progress
 
     $iscc = $isccCandidates |
@@ -78,26 +115,37 @@ if (-not $iscc) {
     throw "Não foi possível localizar o compilador do Inno Setup."
 }
 
+# ------------------------------------------------------------
+# Gerar instalador
+# ------------------------------------------------------------
+
 Write-Host "Gerando o instalador..."
-& $iscc "installer\Padroniza.iss"
 
-$installer = Get-ChildItem "release\Padroniza-Setup-*.exe" |
-    Select-Object -First 1
+& $iscc `
+    "/DMyAppVersion=$version" `
+    "installer\Padroniza.iss"
 
-if (-not $installer) {
-    throw "O instalador do Padroniza não foi gerado."
+if ($LASTEXITCODE -ne 0) {
+    throw "O Inno Setup encerrou com o código $LASTEXITCODE."
+}
+
+$installerPath = "release\Padroniza-Setup-v$version.exe"
+
+if (-not (Test-Path $installerPath)) {
+    throw "O instalador não foi encontrado: $installerPath"
 }
 
 # ------------------------------------------------------------
-# Versão portátil em um único arquivo EXE
+# Versão portátil em um único EXE
 # ------------------------------------------------------------
 
 Write-Host "Gerando a versão portátil em um único arquivo..."
 
-Remove-Item -Force Padroniza.spec -ErrorAction SilentlyContinue
+$portableName = "Padroniza-v$version"
 
 $portableBuildArguments = @(
     "--onefile",
+    "--name", $portableName,
     "--distpath", "dist\portable",
     "--workpath", "build\portable"
 ) + $commonArguments + @(
@@ -106,13 +154,40 @@ $portableBuildArguments = @(
 
 python -m PyInstaller @portableBuildArguments
 
-$portableExecutable = "dist\portable\Padroniza.exe"
+$portablePath = "dist\portable\$portableName.exe"
 
-if (-not (Test-Path $portableExecutable)) {
-    throw "O executável portátil do Padroniza não foi gerado."
+if (-not (Test-Path $portablePath)) {
+    throw "O executável portátil não foi encontrado: $portablePath"
+}
+
+# ------------------------------------------------------------
+# Informar caminhos ao GitHub Actions
+# ------------------------------------------------------------
+
+$githubInstallerPath = $installerPath -replace "\\", "/"
+$githubPortablePath = $portablePath -replace "\\", "/"
+
+if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
+    "version=$version" |
+        Out-File `
+            -FilePath $env:GITHUB_OUTPUT `
+            -Encoding utf8 `
+            -Append
+
+    "installer_path=$githubInstallerPath" |
+        Out-File `
+            -FilePath $env:GITHUB_OUTPUT `
+            -Encoding utf8 `
+            -Append
+
+    "portable_path=$githubPortablePath" |
+        Out-File `
+            -FilePath $env:GITHUB_OUTPUT `
+            -Encoding utf8 `
+            -Append
 }
 
 Write-Host ""
 Write-Host "Compilação concluída."
-Write-Host "Instalador: $($installer.FullName)"
-Write-Host "Portátil: $((Resolve-Path $portableExecutable).Path)"
+Write-Host "Instalador: $installerPath"
+Write-Host "Portátil: $portablePath"
