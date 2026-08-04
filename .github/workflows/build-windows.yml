@@ -32,7 +32,7 @@ jobs:
       - name: Disponibilizar o instalador
         uses: actions/upload-artifact@v7
         with:
-          name: Padroniza-Instalador-Windows
+          name: Padroniza-Instalador-Windows-v-1.5.0
           path: release/Padroniza-Setup-*.exe
           if-no-files-found: error
           retention-days: 30
@@ -40,7 +40,7 @@ jobs:
       - name: Disponibilizar o executável portátil
         uses: actions/upload-artifact@v7
         with:
-          name: Padroniza-Portatil-Windows
+          name: Padroniza-Portatil-Windows-v-1.5.0
           path: dist/portable/Padroniza.exe
           if-no-files-found: error
           retention-days: 30
