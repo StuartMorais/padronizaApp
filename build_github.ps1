@@ -57,11 +57,26 @@ $commonArguments = @(
     "--add-data", "examples;examples"
 )
 
-if (Test-Path "assets\padroniza.ico") {
+$assetsPath = "assets"
+$iconPath = "assets\padroniza.png"
+
+if (Test-Path $assetsPath) {
+    $commonArguments += @(
+        "--add-data",
+        "assets;assets"
+    )
+}
+
+if (Test-Path $iconPath) {
+    Write-Host "Usando o ícone: $iconPath"
+
     $commonArguments += @(
         "--icon",
-        "assets\padroniza.ico"
+        $iconPath
     )
+}
+else {
+    Write-Warning "Ícone não encontrado em $iconPath. O aplicativo será compilado com o ícone padrão."
 }
 
 # ------------------------------------------------------------

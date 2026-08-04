@@ -12,6 +12,7 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+SetupIconFile=..\assets\padroniza.ico
 
 DefaultDirName={localappdata}\Programs\Padroniza
 DefaultGroupName=Padroniza

@@ -6,6 +6,11 @@ from PySide6.QtCore import QLibraryInfo, QLocale, QSettings, QTranslator
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from app.app_icon import (
+    configure_windows_app_id,
+    load_application_icon,
+)
+
 from app.app_paths import (
     StorageInitializationError,
     initialize_persistent_storage,
@@ -24,10 +29,17 @@ from app.theme_manager import ThemeManager
 def main() -> int:
     paths = resolve_application_paths()
 
+    configure_windows_app_id()
+
     try:
         initialize_persistent_storage(paths)
     except StorageInitializationError as exc:
         emergency_app = QApplication.instance() or QApplication(sys.argv)
+
+        emergency_icon = load_application_icon(paths.resource_root)
+        if not emergency_icon.isNull():
+            emergency_app.setWindowIcon(emergency_icon)
+
         QMessageBox.critical(
             None,
             "Não foi possível iniciar o Padroniza",
@@ -47,11 +59,21 @@ def main() -> int:
 
     app = QApplication.instance() or QApplication(sys.argv)
 
+    app_icon = load_application_icon(paths.resource_root)
+    if not app_icon.isNull():
+        app.setWindowIcon(app_icon)
+
     qt_translator = QTranslator(app)
     translations_path = QLibraryInfo.path(
         QLibraryInfo.LibraryPath.TranslationsPath
     )
-    for catalog in ("qtbase_pt_BR", "qt_pt_BR", "qtbase_pt", "qt_pt"):
+
+    for catalog in (
+        "qtbase_pt_BR",
+        "qt_pt_BR",
+        "qtbase_pt",
+        "qt_pt",
+    ):
         if qt_translator.load(catalog, translations_path):
             app.installTranslator(qt_translator)
             break
@@ -62,8 +84,20 @@ def main() -> int:
     app.setStyle("Fusion")
 
     settings = QSettings(ORGANIZATION, APPLICATION)
-    base_size = int(settings.value("accessibility/font_size", 10) or 10)
-    app.setFont(QFont("Segoe UI", max(8, min(18, base_size))))
+    base_size = int(
+        settings.value(
+            "accessibility/font_size",
+            10,
+        )
+        or 10
+    )
+
+    app.setFont(
+        QFont(
+            "Segoe UI",
+            max(8, min(18, base_size)),
+        )
+    )
 
     theme_manager = ThemeManager(
         app=app,
@@ -79,6 +113,10 @@ def main() -> int:
         default_output_dir=paths.default_output_root,
         managed_storage=paths.frozen,
     )
+
+    if not app_icon.isNull():
+        window.setWindowIcon(app_icon)
+
     window.show()
 
     return app.exec()
