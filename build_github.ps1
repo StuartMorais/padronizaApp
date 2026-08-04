@@ -57,24 +57,82 @@ $commonArguments = @(
     "--add-data", "examples;examples"
 )
 
-$assetsPath = "assets"
-$iconPath = "assets\padroniza.png"
+# ------------------------------------------------------------
+# Ícone do aplicativo
+# ------------------------------------------------------------
 
-if (Test-Path $assetsPath) {
+$pngIconPath = "assets\padroniza.png"
+$icoIconPath = "assets\padroniza.ico"
+$innoDefines = @()
+
+if (Test-Path $pngIconPath) {
+    Write-Host "Convertendo o ícone PNG para ICO..."
+
+    @'
+from pathlib import Path
+from PIL import Image
+
+source = Path("assets/padroniza.png")
+target = Path("assets/padroniza.ico")
+
+with Image.open(source) as image:
+    image = image.convert("RGBA")
+    image.save(
+        target,
+        format="ICO",
+        sizes=[
+            (16, 16),
+            (24, 24),
+            (32, 32),
+            (48, 48),
+            (64, 64),
+            (128, 128),
+            (256, 256),
+        ],
+    )
+
+print(f"Ícone criado: {target}")
+'@ | python -
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Não foi possível converter o ícone PNG para ICO."
+    }
+}
+
+$innoArguments = @(
+    "/DMyAppVersion=$version"
+) + $innoDefines + @(
+    "installer\Padroniza.iss"
+)
+
+& $iscc @innoArguments
+
+if ($LASTEXITCODE -ne 0) {
+    throw "O Inno Setup encerrou com o código $LASTEXITCODE."
+}
+
+if (Test-Path "assets") {
     $commonArguments += @(
         "--add-data",
         "assets;assets"
     )
 }
 
-if (Test-Path $iconPath) {
-    Write-Host "Usando o ícone: $iconPath"
+if (Test-Path $icoIconPath) {
+    Write-Host "Usando o ícone: $icoIconPath"
 
     $commonArguments += @(
         "--icon",
-        $iconPath
+        $icoIconPath
     )
+
+    $innoDefines += "/DUseAppIcon=1"
 }
+else {
+    Write-Warning "Nenhum ícone foi encontrado."
+    Write-Warning "Adicione assets\padroniza.png."
+}
+
 else {
     Write-Warning "Ícone não encontrado em $iconPath. O aplicativo será compilado com o ícone padrão."
 }
@@ -101,6 +159,18 @@ $installerApplication = "dist\installer\Padroniza\Padroniza.exe"
 
 if (-not (Test-Path $installerApplication)) {
     throw "A versão usada pelo instalador não foi gerada."
+}
+
+$innoArguments = @(
+    "/DMyAppVersion=$version"
+) + $innoDefines + @(
+    "installer\Padroniza.iss"
+)
+
+& $iscc @innoArguments
+
+if ($LASTEXITCODE -ne 0) {
+    throw "O Inno Setup encerrou com o código $LASTEXITCODE."
 }
 
 # ------------------------------------------------------------
