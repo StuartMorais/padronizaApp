@@ -1,11 +1,63 @@
 $ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+
 Set-Location $PSScriptRoot
+
+$projectRoot = $PSScriptRoot
+
+
+# ------------------------------------------------------------
+# Funções auxiliares
+# ------------------------------------------------------------
+
+function Assert-LastExitCode {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Message Código de saída: $LASTEXITCODE."
+    }
+}
+
+
+function Find-InnoSetupCompiler {
+    $command = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+
+    if (
+        $null -ne $command -and
+        -not [string]::IsNullOrWhiteSpace([string]$command.Source)
+    ) {
+        return [string]$command.Source
+    }
+
+    $candidates = @(
+        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+        "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+        "C:\Program Files\Inno Setup 6\ISCC.exe"
+    )
+
+    foreach ($candidate in $candidates) {
+        if (
+            -not [string]::IsNullOrWhiteSpace($candidate) -and
+            (Test-Path -LiteralPath $candidate -PathType Leaf)
+        ) {
+            return [string](Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    return $null
+}
+
 
 # ------------------------------------------------------------
 # Versão
 # ------------------------------------------------------------
 
-$version = $env:APP_VERSION
+$version = [string]$env:APP_VERSION
 
 if ([string]::IsNullOrWhiteSpace($version)) {
     $version = "1.0.0"
@@ -18,17 +70,40 @@ if ($version -notmatch "^\d+\.\d+\.\d+$") {
     throw "Versão inválida: '$version'. Use o formato 1.5.0."
 }
 
-Write-Host "Versão da compilação: $version"
+Write-Host ""
+Write-Host "=============================================="
+Write-Host " Padroniza v$version"
+Write-Host "=============================================="
+Write-Host ""
+
 
 # ------------------------------------------------------------
 # Dependências
 # ------------------------------------------------------------
 
-Write-Host "Instalando dependências Python..."
+Write-Host "Atualizando o pip..."
 
 python -m pip install --upgrade pip
+
+Assert-LastExitCode `
+    -Message "Não foi possível atualizar o pip."
+
+
+Write-Host "Instalando as dependências do aplicativo..."
+
 python -m pip install -r requirements.txt
+
+Assert-LastExitCode `
+    -Message "Não foi possível instalar requirements.txt."
+
+
+Write-Host "Instalando as dependências de compilação..."
+
 python -m pip install -r requirements-build.txt
+
+Assert-LastExitCode `
+    -Message "Não foi possível instalar requirements-build.txt."
+
 
 # ------------------------------------------------------------
 # Limpeza
@@ -36,48 +111,81 @@ python -m pip install -r requirements-build.txt
 
 Write-Host "Limpando compilações anteriores..."
 
-Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force release -ErrorAction SilentlyContinue
-Get-ChildItem -Path . -Filter "*.spec" |
-    Remove-Item -Force -ErrorAction SilentlyContinue
-
-New-Item -ItemType Directory -Force release | Out-Null
-
-# ------------------------------------------------------------
-# Argumentos comuns do PyInstaller
-# ------------------------------------------------------------
-
-$commonArguments = @(
-    "--noconfirm",
-    "--clean",
-    "--windowed",
-    "--add-data", "app/styles;app/styles",
-    "--add-data", "templates;templates",
-    "--add-data", "examples;examples"
+$pathsToRemove = @(
+    "build",
+    "dist",
+    "release"
 )
 
+foreach ($pathToRemove in $pathsToRemove) {
+    if (Test-Path -LiteralPath $pathToRemove) {
+        Remove-Item `
+            -LiteralPath $pathToRemove `
+            -Recurse `
+            -Force
+    }
+}
+
+Get-ChildItem `
+    -Path $projectRoot `
+    -Filter "*.spec" `
+    -File `
+    -ErrorAction SilentlyContinue |
+    Remove-Item -Force
+
+New-Item `
+    -ItemType Directory `
+    -Path "release" `
+    -Force |
+    Out-Null
+
+
 # ------------------------------------------------------------
-# Ícone do aplicativo
+# Converter PNG para ICO
 # ------------------------------------------------------------
 
-$pngIconPath = "assets\padroniza.png"
-$icoIconPath = "assets\padroniza.ico"
-$innoDefines = @()
+$assetsDirectory = Join-Path $projectRoot "assets"
+$pngIconPath = Join-Path $assetsDirectory "padroniza.png"
+$icoIconPath = Join-Path $assetsDirectory "padroniza.ico"
 
-if (Test-Path $pngIconPath) {
-    Write-Host "Convertendo o ícone PNG para ICO..."
+if (Test-Path -LiteralPath $pngIconPath -PathType Leaf) {
+    Write-Host "Convertendo assets\padroniza.png para ICO..."
 
-    @'
+    $iconConversionScript = @'
 from pathlib import Path
+
 from PIL import Image
+
 
 source = Path("assets/padroniza.png")
 target = Path("assets/padroniza.ico")
 
-with Image.open(source) as image:
-    image = image.convert("RGBA")
-    image.save(
+if not source.is_file():
+    raise FileNotFoundError(f"Ícone PNG não encontrado: {source}")
+
+with Image.open(source) as original:
+    image = original.convert("RGBA")
+
+    side = max(image.width, image.height)
+
+    square = Image.new(
+        "RGBA",
+        (side, side),
+        (0, 0, 0, 0),
+    )
+
+    position = (
+        (side - image.width) // 2,
+        (side - image.height) // 2,
+    )
+
+    square.paste(
+        image,
+        position,
+        image,
+    )
+
+    square.save(
         target,
         format="ICO",
         sizes=[
@@ -92,167 +200,291 @@ with Image.open(source) as image:
     )
 
 print(f"Ícone criado: {target}")
-'@ | python -
+'@
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "Não foi possível converter o ícone PNG para ICO."
+    $iconConversionScript | python -
+
+    Assert-LastExitCode `
+        -Message "Não foi possível converter o ícone PNG para ICO."
+}
+else {
+    Write-Warning "O arquivo assets\padroniza.png não foi encontrado."
+}
+
+
+$hasApplicationIcon = Test-Path `
+    -LiteralPath $icoIconPath `
+    -PathType Leaf
+
+if ($hasApplicationIcon) {
+    Write-Host "Ícone disponível: assets\padroniza.ico"
+}
+else {
+    Write-Warning "O aplicativo será compilado com o ícone padrão."
+}
+
+
+# ------------------------------------------------------------
+# Argumentos comuns do PyInstaller
+# ------------------------------------------------------------
+
+$commonArguments = @(
+    "--noconfirm",
+    "--clean",
+    "--windowed"
+)
+
+$dataDirectories = @(
+    @{
+        Source = "app\styles"
+        Target = "app\styles"
+    },
+    @{
+        Source = "templates"
+        Target = "templates"
+    },
+    @{
+        Source = "examples"
+        Target = "examples"
+    },
+    @{
+        Source = "assets"
+        Target = "assets"
+    }
+)
+
+foreach ($dataDirectory in $dataDirectories) {
+    $sourcePath = [string]$dataDirectory.Source
+    $targetPath = [string]$dataDirectory.Target
+
+    if (Test-Path -LiteralPath $sourcePath) {
+        $commonArguments += @(
+            "--add-data",
+            "$sourcePath;$targetPath"
+        )
     }
 }
 
-$innoArguments = @(
-    "/DMyAppVersion=$version"
-) + $innoDefines + @(
-    "installer\Padroniza.iss"
-)
-
-& $iscc @innoArguments
-
-if ($LASTEXITCODE -ne 0) {
-    throw "O Inno Setup encerrou com o código $LASTEXITCODE."
-}
-
-if (Test-Path "assets") {
-    $commonArguments += @(
-        "--add-data",
-        "assets;assets"
-    )
-}
-
-if (Test-Path $icoIconPath) {
-    Write-Host "Usando o ícone: $icoIconPath"
-
+if ($hasApplicationIcon) {
     $commonArguments += @(
         "--icon",
         $icoIconPath
     )
-
-    $innoDefines += "/DUseAppIcon=1"
-}
-else {
-    Write-Warning "Nenhum ícone foi encontrado."
-    Write-Warning "Adicione assets\padroniza.png."
 }
 
-else {
-    Write-Warning "Ícone não encontrado em $iconPath. O aplicativo será compilado com o ícone padrão."
-}
 
 # ------------------------------------------------------------
-# Versão em pasta usada pelo instalador
+# Compilação em pasta para o instalador
 # ------------------------------------------------------------
 
+Write-Host ""
 Write-Host "Gerando a versão usada pelo instalador..."
 
 $installerBuildArguments = @(
     "--onedir",
-    "--contents-directory", ".",
-    "--name", "Padroniza",
-    "--distpath", "dist\installer",
-    "--workpath", "build\installer"
+    "--contents-directory",
+    ".",
+    "--name",
+    "Padroniza",
+    "--distpath",
+    "dist",
+    "--workpath",
+    "build\installer"
 ) + $commonArguments + @(
     "main.py"
 )
 
 python -m PyInstaller @installerBuildArguments
 
-$installerApplication = "dist\installer\Padroniza\Padroniza.exe"
+Assert-LastExitCode `
+    -Message "O PyInstaller não conseguiu gerar a versão do instalador."
 
-if (-not (Test-Path $installerApplication)) {
-    throw "A versão usada pelo instalador não foi gerada."
+
+$installedExecutable = Join-Path `
+    $projectRoot `
+    "dist\Padroniza\Padroniza.exe"
+
+if (
+    -not (
+        Test-Path `
+            -LiteralPath $installedExecutable `
+            -PathType Leaf
+    )
+) {
+    throw "Executável do instalador não encontrado: $installedExecutable"
 }
 
-$innoArguments = @(
-    "/DMyAppVersion=$version"
-) + $innoDefines + @(
-    "installer\Padroniza.iss"
-)
-
-& $iscc @innoArguments
-
-if ($LASTEXITCODE -ne 0) {
-    throw "O Inno Setup encerrou com o código $LASTEXITCODE."
-}
 
 # ------------------------------------------------------------
 # Localizar ou instalar o Inno Setup
 # ------------------------------------------------------------
 
-$isccCandidates = @(
-    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-    "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
-)
+Write-Host ""
+Write-Host "Localizando o Inno Setup..."
 
-$iscc = $isccCandidates |
-    Where-Object { Test-Path $_ } |
-    Select-Object -First 1
+$iscc = Find-InnoSetupCompiler
 
-if (-not $iscc) {
-    Write-Host "Inno Setup não encontrado. Instalando pelo Chocolatey..."
+if ([string]::IsNullOrWhiteSpace([string]$iscc)) {
+    Write-Host "Inno Setup não encontrado. Tentando instalar..."
 
-    choco install innosetup -y --no-progress
-
-    $iscc = $isccCandidates |
-        Where-Object { Test-Path $_ } |
+    $chocolateyCommand = Get-Command `
+        "choco.exe" `
+        -ErrorAction SilentlyContinue |
         Select-Object -First 1
+
+    if ($null -eq $chocolateyCommand) {
+        throw "Chocolatey não foi encontrado para instalar o Inno Setup."
+    }
+
+    $chocolateyPath = [string]$chocolateyCommand.Source
+
+    if ([string]::IsNullOrWhiteSpace($chocolateyPath)) {
+        throw "O caminho do Chocolatey não pôde ser determinado."
+    }
+
+    & $chocolateyPath `
+        install `
+        innosetup `
+        --yes `
+        --no-progress
+
+    Assert-LastExitCode `
+        -Message "Não foi possível instalar o Inno Setup."
+
+    $iscc = Find-InnoSetupCompiler
 }
 
-if (-not $iscc) {
-    throw "Não foi possível localizar o compilador do Inno Setup."
+if ([string]::IsNullOrWhiteSpace([string]$iscc)) {
+    throw "Não foi possível localizar o ISCC.exe do Inno Setup."
 }
 
+$iscc = [string]$iscc
+
+if (
+    -not (
+        Test-Path `
+            -LiteralPath $iscc `
+            -PathType Leaf
+    )
+) {
+    throw "O compilador do Inno Setup não existe no caminho: $iscc"
+}
+
+Write-Host "Inno Setup encontrado em:"
+Write-Host $iscc
+
+
 # ------------------------------------------------------------
-# Gerar instalador
+# Gerar o instalador
 # ------------------------------------------------------------
 
+Write-Host ""
 Write-Host "Gerando o instalador..."
 
-& $iscc `
-    "/DMyAppVersion=$version" `
+$issPath = Join-Path `
+    $projectRoot `
     "installer\Padroniza.iss"
 
-if ($LASTEXITCODE -ne 0) {
-    throw "O Inno Setup encerrou com o código $LASTEXITCODE."
+if (
+    -not (
+        Test-Path `
+            -LiteralPath $issPath `
+            -PathType Leaf
+    )
+) {
+    throw "Arquivo do Inno Setup não encontrado: $issPath"
 }
 
-$installerPath = "release\Padroniza-Setup-v$version.exe"
+$innoArguments = @(
+    "/DMyAppVersion=$version"
+)
 
-if (-not (Test-Path $installerPath)) {
-    throw "O instalador não foi encontrado: $installerPath"
+if ($hasApplicationIcon) {
+    $innoArguments += "/DUseAppIcon=1"
 }
 
+$innoArguments += $issPath
+
+& $iscc @innoArguments
+
+Assert-LastExitCode `
+    -Message "O Inno Setup não conseguiu gerar o instalador."
+
+
+$installerPath = Join-Path `
+    $projectRoot `
+    "release\Padroniza-Setup-v$version.exe"
+
+if (
+    -not (
+        Test-Path `
+            -LiteralPath $installerPath `
+            -PathType Leaf
+    )
+) {
+    throw "Instalador não encontrado: $installerPath"
+}
+
+
 # ------------------------------------------------------------
-# Versão portátil em um único EXE
+# Compilação portátil
 # ------------------------------------------------------------
 
-Write-Host "Gerando a versão portátil em um único arquivo..."
+Write-Host ""
+Write-Host "Gerando a versão portátil..."
 
 $portableName = "Padroniza-v$version"
 
 $portableBuildArguments = @(
     "--onefile",
-    "--name", $portableName,
-    "--distpath", "dist\portable",
-    "--workpath", "build\portable"
+    "--name",
+    $portableName,
+    "--distpath",
+    "dist\portable",
+    "--workpath",
+    "build\portable"
 ) + $commonArguments + @(
     "main.py"
 )
 
 python -m PyInstaller @portableBuildArguments
 
-$portablePath = "dist\portable\$portableName.exe"
+Assert-LastExitCode `
+    -Message "O PyInstaller não conseguiu gerar a versão portátil."
 
-if (-not (Test-Path $portablePath)) {
-    throw "O executável portátil não foi encontrado: $portablePath"
+
+$portablePath = Join-Path `
+    $projectRoot `
+    "dist\portable\$portableName.exe"
+
+if (
+    -not (
+        Test-Path `
+            -LiteralPath $portablePath `
+            -PathType Leaf
+    )
+) {
+    throw "Executável portátil não encontrado: $portablePath"
 }
 
+
 # ------------------------------------------------------------
-# Informar caminhos ao GitHub Actions
+# Resultados para o GitHub Actions
 # ------------------------------------------------------------
 
-$githubInstallerPath = $installerPath -replace "\\", "/"
-$githubPortablePath = $portablePath -replace "\\", "/"
+$githubInstallerPath = (
+    Resolve-Path -LiteralPath $installerPath
+).Path -replace "\\", "/"
 
-if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
+$githubPortablePath = (
+    Resolve-Path -LiteralPath $portablePath
+).Path -replace "\\", "/"
+
+if (
+    -not [string]::IsNullOrWhiteSpace(
+        [string]$env:GITHUB_OUTPUT
+    )
+) {
     "version=$version" |
         Out-File `
             -FilePath $env:GITHUB_OUTPUT `
@@ -272,7 +504,12 @@ if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
             -Append
 }
 
+
 Write-Host ""
-Write-Host "Compilação concluída."
+Write-Host "=============================================="
+Write-Host " Compilação concluída"
+Write-Host "=============================================="
+Write-Host "Versão: $version"
 Write-Host "Instalador: $installerPath"
 Write-Host "Portátil: $portablePath"
+Write-Host ""
