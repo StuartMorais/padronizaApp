@@ -23,14 +23,30 @@ function Assert-LastExitCode {
 
 
 function Find-InnoSetupCompiler {
-    $command = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue |
+    $command = Get-Command `
+        "ISCC.exe" `
+        -ErrorAction SilentlyContinue |
         Select-Object -First 1
 
-    if (
-        $null -ne $command -and
-        -not [string]::IsNullOrWhiteSpace([string]$command.Source)
-    ) {
-        return [string]$command.Source
+    if ($null -ne $command) {
+        $commandPath = @(
+            [string]$command.Source,
+            [string]$command.Path,
+            [string]$command.Definition
+        ) |
+            Where-Object {
+                -not [string]::IsNullOrWhiteSpace($_)
+            } |
+            Select-Object -First 1
+
+        if (
+            -not [string]::IsNullOrWhiteSpace($commandPath) -and
+            (Test-Path -LiteralPath $commandPath -PathType Leaf)
+        ) {
+            return [string](
+                Resolve-Path -LiteralPath $commandPath
+            ).Path
+        }
     }
 
     $candidates = @(
@@ -45,7 +61,9 @@ function Find-InnoSetupCompiler {
             -not [string]::IsNullOrWhiteSpace($candidate) -and
             (Test-Path -LiteralPath $candidate -PathType Leaf)
         ) {
-            return [string](Resolve-Path -LiteralPath $candidate).Path
+            return [string](
+                Resolve-Path -LiteralPath $candidate
+            ).Path
         }
     }
 
@@ -105,6 +123,14 @@ Assert-LastExitCode `
     -Message "Não foi possível instalar requirements-build.txt."
 
 
+Write-Host "Garantindo a instalação do Pillow..."
+
+python -m pip install --upgrade Pillow
+
+Assert-LastExitCode `
+    -Message "Não foi possível instalar o Pillow."
+
+
 # ------------------------------------------------------------
 # Limpeza
 # ------------------------------------------------------------
@@ -144,12 +170,27 @@ New-Item `
 # Converter PNG para ICO
 # ------------------------------------------------------------
 
-$assetsDirectory = Join-Path $projectRoot "assets"
-$pngIconPath = Join-Path $assetsDirectory "padroniza.png"
-$icoIconPath = Join-Path $assetsDirectory "padroniza.ico"
+$assetsDirectory = Join-Path `
+    $projectRoot `
+    "assets"
+
+$pngIconPath = Join-Path `
+    $assetsDirectory `
+    "padroniza.png"
+
+$icoIconPath = Join-Path `
+    $assetsDirectory `
+    "padroniza.ico"
+
 
 if (Test-Path -LiteralPath $pngIconPath -PathType Leaf) {
     Write-Host "Convertendo assets\padroniza.png para ICO..."
+
+    if (Test-Path -LiteralPath $icoIconPath -PathType Leaf) {
+        Remove-Item `
+            -LiteralPath $icoIconPath `
+            -Force
+    }
 
     $iconConversionScript = @'
 from pathlib import Path
@@ -160,45 +201,101 @@ from PIL import Image
 SOURCE = Path("assets/padroniza.png")
 TARGET = Path("assets/padroniza.ico")
 
-SCALE_FACTOR = 1.60
 CANVAS_SIZE = 1024
+
+# Ampliação visual aproximada de 60%.
+SCALE_FACTOR = 1.60
+
+# Margem mínima para evitar cortes no Windows.
 MAX_CONTENT_RATIO = 0.94
 
 
 if not SOURCE.is_file():
-    raise FileNotFoundError(f"Ícone PNG não encontrado: {SOURCE}")
+    raise FileNotFoundError(
+        f"Ícone PNG não encontrado: {SOURCE}"
+    )
 
 
 with Image.open(SOURCE) as original:
     image = original.convert("RGBA")
 
-    # Detecta somente a parte visível do logotipo.
-    alpha = image.getchannel("A")
-    visible_box = alpha.getbbox()
+    if image.width <= 0 or image.height <= 0:
+        raise ValueError(
+            "O PNG possui dimensões inválidas."
+        )
+
+    # Localiza apenas a área visível do PNG.
+    alpha_channel = image.getchannel("A")
+    visible_box = alpha_channel.getbbox()
 
     if visible_box is None:
-        raise ValueError("O PNG do ícone está completamente transparente.")
+        raise ValueError(
+            "O PNG está completamente transparente."
+        )
 
     visible_logo = image.crop(visible_box)
 
     logo_width, logo_height = visible_logo.size
-    largest_dimension = max(logo_width, logo_height)
 
-    # Aumenta o conteúdo visível em 60%.
-    enlarged_dimension = int(largest_dimension * SCALE_FACTOR)
+    if logo_width <= 0 or logo_height <= 0:
+        raise ValueError(
+            "O PNG não contém uma área visível válida."
+        )
 
-    # Impede que o desenho encoste completamente nas bordas.
-    maximum_dimension = int(CANVAS_SIZE * MAX_CONTENT_RATIO)
-    target_dimension = min(enlarged_dimension, maximum_dimension)
+    # Mede quanto o logotipo ocupava dentro do PNG original.
+    source_reference_size = max(
+        image.width,
+        image.height,
+    )
 
-    resize_ratio = target_dimension / largest_dimension
+    visible_reference_size = max(
+        logo_width,
+        logo_height,
+    )
 
-    resized_width = max(1, round(logo_width * resize_ratio))
-    resized_height = max(1, round(logo_height * resize_ratio))
+    original_content_ratio = (
+        visible_reference_size /
+        source_reference_size
+    )
 
-    visible_logo = visible_logo.resize(
+    # Aumenta a ocupação visual em aproximadamente 60%.
+    target_content_ratio = min(
+        original_content_ratio * SCALE_FACTOR,
+        MAX_CONTENT_RATIO,
+    )
+
+    target_reference_size = max(
+        1,
+        round(
+            CANVAS_SIZE *
+            target_content_ratio
+        ),
+    )
+
+    resize_scale = (
+        target_reference_size /
+        visible_reference_size
+    )
+
+    resized_width = max(
+        1,
+        round(logo_width * resize_scale),
+    )
+
+    resized_height = max(
+        1,
+        round(logo_height * resize_scale),
+    )
+
+    resampling_container = getattr(
+        Image,
+        "Resampling",
+        Image,
+    )
+
+    resized_logo = visible_logo.resize(
         (resized_width, resized_height),
-        Image.Resampling.LANCZOS,
+        resampling_container.LANCZOS,
     )
 
     canvas = Image.new(
@@ -212,9 +309,11 @@ with Image.open(SOURCE) as original:
         (CANVAS_SIZE - resized_height) // 2,
     )
 
-    canvas.alpha_composite(
-        visible_logo,
-        destination=position,
+    # Compatível com as versões atuais e anteriores do Pillow.
+    canvas.paste(
+        resized_logo,
+        position,
+        resized_logo.getchannel("A"),
     )
 
     canvas.save(
@@ -222,6 +321,7 @@ with Image.open(SOURCE) as original:
         format="ICO",
         sizes=[
             (16, 16),
+            (20, 20),
             (24, 24),
             (32, 32),
             (40, 40),
@@ -234,13 +334,27 @@ with Image.open(SOURCE) as original:
     )
 
 
-print(f"Ícone ampliado em 60% e criado em: {TARGET}")
+if not TARGET.is_file():
+    raise RuntimeError(
+        f"O arquivo ICO não foi criado: {TARGET}"
+    )
+
+
+if TARGET.stat().st_size <= 0:
+    raise RuntimeError(
+        f"O arquivo ICO foi criado vazio: {TARGET}"
+    )
+
+
+print(
+    f"Ícone ampliado e criado com sucesso: {TARGET}"
+)
 '@
 
-$iconConversionScript | python -
+    $iconConversionScript | python -
 
-Assert-LastExitCode `
-    -Message "Não foi possível converter o ícone PNG para ICO."
+    Assert-LastExitCode `
+        -Message "Não foi possível converter o ícone PNG para ICO."
 }
 else {
     Write-Warning "O arquivo assets\padroniza.png não foi encontrado."
@@ -371,10 +485,28 @@ if ([string]::IsNullOrWhiteSpace([string]$iscc)) {
         throw "Chocolatey não foi encontrado para instalar o Inno Setup."
     }
 
-    $chocolateyPath = [string]$chocolateyCommand.Source
+    $chocolateyPath = @(
+        [string]$chocolateyCommand.Source,
+        [string]$chocolateyCommand.Path,
+        [string]$chocolateyCommand.Definition
+    ) |
+        Where-Object {
+            -not [string]::IsNullOrWhiteSpace($_)
+        } |
+        Select-Object -First 1
 
     if ([string]::IsNullOrWhiteSpace($chocolateyPath)) {
         throw "O caminho do Chocolatey não pôde ser determinado."
+    }
+
+    if (
+        -not (
+            Test-Path `
+                -LiteralPath $chocolateyPath `
+                -PathType Leaf
+        )
+    ) {
+        throw "Chocolatey não encontrado no caminho: $chocolateyPath"
     }
 
     & $chocolateyPath `
