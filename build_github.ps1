@@ -157,55 +157,90 @@ from pathlib import Path
 from PIL import Image
 
 
-source = Path("assets/padroniza.png")
-target = Path("assets/padroniza.ico")
+SOURCE = Path("assets/padroniza.png")
+TARGET = Path("assets/padroniza.ico")
 
-if not source.is_file():
-    raise FileNotFoundError(f"Ícone PNG não encontrado: {source}")
+SCALE_FACTOR = 1.60
+CANVAS_SIZE = 1024
+MAX_CONTENT_RATIO = 0.94
 
-with Image.open(source) as original:
+
+if not SOURCE.is_file():
+    raise FileNotFoundError(f"Ícone PNG não encontrado: {SOURCE}")
+
+
+with Image.open(SOURCE) as original:
     image = original.convert("RGBA")
 
-    side = max(image.width, image.height)
+    # Detecta somente a parte visível do logotipo.
+    alpha = image.getchannel("A")
+    visible_box = alpha.getbbox()
 
-    square = Image.new(
+    if visible_box is None:
+        raise ValueError("O PNG do ícone está completamente transparente.")
+
+    visible_logo = image.crop(visible_box)
+
+    logo_width, logo_height = visible_logo.size
+    largest_dimension = max(logo_width, logo_height)
+
+    # Aumenta o conteúdo visível em 60%.
+    enlarged_dimension = int(largest_dimension * SCALE_FACTOR)
+
+    # Impede que o desenho encoste completamente nas bordas.
+    maximum_dimension = int(CANVAS_SIZE * MAX_CONTENT_RATIO)
+    target_dimension = min(enlarged_dimension, maximum_dimension)
+
+    resize_ratio = target_dimension / largest_dimension
+
+    resized_width = max(1, round(logo_width * resize_ratio))
+    resized_height = max(1, round(logo_height * resize_ratio))
+
+    visible_logo = visible_logo.resize(
+        (resized_width, resized_height),
+        Image.Resampling.LANCZOS,
+    )
+
+    canvas = Image.new(
         "RGBA",
-        (side, side),
+        (CANVAS_SIZE, CANVAS_SIZE),
         (0, 0, 0, 0),
     )
 
     position = (
-        (side - image.width) // 2,
-        (side - image.height) // 2,
+        (CANVAS_SIZE - resized_width) // 2,
+        (CANVAS_SIZE - resized_height) // 2,
     )
 
-    square.paste(
-        image,
-        position,
-        image,
+    canvas.alpha_composite(
+        visible_logo,
+        destination=position,
     )
 
-    square.save(
-        target,
+    canvas.save(
+        TARGET,
         format="ICO",
         sizes=[
             (16, 16),
             (24, 24),
             (32, 32),
+            (40, 40),
             (48, 48),
             (64, 64),
+            (96, 96),
             (128, 128),
             (256, 256),
         ],
     )
 
-print(f"Ícone criado: {target}")
+
+print(f"Ícone ampliado em 60% e criado em: {TARGET}")
 '@
 
-    $iconConversionScript | python -
+$iconConversionScript | python -
 
-    Assert-LastExitCode `
-        -Message "Não foi possível converter o ícone PNG para ICO."
+Assert-LastExitCode `
+    -Message "Não foi possível converter o ícone PNG para ICO."
 }
 else {
     Write-Warning "O arquivo assets\padroniza.png não foi encontrado."
