@@ -21,11 +21,12 @@ Windows hospedada pelo GitHub, e não no computador local.
 6. Abra a execução concluída.
 7. Na seção `Artifacts`, baixe:
 
-   - `Padroniza-Instalador-Windows`
-   - `Padroniza-Portatil-Windows`
+   - `Padroniza-Instalador-vX.Y.Z`
+   - `Padroniza-Portatil-vX.Y.Z`
 
-O primeiro arquivo contém o instalador. O segundo contém a pasta
-portátil completa do aplicativo.
+O primeiro arquivo contém o instalador `.exe`. O segundo contém o pacote
+portátil. O modo padrão `folder` entrega um ZIP com `Padroniza.exe` e suas
+dependências, evitando uma segunda compilação demorada do PyInstaller.
 
 ## Compilação automática por versão
 
@@ -40,6 +41,6 @@ por exemplo:
   GitHub e baixar o resultado.
 - Python também não precisa estar instalado no computador do usuário
   final.
-- A compilação usa uma máquina Windows Server 2022 hospedada pelo
-  GitHub porque essa imagem inclui o Inno Setup.
+- A compilação usa uma máquina Windows Server 2022 hospedada pelo GitHub.
+- O workflow localiza o Inno Setup e o instala automaticamente quando necessário.
 - Os artefatos ficam disponíveis por 30 dias após cada compilação.

@@ -263,7 +263,11 @@ def test_old_automatic_table_layout_is_migrated_to_form_grid() -> None:
     migrated = apply_layout_metadata(fields, inferred)[0]
     assert migrated["layout"] == "form_grid"
     assert migrated["layout_group"] == "doc_table_1_segment_1"
-    assert migrated["layout_column_span"] == 2
+    # A single field with no same-row context is intentionally expanded to
+    # the whole visual row by the defensive layout normalizer.
+    assert migrated["layout_column_index"] == 0
+    assert migrated["layout_column_span"] == 3
+    assert migrated["full_width"] is True
     assert "layout_row_label" not in migrated
     assert "layout_column" not in migrated
 
@@ -306,3 +310,106 @@ def test_template_repository_preserves_form_grid_metadata(tmp_path: Path) -> Non
     assert field["layout_column_span"] == 3
     assert field["layout_grid_columns"] == 3
     assert field["layout_static_rows"] == static_rows
+
+
+def _build_single_orphan_field_template(path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).merge(table.cell(0, 1))
+    table.cell(0, 0).text = "2. Descrição da Demanda"
+    table.cell(1, 0).text = ""
+    table.cell(1, 1).text = "Descrição da demanda: {{demanda.descricao}}"
+    document.save(path)
+
+
+def test_single_field_in_partial_word_row_expands_to_full_width(tmp_path: Path) -> None:
+    path = tmp_path / "single-orphan.docx"
+    _build_single_orphan_field_template(path)
+
+    fields = smart_fields_from_docx(path)
+    field = next(item for item in fields if item["id"] == "demanda.descricao")
+
+    assert field["type"] == "multiline"
+    assert field["layout"] == "form_grid"
+    assert field["layout_grid_columns"] == 2
+    assert field["layout_column_index"] == 0
+    assert field["layout_column_span"] == 2
+    assert field["full_width"] is True
+
+    blocks = layout_blocks(fields)
+    assert blocks[0]["fields"][0]["layout_column_index"] == 0
+    assert blocks[0]["fields"][0]["layout_column_span"] == 2
+
+
+def test_same_row_static_content_preserves_partial_field_position(tmp_path: Path) -> None:
+    path = tmp_path / "static-peer.docx"
+    document = Document()
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).merge(table.cell(0, 1))
+    table.cell(0, 0).text = "2. Descrição da Demanda"
+    table.cell(1, 0).text = "Orientação para preenchimento"
+    table.cell(1, 1).text = "Descrição: {{demanda.descricao}}"
+    document.save(path)
+
+    fields = smart_fields_from_docx(path)
+    field = next(item for item in fields if item["id"] == "demanda.descricao")
+
+    assert field["layout_column_index"] == 1
+    assert field["layout_column_span"] == 1
+    assert field["layout_row_static_cells"][0]["text"] == "Orientação para preenchimento"
+
+    blocks = layout_blocks(fields)
+    assert blocks[0]["row_static_cells"][0]["layout_column_index"] == 0
+
+
+def test_exact_partial_position_can_be_locked() -> None:
+    from app.layout_inference import normalize_form_layout
+
+    fields = normalize_form_layout(
+        [
+            {
+                "id": "demanda.descricao",
+                "type": "multiline",
+                "layout": "form_grid",
+                "layout_group": "g",
+                "layout_row": "r",
+                "layout_grid_columns": 2,
+                "layout_column_index": 1,
+                "layout_column_span": 1,
+                "layout_position_locked": True,
+            }
+        ]
+    )
+
+    assert fields[0]["layout_column_index"] == 1
+    assert fields[0]["layout_column_span"] == 1
+    assert "full_width" not in fields[0]
+
+
+def test_layout_quality_rejects_overlapping_form_grid_cells() -> None:
+    from app.layout_inference import layout_quality_issues
+
+    issues = layout_quality_issues(
+        [
+            {
+                "id": "a",
+                "layout": "form_grid",
+                "layout_group": "g",
+                "layout_row": "r",
+                "layout_grid_columns": 3,
+                "layout_column_index": 0,
+                "layout_column_span": 2,
+            },
+            {
+                "id": "b",
+                "layout": "form_grid",
+                "layout_group": "g",
+                "layout_row": "r",
+                "layout_grid_columns": 3,
+                "layout_column_index": 1,
+                "layout_column_span": 2,
+            },
+        ]
+    )
+
+    assert any("sobrepostas" in issue for issue in issues)

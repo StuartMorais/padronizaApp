@@ -23,8 +23,8 @@ PrivilegesRequired=lowest
 OutputDir=..\release
 OutputBaseFilename=Padroniza-Setup-v{#MyAppVersion}
 
-Compression=lzma2
-SolidCompression=yes
+Compression=lzma2/fast
+SolidCompression=no
 WizardStyle=modern
 
 UninstallDisplayIcon={app}\{#MyAppExeName}

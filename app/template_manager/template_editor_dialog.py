@@ -48,6 +48,7 @@ from app.dialogs.field_library_dialog import FieldLibraryDialog
 from app.field_library import FieldLibraryStore
 from app.app_paths import resolve_application_paths
 from app.field_utils import FIELD_TYPE_ORDER
+from app.layout_inference import layout_quality_issues, normalize_form_layout
 from app.smart_template import readiness_report, smart_fields_from_docx
 from app.template_diagnostics import diagnose_template, diagnostics_text
 from app.system_open import SystemOpenError, open_file
@@ -1563,6 +1564,8 @@ class TemplateEditorDialog(QDialog):
                     "tag_type",
                     "layout_order",
                     "layout_static_rows",
+                    "layout_row_static_cells",
+                    "layout_position_locked",
                     "label_source",
                     "section_source",
                     "validation_hint",
@@ -1694,6 +1697,8 @@ class TemplateEditorDialog(QDialog):
 
             fields.append(field)
 
+        fields = normalize_form_layout(fields)
+
         if validate:
             choice_groups: dict[str, list[dict[str, Any]]] = {}
             table_groups: dict[str, list[str]] = {}
@@ -1724,6 +1729,14 @@ class TemplateEditorDialog(QDialog):
                     raise ValueError(
                         f"A Tabela '{group}' precisa conter pelo menos dois campos."
                     )
+
+            layout_issues = layout_quality_issues(fields)
+            if layout_issues:
+                raise ValueError(
+                    "A organização visual possui conflitos:\n- "
+                    + "\n- ".join(layout_issues)
+                    + "\nRevise Campos e seções > Prévia do formulário."
+                )
 
         return fields
 

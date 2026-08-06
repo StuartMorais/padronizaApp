@@ -8,7 +8,7 @@ Aplicativo desktop em Python/PySide6 para transformar modelos DOCX em formulári
 2. O aplicativo detecta campos, títulos de seção, grupos de escolha, grades de formulário e tabelas de registros.
 3. Na tela **Criar modelo > Campos e seções**, o autor revisa tipos, obrigatoriedade, agrupamento e layout.
 4. O cliente preenche um formulário organizado em seções recolhíveis, grades estáveis, grupos de escolha em caixas grandes e clicáveis e tabelas.
-5. O aplicativo gera uma cópia do DOCX preservando estrutura e formatação, com todos os valores preenchidos em preto.
+5. O aplicativo gera uma cópia do DOCX preservando estrutura e formatação.
 6. Opcionalmente, o DOCX gerado pode ser convertido para PDF.
 
 ## Marcadores suportados
@@ -84,16 +84,12 @@ A suíte cobre o motor DOCX e a inferência de layout, incluindo:
 
 - substituição em parágrafos, tabelas, cabeçalhos e rodapés;
 - tags divididas entre vários runs do Word;
-- preservação das cores do texto fixo e aplicação de preto somente aos valores preenchidos;
+- preservação de negrito, itálico, sublinhado e cores;
 - valores com múltiplas linhas;
 - tabelas repetíveis;
 - erros de campos obrigatórios não resolvidos;
 - detecção de escolhas exclusivas, grades de formulário e tabelas de registros a partir da estrutura do DOCX;
 - leitura e geração da tag `single_choice:` com textos completos.
-
-## Cor dos valores gerados
-
-Todo conteúdo vindo do formulário é gravado com cor preta explícita (`000000`). O modelo mantém suas cores originais em títulos, rótulos, avisos e outros textos fixos. A fonte, o tamanho, o negrito, o itálico e o sublinhado definidos na tag continuam sendo preservados.
 
 ## Formato recomendado
 

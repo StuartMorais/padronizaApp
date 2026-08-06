@@ -70,12 +70,21 @@ class _LayoutDetailsDialog(QDialog):
         self.choice_required = QCheckBox("Exigir uma opção no grupo")
         self.choice_required.setChecked(bool(values.get("choice_required", False)))
 
+        self.position_locked = QCheckBox(
+            "Preservar a posição parcial mesmo quando a linha tiver apenas um campo"
+        )
+        self.position_locked.setChecked(bool(values.get("layout_position_locked", False)))
+        self.position_locked.setToolTip(
+            "Por padrão, uma linha com um único campo ocupa toda a largura para evitar espaços vazios."
+        )
+
         explanation = QLabel(
             "Em Grupo de escolha, uma lista de opções pode ser exibida como caixas grandes "
             "e exclusivas; várias caixas de seleção também podem compartilhar o mesmo grupo. "
             "Em Grade do documento, use a mesma chave de linha para campos que aparecem "
             "lado a lado no Word; Início, Largura e Total de colunas preservam células mescladas. "
-            "Tabela de registros deve ser usada somente para dados com cabeçalhos e várias linhas."
+            "Tabela de registros deve ser usada somente para dados com cabeçalhos e várias linhas. "
+            "Linhas com um único campo são ampliadas automaticamente; marque Preservar posição somente quando isso for intencional."
         )
         explanation.setWordWrap(True)
         explanation.setObjectName("mutedText")
@@ -90,6 +99,7 @@ class _LayoutDetailsDialog(QDialog):
         form.addRow("Largura da célula:", self.column_span_input)
         form.addRow("Total de colunas:", self.grid_columns_input)
         form.addRow("", self.choice_required)
+        form.addRow("", self.position_locked)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
@@ -123,6 +133,8 @@ class _LayoutDetailsDialog(QDialog):
             result["layout_grid_columns"] = self.grid_columns_input.value()
         if self.choice_required.isChecked():
             result["choice_required"] = True
+        if self.position_locked.isChecked():
+            result["layout_position_locked"] = True
         return result
 
 
@@ -173,7 +185,9 @@ class FieldLayoutEditor(QWidget):
                 "layout_grid_columns",
                 "layout_order",
                 "layout_static_rows",
+                "layout_row_static_cells",
                 "choice_required",
+                "layout_position_locked",
             )
             if key in field
         }
@@ -202,6 +216,8 @@ class FieldLayoutEditor(QWidget):
                 "layout_grid_columns",
                 "layout_order",
                 "layout_static_rows",
+                "layout_row_static_cells",
+                "layout_position_locked",
             ):
                 if key in self._details:
                     result[key] = self._details[key]
@@ -231,7 +247,7 @@ class FieldLayoutEditor(QWidget):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         updated = dialog.values()
-        for key in ("layout_order", "layout_static_rows"):
+        for key in ("layout_order", "layout_static_rows", "layout_row_static_cells"):
             if key in self._details:
                 updated[key] = self._details[key]
         self._details = updated

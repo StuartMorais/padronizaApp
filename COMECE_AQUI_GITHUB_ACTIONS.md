@@ -39,8 +39,10 @@ projeto, cole no editor e clique em `Commit changes`.
 2. Clique em `Compilar Padroniza para Windows`.
 3. Clique em `Run workflow`.
 4. Selecione a branch `main`.
-5. Clique novamente em `Run workflow`.
-6. Aguarde a execução ficar verde.
+5. Informe a versão, por exemplo `1.5.0`.
+6. Mantenha `portable_mode` como `folder` para a compilação mais rápida.
+7. Clique novamente em `Run workflow`.
+8. Aguarde a execução ficar verde.
 
 ## 4. Baixar o resultado
 
@@ -48,11 +50,11 @@ Abra a execução concluída e, no final da página, localize `Artifacts`.
 
 Baixe:
 
-- `Padroniza-Instalador-Windows`
-- `Padroniza-Portatil-Windows`
+- `Padroniza-Instalador-vX.Y.Z`
+- `Padroniza-Portatil-vX.Y.Z`
 
-O primeiro contém o instalador `.exe`. O segundo contém a pasta portátil
-completa do aplicativo.
+O primeiro contém o instalador `.exe`. No modo `folder`, o segundo contém
+um ZIP com `Padroniza.exe` e os arquivos auxiliares necessários.
 
 ## Problemas comuns
 
@@ -76,3 +78,10 @@ A pasta `installer` ou o arquivo `installer/Padroniza.iss` não foi enviado.
 
 Abra o workflow pela barra lateral da aba Actions. O arquivo também precisa
 estar na branch principal.
+
+### A execução parece travada
+
+Abra o job para identificar a etapa ativa. Cada fase agora possui um limite
+de tempo próprio. O modo portátil `onefile` executa o PyInstaller uma segunda
+vez e pode demorar bastante; use `folder` salvo quando um único executável
+portátil for realmente necessário.

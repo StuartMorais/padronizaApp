@@ -5,9 +5,9 @@
 - A substituição de marcadores é feita diretamente nos nós de texto ocupados pela tag.
 - Texto e formatação antes e depois da tag permanecem nos runs originais.
 - Tags divididas automaticamente pelo Word entre vários runs continuam funcionando.
-- O valor preenchido herda fonte, tamanho, negrito, itálico e sublinhado do início da tag, mas recebe sempre a cor preta.
+- O valor preenchido herda a formatação do início da tag.
 - Quebras de linha e espaços significativos são preservados.
-- Foi removida a normalização global que convertia todo o documento para preto; somente os valores gerados são forçados para preto.
+- Foi removida a normalização global que convertia todo o documento para preto.
 
 ## Organização do formulário
 
@@ -56,14 +56,11 @@
 - Modelos salvos com a classificação automática antiga `doc_table_*` são migrados ao executar **Localizar campos** novamente.
 - Tabelas de registros continuam sendo detectadas quando há cabeçalho e pelo menos duas linhas alinhadas de dados.
 
-A suíte agora contém 21 testes automatizados.
+A suíte agora contém 19 testes automatizados.
 
-## Valores preenchidos sempre em preto
+## Layout defensivo para novos modelos
 
-- Todo texto vindo do formulário recebe `w:color=000000` no DOCX gerado.
-- Rótulos, títulos, avisos, logotipos e demais textos fixos mantêm as cores originais do modelo.
-- A regra se aplica a parágrafos, tabelas, cabeçalhos, rodapés, linhas repetíveis, datas, listas, escolhas exclusivas e controles nativos do Word.
-- Quando a tag está no mesmo run de um rótulo colorido, o motor separa o valor em um run próprio para não recolorir o texto fixo.
-- Negrito, itálico, sublinhado, tamanho e família da fonte continuam sendo herdados da tag.
-
-A suíte agora contém 21 testes automatizados.
+- Campos isolados em linhas parciais do Word agora ocupam toda a largura automaticamente.
+- Conteúdo fixo na mesma linha é preservado ao lado do campo.
+- Conflitos de grade bloqueiam o salvamento e aparecem na verificação de prontidão.
+- Foi adicionada uma opção avançada para preservar intencionalmente uma posição parcial.

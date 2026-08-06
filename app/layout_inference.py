@@ -124,7 +124,7 @@ def apply_layout_metadata(
     """Merge inferred metadata without overwriting deliberate user choices."""
 
     result: list[dict[str, Any]] = []
-    for source in fields:
+    for source in normalize_form_layout(fields):
         field = dict(source)
         field_id = str(field.get("id", "")).strip()
         suggestion = inferred.get(field_id, {})
@@ -170,6 +170,8 @@ def apply_layout_metadata(
                 "layout_grid_columns",
                 "layout_order",
                 "layout_static_rows",
+                "layout_row_static_cells",
+                "layout_position_locked",
             ):
                 field.pop(stale_key, None)
 
@@ -185,6 +187,8 @@ def apply_layout_metadata(
             "layout_grid_columns",
             "layout_order",
             "layout_static_rows",
+            "layout_row_static_cells",
+            "layout_position_locked",
             "group",
             "selection",
             "choice_required",
@@ -197,7 +201,163 @@ def apply_layout_metadata(
                 field[key] = value
 
         result.append(field)
+    return normalize_form_layout(result)
+
+
+def normalize_form_layout(
+    fields: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return defensive layout metadata suitable for rendering and saving.
+
+    Word tables often contain invisible grid columns or an empty cell before a
+    single input. Reproducing that geometry literally leaves an isolated field
+    on the right side of the form. A row with one editable field and no
+    same-row static content is therefore expanded across the available grid.
+
+    Set ``layout_position_locked`` on a field when an exact partial-row
+    placement is intentional.
+    """
+
+    result = [dict(source) for source in fields if isinstance(source, dict)]
+    groups: OrderedDict[tuple[str, str], list[dict[str, Any]]] = OrderedDict()
+    for field in result:
+        if str(field.get("layout", "auto")).strip().casefold() != "form_grid":
+            continue
+        group = str(field.get("layout_group", "")).strip()
+        if not group:
+            continue
+        section = str(field.get("section", "")).strip()
+        groups.setdefault((section, group), []).append(field)
+
+    for _group_key, group_fields in groups.items():
+        grid_columns = max(
+            [_safe_layout_int(field.get("layout_grid_columns"), 1) for field in group_fields]
+            + [1]
+        )
+        grid_columns = max(1, min(grid_columns, 12))
+
+        rows: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+        row_static: dict[str, list[dict[str, Any]]] = {}
+        for index, field in enumerate(group_fields):
+            row_key = str(field.get("layout_row", f"row_{index}")).strip() or f"row_{index}"
+            field["layout_row"] = row_key
+            field["layout_grid_columns"] = grid_columns
+            rows.setdefault(row_key, []).append(field)
+            for cell in field.get("layout_row_static_cells", []) or []:
+                if not isinstance(cell, dict):
+                    continue
+                cell_row = str(cell.get("layout_row", row_key)).strip() or row_key
+                row_static.setdefault(cell_row, []).append(cell)
+
+        for row_key, row_fields in rows.items():
+            for field in row_fields:
+                start = _safe_layout_int(field.get("layout_column_index"), 0)
+                span = _safe_layout_int(field.get("layout_column_span"), 1)
+                start = max(0, min(start, grid_columns - 1))
+                span = max(1, min(span, grid_columns - start))
+                field["layout_column_index"] = start
+                field["layout_column_span"] = span
+
+            same_row_static = [
+                cell for cell in row_static.get(row_key, [])
+                if str(cell.get("text", "")).strip()
+            ]
+            if (
+                len(row_fields) == 1
+                and not same_row_static
+                and not bool(row_fields[0].get("layout_position_locked", False))
+            ):
+                # One field with no peer/context should never float in a
+                # leftover Word grid column. This also fixes long text areas.
+                row_fields[0]["layout_column_index"] = 0
+                row_fields[0]["layout_column_span"] = grid_columns
+                row_fields[0]["full_width"] = True
+
     return result
+
+
+def layout_quality_issues(fields: Iterable[dict[str, Any]]) -> list[str]:
+    """Return hard layout problems that should block template saving."""
+
+    issues: list[str] = []
+    source_fields = [dict(field) for field in fields if isinstance(field, dict)]
+    groups: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+    for field in source_fields:
+        if str(field.get("layout", "auto")).strip().casefold() != "form_grid":
+            continue
+        field_id = str(field.get("id", "")).strip() or "campo sem ID"
+        group = str(field.get("layout_group", "")).strip()
+        row = str(field.get("layout_row", "")).strip()
+        if not group:
+            issues.append(f"{field_id}: Grade do documento sem grupo")
+            continue
+        if not row:
+            issues.append(f"{field_id}: Grade do documento sem linha")
+            continue
+        groups.setdefault(group, []).append(field)
+
+    for group, group_fields in groups.items():
+        rows: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+        static_by_row: dict[str, list[dict[str, Any]]] = {}
+        for field in group_fields:
+            row = str(field.get("layout_row", "")).strip()
+            rows.setdefault(row, []).append(field)
+            for cell in field.get("layout_row_static_cells", []) or []:
+                if isinstance(cell, dict):
+                    cell_row = str(cell.get("layout_row", row)).strip() or row
+                    static_by_row.setdefault(cell_row, []).append(cell)
+
+        for row, row_fields in rows.items():
+            totals = {
+                _safe_layout_int(field.get("layout_grid_columns"), 1)
+                for field in row_fields
+            }
+            if len(totals) > 1:
+                issues.append(f"{group}/{row}: campos usam totais de colunas diferentes")
+            total = max(totals or {1})
+            total = max(1, total)
+
+            occupied: list[tuple[int, int, str]] = []
+            seen_cells: set[tuple[int, int]] = set()
+            for field in row_fields:
+                start = _safe_layout_int(field.get("layout_column_index"), 0)
+                span = _safe_layout_int(field.get("layout_column_span"), 1)
+                field_id = str(field.get("id", "")).strip() or "campo"
+                if start < 0 or span < 1 or start + span > total:
+                    issues.append(f"{group}/{row}: posição inválida em {field_id}")
+                    continue
+                cell_key = (start, span)
+                # Several tags in the same physical Word cell are intentionally
+                # stacked and do not count as an overlap.
+                if cell_key not in seen_cells:
+                    occupied.append((start, start + span, field_id))
+                    seen_cells.add(cell_key)
+
+            for cell in static_by_row.get(row, []):
+                start = _safe_layout_int(cell.get("layout_column_index"), 0)
+                span = _safe_layout_int(cell.get("layout_column_span"), 1)
+                label = str(cell.get("text", "")).strip() or "texto fixo"
+                if start < 0 or span < 1 or start + span > total:
+                    issues.append(f"{group}/{row}: posição inválida no texto fixo '{label[:40]}'")
+                    continue
+                occupied.append((start, start + span, label))
+
+            occupied.sort(key=lambda item: (item[0], item[1]))
+            for previous, current in zip(occupied, occupied[1:]):
+                if current[0] < previous[1]:
+                    issues.append(
+                        f"{group}/{row}: células sobrepostas entre '{previous[2]}' e '{current[2]}'"
+                    )
+
+    # Keep the readiness panel readable even for badly malformed templates.
+    return list(dict.fromkeys(issues))[:12]
+
+
+def _safe_layout_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(default)
 
 
 def layout_blocks(fields: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -213,7 +373,7 @@ def layout_blocks(fields: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
             blocks.append({"type": "grid", "fields": normal_buffer})
             normal_buffer = []
 
-    for source in fields:
+    for source in normalize_form_layout(fields):
         field = dict(source)
         layout = str(field.get("layout", "auto")).strip().casefold()
         field_type = str(field.get("type", "text")).strip().casefold()
@@ -261,6 +421,7 @@ def layout_blocks(fields: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                         "label": str(field.get("layout_group_label", "")).strip(),
                         "fields": [],
                         "static_rows": [],
+                        "row_static_cells": [],
                     }
                 )
             block = blocks[index]
@@ -278,6 +439,19 @@ def layout_blocks(fields: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                     if row_key not in known:
                         block["static_rows"].append(dict(row))
                         known.add(row_key)
+
+                known_row_cells = {
+                    _row_static_cell_key(cell)
+                    for cell in block.get("row_static_cells", [])
+                    if isinstance(cell, dict)
+                }
+                for cell in field.get("layout_row_static_cells", []) or []:
+                    if not isinstance(cell, dict):
+                        continue
+                    cell_key = _row_static_cell_key(cell)
+                    if cell_key not in known_row_cells:
+                        block["row_static_cells"].append(dict(cell))
+                        known_row_cells.add(cell_key)
             continue
 
         normal_buffer.append(field)
@@ -384,7 +558,19 @@ def _analyze_table(
         # Form grid: preserve each Word row, physical cell start and grid span.
         group = current_group
         static_rows_by_group.setdefault(group, [])
-        for cell, field_id, _field_type, label in row.matches:
+        same_row_static_cells = [
+            {
+                "layout_row": f"row_{row.index}",
+                "layout_order": row.index,
+                "layout_column_index": cell.start,
+                "layout_column_span": max(1, cell.span),
+                "layout_grid_columns": grid_columns,
+                "text": _cell_label_without_tags(cell.text),
+            }
+            for cell in row.plain_cells
+            if _cell_label_without_tags(cell.text)
+        ]
+        for match_index, (cell, field_id, _field_type, label) in enumerate(row.matches):
             values = metadata.setdefault(field_id, {})
             if current_section:
                 values.setdefault("section", current_section)
@@ -402,6 +588,8 @@ def _analyze_table(
                     "layout_order": row.index,
                 }
             )
+            if match_index == 0 and same_row_static_cells:
+                values["layout_row_static_cells"] = same_row_static_cells
             first_form_field_by_group.setdefault(group, field_id)
 
     # Store static context once, on the first field of each form-grid group.
@@ -788,6 +976,17 @@ def _choice_group_from_row(row_text: str, labels: list[str], section: str) -> st
     if common != "Escolha uma opção":
         return common
     return section or "Escolha uma opção"
+
+
+def _row_static_cell_key(cell: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        cell.get("layout_row"),
+        cell.get("layout_order"),
+        cell.get("layout_column_index"),
+        cell.get("layout_column_span"),
+        cell.get("layout_grid_columns"),
+        str(cell.get("text", "")).strip(),
+    )
 
 
 def _static_row_key(row: dict[str, Any]) -> tuple[Any, ...]:

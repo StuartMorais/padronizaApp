@@ -1043,6 +1043,8 @@ class TemplateRepository:
             "layout_column_span",
             "layout_grid_columns",
             "layout_static_rows",
+            "layout_row_static_cells",
+            "layout_position_locked",
             "layout_order",
             "choice_required",
             "tag_type",

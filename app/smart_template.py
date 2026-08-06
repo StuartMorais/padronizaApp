@@ -7,7 +7,12 @@ from typing import Any
 from xml.etree import ElementTree
 
 from app.field_utils import validation_hint
-from app.layout_inference import apply_layout_metadata, infer_docx_layout
+from app.layout_inference import (
+    apply_layout_metadata,
+    infer_docx_layout,
+    layout_quality_issues,
+    normalize_form_layout,
+)
 from app.placeholder_scanner import create_default_fields, scan_docx_fields
 
 VALID_FIELD_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
@@ -101,7 +106,7 @@ def smart_fields_from_docx(
         if hint:
             field.setdefault("validation_hint", hint)
 
-    return fields
+    return normalize_form_layout(fields)
 
 
 def suggest_field_type(field_context: str) -> str:
@@ -330,6 +335,13 @@ def readiness_report(
     tokens = set(PLACEHOLDER_TOKEN.findall(str(filename_pattern)))
     unknown_tokens = sorted(token for token in tokens if token not in known_tokens)
     checks.append({"label": 'Marcadores do nome do arquivo', "ok": not unknown_tokens, "detail": ", ".join(unknown_tokens)})
+
+    layout_issues = layout_quality_issues(fields)
+    checks.append({
+        "label": "Organização visual do formulário",
+        "ok": not layout_issues,
+        "detail": " • ".join(layout_issues),
+    })
 
     health: dict[str, Any] = {}
     if docx_path and Path(docx_path).exists():

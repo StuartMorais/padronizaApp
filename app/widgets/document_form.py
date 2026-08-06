@@ -480,6 +480,14 @@ class DocumentForm(QWidget):
             row_key = str(field.get("layout_row", f"row_{index}")).strip() or f"row_{index}"
             field_rows.setdefault(row_key, []).append(field)
 
+        row_static_cells: dict[str, list[dict[str, Any]]] = {}
+        for cell in block_definition.get("row_static_cells", []) or []:
+            if not isinstance(cell, dict):
+                continue
+            row_key = str(cell.get("layout_row", "")).strip()
+            if row_key:
+                row_static_cells.setdefault(row_key, []).append(cell)
+
         items: list[tuple[int, int, str, Any]] = []
         for sequence, row in enumerate(block_definition.get("static_rows", []) or []):
             if not isinstance(row, dict):
@@ -492,12 +500,12 @@ class DocumentForm(QWidget):
                     row,
                 )
             )
-        for sequence, (_row_key, row_fields) in enumerate(field_rows.items()):
+        for sequence, (row_key, row_fields) in enumerate(field_rows.items()):
             order = min(
                 self._safe_int(field.get("layout_order"), sequence)
                 for field in row_fields
             )
-            items.append((order, 1, "fields", row_fields))
+            items.append((order, 1, "fields", (row_key, row_fields)))
         items.sort(key=lambda item: (item[0], item[1]))
 
         visual_row = 0
@@ -521,7 +529,8 @@ class DocumentForm(QWidget):
                 visual_row += 1
                 continue
 
-            row_fields = list(payload)
+            row_key, row_payload = payload
+            row_fields = list(row_payload)
             cells: OrderedDict[tuple[int, int], list[dict[str, Any]]] = OrderedDict()
             for field in sorted(
                 row_fields,
@@ -534,6 +543,26 @@ class DocumentForm(QWidget):
                 cells.setdefault((start, span), []).append(field)
 
             row_added = False
+            for static_cell in sorted(
+                row_static_cells.get(str(row_key), []),
+                key=lambda item: self._safe_int(item.get("layout_column_index"), 0),
+            ):
+                text = str(static_cell.get("text", "")).strip()
+                if not text:
+                    continue
+                start = self._safe_int(static_cell.get("layout_column_index"), 0)
+                span = self._safe_int(static_cell.get("layout_column_span"), 1)
+                start = max(0, min(start, grid_columns - 1))
+                span = max(1, min(span, grid_columns - start))
+                grid.addWidget(
+                    self._create_form_grid_static(text),
+                    visual_row,
+                    start,
+                    1,
+                    span,
+                )
+                row_added = True
+
             for (start, span), cell_fields in cells.items():
                 cell_container = QFrame()
                 cell_container.setObjectName("formDocumentGridCell")
