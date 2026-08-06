@@ -1,49 +1,14 @@
-param(
-    [switch]$SkipDependencyInstall,
-    [switch]$SkipInnoInstall,
-    [ValidateSet("folder", "onefile")]
-    [string]$PortableMode = "folder"
-)
-
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 Set-Location $PSScriptRoot
 
 $projectRoot = $PSScriptRoot
-$buildStartedAt = Get-Date
 
 
 # ------------------------------------------------------------
 # Funções auxiliares
 # ------------------------------------------------------------
-
-function Write-BuildStage {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Message
-    )
-
-    $timestamp = Get-Date -Format "HH:mm:ss"
-    Write-Host ""
-    Write-Host "[$timestamp] $Message"
-}
-
-
-function Write-ElapsedTime {
-    param(
-        [Parameter(Mandatory = $true)]
-        [datetime]$StartedAt,
-        [Parameter(Mandatory = $true)]
-        [string]$Label
-    )
-
-    $elapsed = (Get-Date) - $StartedAt
-    Write-Host (
-        "{0}: {1:mm\:ss}" -f $Label, $elapsed
-    )
-}
-
 
 function Assert-LastExitCode {
     param(
@@ -85,14 +50,10 @@ function Find-InnoSetupCompiler {
     }
 
     $candidates = @(
-        "${env:ProgramFiles}\Inno Setup 7\ISCC.exe",
-        "${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe",
-        "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
         "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-        "C:\Program Files\Inno Setup 7\ISCC.exe",
-        "C:\Program Files (x86)\Inno Setup 7\ISCC.exe",
-        "C:\Program Files\Inno Setup 6\ISCC.exe",
-        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+        "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+        "C:\Program Files\Inno Setup 6\ISCC.exe"
     )
 
     foreach ($candidate in $candidates) {
@@ -138,36 +99,36 @@ Write-Host ""
 # Dependências
 # ------------------------------------------------------------
 
-if (-not $SkipDependencyInstall) {
-    Write-BuildStage "Instalando dependências Python..."
+Write-Host "Atualizando o pip..."
 
-    python -m pip install `
-        --upgrade `
-        pip `
-        setuptools `
-        wheel
+python -m pip install --upgrade pip
 
-    Assert-LastExitCode `
-        -Message "Não foi possível atualizar as ferramentas do pip."
+Assert-LastExitCode `
+    -Message "Não foi possível atualizar o pip."
 
-    python -m pip install `
-        --prefer-binary `
-        --retries 5 `
-        --timeout 120 `
-        -r requirements.txt `
-        -r requirements-build.txt
 
-    Assert-LastExitCode `
-        -Message "Não foi possível instalar as dependências."
+Write-Host "Instalando as dependências do aplicativo..."
 
-    python -m pip check
+python -m pip install -r requirements.txt
 
-    Assert-LastExitCode `
-        -Message "As dependências instaladas são incompatíveis."
-}
-else {
-    Write-BuildStage "Dependências já instaladas pelo workflow."
-}
+Assert-LastExitCode `
+    -Message "Não foi possível instalar requirements.txt."
+
+
+Write-Host "Instalando as dependências de compilação..."
+
+python -m pip install -r requirements-build.txt
+
+Assert-LastExitCode `
+    -Message "Não foi possível instalar requirements-build.txt."
+
+
+Write-Host "Garantindo a instalação do Pillow..."
+
+python -m pip install --upgrade Pillow
+
+Assert-LastExitCode `
+    -Message "Não foi possível instalar o Pillow."
 
 
 # ------------------------------------------------------------
@@ -436,10 +397,6 @@ $dataDirectories = @(
         Target = "examples"
     },
     @{
-        Source = "docs"
-        Target = "docs"
-    },
-    @{
         Source = "assets"
         Target = "assets"
     }
@@ -470,8 +427,7 @@ if ($hasApplicationIcon) {
 # ------------------------------------------------------------
 
 Write-Host ""
-$installerBuildStartedAt = Get-Date
-Write-BuildStage "Gerando a versão usada pelo instalador..."
+Write-Host "Gerando a versão usada pelo instalador..."
 
 $installerBuildArguments = @(
     "--onedir",
@@ -491,10 +447,6 @@ python -m PyInstaller @installerBuildArguments
 
 Assert-LastExitCode `
     -Message "O PyInstaller não conseguiu gerar a versão do instalador."
-
-Write-ElapsedTime `
-    -StartedAt $installerBuildStartedAt `
-    -Label "Tempo do PyInstaller (instalador)"
 
 
 $installedExecutable = Join-Path `
@@ -522,14 +474,7 @@ Write-Host "Localizando o Inno Setup..."
 $iscc = Find-InnoSetupCompiler
 
 if ([string]::IsNullOrWhiteSpace([string]$iscc)) {
-    if ($SkipInnoInstall) {
-        throw (
-            "Inno Setup não encontrado. " +
-            "O workflow deveria instalá-lo antes da compilação."
-        )
-    }
-
-    Write-BuildStage "Inno Setup não encontrado. Tentando instalar..."
+    Write-Host "Inno Setup não encontrado. Tentando instalar..."
 
     $chocolateyCommand = Get-Command `
         "choco.exe" `
@@ -568,10 +513,7 @@ if ([string]::IsNullOrWhiteSpace([string]$iscc)) {
         install `
         innosetup `
         --yes `
-        --no-progress `
-        --limit-output `
-        --timeout `
-        600
+        --no-progress
 
     Assert-LastExitCode `
         -Message "Não foi possível instalar o Inno Setup."
@@ -604,8 +546,7 @@ Write-Host $iscc
 # ------------------------------------------------------------
 
 Write-Host ""
-$innoStartedAt = Get-Date
-Write-BuildStage "Gerando o instalador..."
+Write-Host "Gerando o instalador..."
 
 $issPath = Join-Path `
     $projectRoot `
@@ -636,10 +577,6 @@ $innoArguments += $issPath
 Assert-LastExitCode `
     -Message "O Inno Setup não conseguiu gerar o instalador."
 
-Write-ElapsedTime `
-    -StartedAt $innoStartedAt `
-    -Label "Tempo do Inno Setup"
-
 
 $installerPath = Join-Path `
     $projectRoot `
@@ -657,58 +594,35 @@ if (
 
 
 # ------------------------------------------------------------
-# Versão portátil
+# Compilação portátil
 # ------------------------------------------------------------
 
-$portableModeNormalized = $PortableMode.Trim().ToLowerInvariant()
-$portableStartedAt = Get-Date
+Write-Host ""
+Write-Host "Gerando a versão portátil..."
 
-if ($portableModeNormalized -eq "onefile") {
-    Write-BuildStage "Gerando o executável portátil em arquivo único..."
+$portableName = "Padroniza-v$version"
 
-    $portableName = "Padroniza-v$version"
+$portableBuildArguments = @(
+    "--onefile",
+    "--name",
+    $portableName,
+    "--distpath",
+    "dist\portable",
+    "--workpath",
+    "build\portable"
+) + $commonArguments + @(
+    "main.py"
+)
 
-    $portableBuildArguments = @(
-        "--onefile",
-        "--name",
-        $portableName,
-        "--distpath",
-        "dist\portable",
-        "--workpath",
-        "build\portable"
-    ) + $commonArguments + @(
-        "main.py"
-    )
+python -m PyInstaller @portableBuildArguments
 
-    python -m PyInstaller @portableBuildArguments
+Assert-LastExitCode `
+    -Message "O PyInstaller não conseguiu gerar a versão portátil."
 
-    Assert-LastExitCode `
-        -Message "O PyInstaller não conseguiu gerar a versão portátil."
 
-    $portablePath = Join-Path `
-        $projectRoot `
-        "dist\portable\$portableName.exe"
-}
-else {
-    Write-BuildStage (
-        "Criando o pacote portátil a partir da compilação em pasta " +
-        "(sem executar o PyInstaller uma segunda vez)..."
-    )
-
-    $portablePath = Join-Path `
-        $projectRoot `
-        "release\Padroniza-Portatil-v$version.zip"
-
-    if (Test-Path -LiteralPath $portablePath) {
-        Remove-Item -LiteralPath $portablePath -Force
-    }
-
-    Compress-Archive `
-        -Path "dist\Padroniza\*" `
-        -DestinationPath $portablePath `
-        -CompressionLevel Fastest `
-        -Force
-}
+$portablePath = Join-Path `
+    $projectRoot `
+    "dist\portable\$portableName.exe"
 
 if (
     -not (
@@ -717,12 +631,8 @@ if (
             -PathType Leaf
     )
 ) {
-    throw "Pacote portátil não encontrado: $portablePath"
+    throw "Executável portátil não encontrado: $portablePath"
 }
-
-Write-ElapsedTime `
-    -StartedAt $portableStartedAt `
-    -Label "Tempo da versão portátil ($portableModeNormalized)"
 
 
 # ------------------------------------------------------------
@@ -769,7 +679,4 @@ Write-Host "=============================================="
 Write-Host "Versão: $version"
 Write-Host "Instalador: $installerPath"
 Write-Host "Portátil: $portablePath"
-Write-ElapsedTime `
-    -StartedAt $buildStartedAt `
-    -Label "Tempo total"
 Write-Host ""

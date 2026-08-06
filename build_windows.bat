@@ -42,7 +42,6 @@ if exist "assets\padroniza.ico" (
         --add-data "app/styles:app/styles" ^
         --add-data "templates:templates" ^
         --add-data "examples:examples" ^
-        --add-data "docs:docs" ^
         main.py
 ) else (
     ".venv\Scripts\python.exe" -m PyInstaller ^
@@ -55,7 +54,6 @@ if exist "assets\padroniza.ico" (
         --add-data "app/styles:app/styles" ^
         --add-data "templates:templates" ^
         --add-data "examples:examples" ^
-        --add-data "docs:docs" ^
         main.py
 )
 if errorlevel 1 goto :error

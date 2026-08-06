@@ -7,15 +7,6 @@ on:
         description: "Versão do Padroniza, por exemplo: 1.5.0"
         required: true
         default: "1.5.0"
-        type: string
-      portable_mode:
-        description: "Formato portátil. 'Pasta ZIP' é mais rápido e confiável."
-        required: true
-        default: "folder"
-        type: choice
-        options:
-          - folder
-          - onefile
 
   push:
     tags:
@@ -24,149 +15,28 @@ on:
 permissions:
   contents: read
 
-# Evita deixar duas compilações pesadas concorrendo para a mesma referência.
-concurrency:
-  group: padroniza-windows-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  PYTHONUTF8: "1"
-  PYTHONUNBUFFERED: "1"
-  PIP_DISABLE_PIP_VERSION_CHECK: "1"
-  PIP_PROGRESS_BAR: "off"
-
 jobs:
   build-windows:
     name: Gerar aplicativo e instalador
     runs-on: windows-2022
-    timeout-minutes: 90
+    timeout-minutes: 40
 
     steps:
       - name: Baixar o código do repositório
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
+        uses: actions/checkout@v6
 
       - name: Preparar Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-          architecture: "x64"
           cache: "pip"
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-            requirements-build.txt
-
-      - name: Mostrar ambiente de compilação
-        shell: pwsh
-        run: |
-          python --version
-          python -m pip --version
-          Write-Host "Runner: $env:RUNNER_OS / $env:RUNNER_ARCH"
-          Get-PSDrive -PSProvider FileSystem |
-            Select-Object Name, Used, Free |
-            Format-Table -AutoSize
-
-      - name: Instalar dependências Python
-        shell: pwsh
-        timeout-minutes: 20
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-          python -m pip install `
-            --prefer-binary `
-            --retries 5 `
-            --timeout 120 `
-            -r requirements-dev.txt `
-            -r requirements-build.txt
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-          python -m pip check
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Executar testes automatizados
-        shell: pwsh
-        timeout-minutes: 10
-        run: python -m pytest -q
-
-      - name: Preparar Inno Setup
-        shell: pwsh
-        timeout-minutes: 10
-        run: |
-          $candidates = @(
-            "${env:ProgramFiles}\Inno Setup 7\ISCC.exe",
-            "${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe",
-            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
-            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          )
-
-          $iscc = $candidates |
-            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
-            Select-Object -First 1
-
-          if (-not $iscc) {
-            choco install innosetup `
-              --yes `
-              --no-progress `
-              --limit-output `
-              --timeout 600
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-
-          $iscc = $candidates |
-            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
-            Select-Object -First 1
-
-          if (-not $iscc) {
-            throw "O ISCC.exe não foi encontrado após a instalação do Inno Setup."
-          }
-
-          Write-Host "Inno Setup: $iscc"
 
       - name: Compilar o Padroniza
         id: build
         shell: pwsh
-        timeout-minutes: 50
         env:
           APP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
-          PORTABLE_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.portable_mode || 'folder' }}
-        run: |
-          ./build_github.ps1 `
-            -SkipDependencyInstall `
-            -SkipInnoInstall `
-            -PortableMode $env:PORTABLE_MODE
-
-      - name: Conferir arquivos gerados
-        shell: pwsh
-        run: |
-          $files = @(
-            "${{ steps.build.outputs.installer_path }}",
-            "${{ steps.build.outputs.portable_path }}"
-          )
-
-          foreach ($file in $files) {
-            if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
-              throw "Arquivo de saída ausente: $file"
-            }
-
-            $item = Get-Item -LiteralPath $file
-            Write-Host ("{0} — {1:N2} MB" -f $item.FullName, ($item.Length / 1MB))
-          }
-
-      - name: Guardar diagnóstico quando a compilação falhar
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: Padroniza-Diagnostico-${{ github.run_id }}
-          path: |
-            build/**/*.txt
-            build/**/*.log
-            *.spec
-            release/**
-          if-no-files-found: ignore
-          retention-days: 7
+        run: ./build_github.ps1
 
       - name: Disponibilizar o instalador
         uses: actions/upload-artifact@v7
@@ -177,7 +47,7 @@ jobs:
           retention-days: 30
           compression-level: 0
 
-      - name: Disponibilizar a versão portátil
+      - name: Disponibilizar o executável portátil
         uses: actions/upload-artifact@v7
         with:
           name: Padroniza-Portatil-v${{ steps.build.outputs.version }}
