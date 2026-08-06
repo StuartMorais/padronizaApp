@@ -1367,3 +1367,114 @@ QTreeWidget {
     border: 1px solid #ccd5de;
     border-radius: 6px;
 }
+
+/* Template editor: section cards ----------------------------------------- */
+QScrollArea#templateSectionCardsScroll,
+QWidget#templateSectionCardsContainer {
+    background: transparent;
+    border: none;
+}
+QFrame#templateSectionCard {
+    background-color: #ffffff;
+    border: 1px solid #cbd5de;
+    border-radius: 8px;
+}
+QFrame#templateSectionCardHeader {
+    background-color: #edf2f6;
+    border: none;
+    border-bottom: 1px solid #cbd5de;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+QFrame#templateSectionCardBody {
+    background: transparent;
+    border: none;
+}
+QLabel#templateSectionCardTitle {
+    color: #17232d;
+    font-weight: 700;
+    background: transparent;
+    border: none;
+}
+QLabel#templateSectionCountBadge,
+QLabel#templateSectionGroupCount,
+QLabel#templateSectionTypeBadge,
+QLabel#templateSectionLayoutBadge {
+    background-color: #e5ebf0;
+    color: #33424f;
+    border: 1px solid #c5d0da;
+    border-radius: 9px;
+    padding: 2px 7px;
+}
+QLabel#templateSectionLayoutBadge {
+    background-color: #edf0fb;
+    color: #40517a;
+    border-color: #cbd3eb;
+}
+QToolButton#sectionCardCollapseButton,
+QToolButton#sectionCardActionButton {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    padding: 4px 7px;
+    color: #33424f;
+}
+QToolButton#sectionCardCollapseButton:hover,
+QToolButton#sectionCardActionButton:hover {
+    background-color: #dfe7ed;
+    border-color: #c3ced7;
+}
+QToolButton#sectionCardActionButton:disabled {
+    color: #a8b2bb;
+    background: transparent;
+    border-color: transparent;
+}
+QFrame#templateSectionGroup {
+    background-color: #f7f9fb;
+    border: 1px solid #d5dde4;
+    border-radius: 7px;
+}
+QLabel#templateSectionGroupTitle {
+    color: #263540;
+    font-weight: 700;
+    background: transparent;
+    border: none;
+}
+QFrame#templateSectionFieldRow,
+QFrame#templateSectionFieldRowGrouped {
+    background-color: #ffffff;
+    border: 1px solid #d7dfe6;
+    border-radius: 6px;
+}
+QFrame#templateSectionFieldRow:hover,
+QFrame#templateSectionFieldRowGrouped:hover {
+    background-color: #f2f6f9;
+    border-color: #aebcc8;
+}
+QLabel#templateSectionFieldHandle {
+    color: #8997a3;
+    background: transparent;
+    border: none;
+}
+QLabel#templateSectionFieldLabel {
+    color: #1d2a34;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+}
+QLabel#templateSectionFieldId {
+    color: #6e7d89;
+    background: transparent;
+    border: none;
+}
+QPushButton#sectionFieldEditButton {
+    padding: 5px 10px;
+    min-width: 54px;
+}
+QLabel#templateSectionEmptyState {
+    color: #6e7d89;
+    background-color: #f8fafb;
+    border: 1px dashed #bdc8d1;
+    border-radius: 8px;
+    padding: 22px;
+}

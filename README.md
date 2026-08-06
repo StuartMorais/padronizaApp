@@ -98,3 +98,7 @@ DOCX é o formato canônico de modelo editável. A conversão para PDF é uma et
 ## Dados locais
 
 Pastas e arquivos de execução, como `.venv`, `data`, `output`, `backups`, caches e configurações da IDE, não devem ser enviados ao repositório. O `.gitignore` já contém essas exclusões.
+
+## Editor de seções em cartões
+
+A aba **Seções e layout** apresenta cada seção como um cartão legível. Os cartões mostram os campos, IDs, tipos e grupos de layout, permitem pesquisar, recolher/expandir, renomear e mover seções, e abrem qualquer campo diretamente na aba **Campos** pelo botão **Editar**. Consulte [`SECTION_CARDS_UI.md`](SECTION_CARDS_UI.md).

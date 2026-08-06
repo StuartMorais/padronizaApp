@@ -4,6 +4,7 @@ import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import (
@@ -36,19 +37,28 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
-    QTreeWidget,
-    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from app.dialogs.automatic_detection_dialog import AutomaticDetectionDialog
 from app.dialogs.diagnostics_dialog import DiagnosticsDialog
 from app.dialogs.filename_builder_dialog import FilenameBuilderDialog
 from app.dialogs.field_library_dialog import FieldLibraryDialog
+from app.automatic_field_detector import (
+    apply_docx_field_candidates,
+    candidate_field_definitions,
+    detect_docx_field_candidates,
+)
 from app.field_library import FieldLibraryStore
 from app.app_paths import resolve_application_paths
 from app.field_utils import FIELD_TYPE_ORDER
 from app.layout_inference import layout_quality_issues, normalize_form_layout
+from app.section_card_model import (
+    build_section_card_models,
+    rename_section_fields,
+    reorder_section_fields,
+)
 from app.smart_template import readiness_report, smart_fields_from_docx
 from app.template_diagnostics import diagnose_template, diagnostics_text
 from app.system_open import SystemOpenError, open_file
@@ -59,6 +69,7 @@ from app.widgets.toast import show_toast
 from app.widgets.document_form import DocumentForm
 from app.widgets.field_layout_editor import FieldLayoutEditor
 from app.widgets.repeatable_table import FieldConfigurationEditor
+from app.widgets.template_section_card import TemplateSectionCard
 
 
 class _TemplateDocxDropZone(ClickableDropZone):
@@ -194,6 +205,7 @@ class TemplateEditorDialog(QDialog):
         self._duplicate_matches: list[dict[str, Any]] = []
         self._similar_name_matches: list[dict[str, Any]] = []
         self._original_template_name = ""
+        self._automatic_work_files: set[Path] = set()
 
         self.change_timer = QTimer(self)
         self.change_timer.setSingleShot(True)
@@ -259,6 +271,20 @@ class TemplateEditorDialog(QDialog):
         )
         self.docx_tools_menu.addAction(
             self.scan_action
+        )
+
+        self.automatic_detection_action = QAction(
+            'Detectar campos sem tags...',
+            self,
+        )
+        self.automatic_detection_action.setToolTip(
+            'Sugere áreas preenchíveis e converte somente as aprovadas em tags.'
+        )
+        self.automatic_detection_action.triggered.connect(
+            self._detect_fields_without_tags
+        )
+        self.docx_tools_menu.addAction(
+            self.automatic_detection_action
         )
 
         self.diagnostics_action = QAction(
@@ -345,16 +371,38 @@ class TemplateEditorDialog(QDialog):
         self.simple_fields_checkbox.setChecked(True)
         self.tag_guide_button = QPushButton('Abrir guia de tags')
 
-        self.section_tree = QTreeWidget()
-        self.section_tree.setHeaderLabels(['Seção / grupo', 'Campos'])
-        self.section_tree.setAlternatingRowColors(True)
-        self.section_tree.setRootIsDecorated(True)
-        self.section_tree.setMinimumHeight(250)
-        self.section_tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.section_tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.new_section_button = QPushButton('Nova seção')
-        self.rename_section_button = QPushButton('Renomear seção')
-        self.assign_section_button = QPushButton('Atribuir seleção à seção')
+        self.section_search_input = QLineEdit()
+        self.section_search_input.setPlaceholderText('Pesquisar seção, campo ou identificador…')
+        self.section_search_input.setClearButtonEnabled(True)
+
+        self.section_cards_scroll = QScrollArea()
+        self.section_cards_scroll.setObjectName('templateSectionCardsScroll')
+        self.section_cards_scroll.setWidgetResizable(True)
+        self.section_cards_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.section_cards_scroll.setMinimumHeight(300)
+
+        self.section_cards_container = QWidget()
+        self.section_cards_container.setObjectName('templateSectionCardsContainer')
+        self.section_cards_layout = QVBoxLayout(self.section_cards_container)
+        self.section_cards_layout.setContentsMargins(2, 2, 2, 2)
+        self.section_cards_layout.setSpacing(9)
+        self.section_cards_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.section_cards_scroll.setWidget(self.section_cards_container)
+        self.section_cards: list[TemplateSectionCard] = []
+
+        self.section_empty_label = QLabel(
+            'Nenhuma seção corresponde à pesquisa. Limpe o filtro ou revise os campos na aba Campos.'
+        )
+        self.section_empty_label.setObjectName('templateSectionEmptyState')
+        self.section_empty_label.setWordWrap(True)
+        self.section_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.section_empty_label.hide()
+
+        self.new_section_button = QPushButton('+ Nova seção')
+        self.rename_section_button = QPushButton('Renomear seção…')
+        self.assign_section_button = QPushButton('Atribuir campos selecionados…')
+        self.expand_sections_button = QPushButton('Expandir todas')
+        self.collapse_sections_button = QPushButton('Recolher todas')
 
         self.form_preview = DocumentForm()
         self.form_preview_scroll = QScrollArea()
@@ -393,6 +441,9 @@ class TemplateEditorDialog(QDialog):
         self.new_section_button.clicked.connect(self._create_section)
         self.rename_section_button.clicked.connect(self._rename_section)
         self.assign_section_button.clicked.connect(self._assign_selected_to_section)
+        self.section_search_input.textChanged.connect(self._filter_section_cards)
+        self.expand_sections_button.clicked.connect(lambda: self._set_all_section_cards_expanded(True))
+        self.collapse_sections_button.clicked.connect(lambda: self._set_all_section_cards_expanded(False))
 
         QShortcut(QKeySequence.StandardKey.Undo, self).activated.connect(self._undo_editor_change)
         QShortcut(QKeySequence.StandardKey.Redo, self).activated.connect(self._redo_editor_change)
@@ -681,7 +732,7 @@ class TemplateEditorDialog(QDialog):
             'Campos, seções e regras',
             (
                 '<p><b>Campos</b> define o tipo, o rótulo e a validação.</p>'
-                '<p><b>Seções e layout</b> mostra como os campos serão agrupados. '
+                '<p><b>Seções e layout</b> organiza o formulário em cartões de seção. '
                 'Use o layout <b>Grupo de escolha</b> para alternativas exclusivas exibidas como '
                 'caixas grandes e clicáveis, e <b>Tabela</b> para responsáveis organizados '
                 'por linha e coluna.</p>'
@@ -723,22 +774,27 @@ class TemplateEditorDialog(QDialog):
         sections_tab = QWidget()
         sections_layout = QVBoxLayout(sections_tab)
         sections_layout.setContentsMargins(8, 8, 8, 8)
-        sections_layout.setSpacing(8)
+        sections_layout.setSpacing(9)
         section_hint = QLabel(
-            'A árvore abaixo resume a ordem do formulário. Selecione linhas na aba Campos '
-            'e use “Atribuir seleção à seção” para reorganizá-las. Os grupos de escolha '
-            'e tabelas aparecem como subgrupos.'
+            'Cada cartão representa uma seção do formulário. Use as setas no cartão para '
+            'mover a seção, o lápis para renomeá-la e “Editar” para abrir um campo na aba Campos.'
         )
         section_hint.setWordWrap(True)
         section_hint.setObjectName('mutedText')
         sections_layout.addWidget(section_hint)
-        sections_layout.addWidget(self.section_tree, 1)
-        section_buttons = QHBoxLayout()
-        section_buttons.addWidget(self.new_section_button)
-        section_buttons.addWidget(self.rename_section_button)
-        section_buttons.addWidget(self.assign_section_button)
-        section_buttons.addStretch()
-        sections_layout.addLayout(section_buttons)
+
+        section_toolbar = QHBoxLayout()
+        section_toolbar.setSpacing(6)
+        section_toolbar.addWidget(self.new_section_button)
+        section_toolbar.addWidget(self.rename_section_button)
+        section_toolbar.addWidget(self.assign_section_button)
+        section_toolbar.addStretch()
+        section_toolbar.addWidget(self.expand_sections_button)
+        section_toolbar.addWidget(self.collapse_sections_button)
+        sections_layout.addLayout(section_toolbar)
+        sections_layout.addWidget(self.section_search_input)
+        sections_layout.addWidget(self.section_cards_scroll, 1)
+        sections_layout.addWidget(self.section_empty_label)
 
         preview_tab = QWidget()
         preview_layout = QVBoxLayout(preview_tab)
@@ -794,58 +850,83 @@ class TemplateEditorDialog(QDialog):
             self._refresh_form_preview()
 
     def _refresh_section_tree(self) -> None:
-        if not hasattr(self, "section_tree"):
+        # Kept under the original method name to preserve existing call sites.
+        if not hasattr(self, "section_cards_layout"):
             return
+
         fields = self._collect_fields(validate=False)
-        self.section_tree.clear()
-        sections: dict[str, QTreeWidgetItem] = {}
-        groups: dict[tuple[str, str, str], QTreeWidgetItem] = {}
-        for field in fields:
-            section = str(field.get("section", "")).strip() or "Dados do documento"
-            section_item = sections.get(section)
-            if section_item is None:
-                section_item = QTreeWidgetItem([section, "0"])
-                section_item.setData(0, Qt.ItemDataRole.UserRole, section)
-                self.section_tree.addTopLevelItem(section_item)
-                sections[section] = section_item
+        models = build_section_card_models(fields)
 
-            layout_type = str(field.get("layout", "auto")).strip() or "auto"
-            layout_group = str(field.get("layout_group", "")).strip()
-            parent = section_item
-            if layout_type in {"choice", "form_grid", "table"} and layout_group:
-                key = (section, layout_type, layout_group)
-                parent = groups.get(key)
-                if parent is None:
-                    label = str(field.get("layout_group_label", "")).strip() or layout_group
-                    prefix = {
-                        "choice": "Escolha",
-                        "form_grid": "Grade",
-                        "table": "Tabela",
-                    }.get(layout_type, "Grupo")
-                    parent = QTreeWidgetItem([f"{prefix}: {label}", "0"])
-                    parent.setData(0, Qt.ItemDataRole.UserRole, section)
-                    section_item.addChild(parent)
-                    groups[key] = parent
+        while self.section_cards_layout.count():
+            item = self.section_cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
 
-            field_label = str(field.get("label", field.get("id", ""))).strip()
-            field_id = str(field.get("id", "")).strip()
-            parent.addChild(QTreeWidgetItem([field_label, field_id]))
+        self.section_cards = []
+        for index, model in enumerate(models):
+            card = TemplateSectionCard(
+                model,
+                type_labels=self.FIELD_TYPE_LABELS,
+                can_move_up=index > 0,
+                can_move_down=index < len(models) - 1,
+                parent=self.section_cards_container,
+            )
+            card.rename_requested.connect(self._rename_section_by_name)
+            card.move_requested.connect(self._move_section)
+            card.edit_field_requested.connect(self._edit_field_from_card)
+            self.section_cards_layout.addWidget(card)
+            self.section_cards.append(card)
 
-        for section_item in sections.values():
-            count = 0
-            stack = [section_item]
-            while stack:
-                item = stack.pop()
-                for index in range(item.childCount()):
-                    child = item.child(index)
-                    if child.childCount():
-                        stack.append(child)
-                    else:
-                        count += 1
-            section_item.setText(1, str(count))
-        for group_item in groups.values():
-            group_item.setText(1, str(group_item.childCount()))
-        self.section_tree.expandAll()
+        self._filter_section_cards(self.section_search_input.text())
+
+    def _filter_section_cards(self, text: str) -> None:
+        if not hasattr(self, "section_cards"):
+            return
+        query = str(text).strip().casefold()
+        visible_count = 0
+        for card in self.section_cards:
+            visible = card.matches(query)
+            card.setVisible(visible)
+            visible_count += int(visible)
+        if not self.section_cards:
+            self.section_empty_label.setText(
+                'Nenhuma seção disponível. Localize ou adicione campos na aba Campos.'
+            )
+            self.section_empty_label.show()
+        else:
+            self.section_empty_label.setText(
+                'Nenhuma seção corresponde à pesquisa. Limpe o filtro ou revise os campos na aba Campos.'
+            )
+            self.section_empty_label.setVisible(visible_count == 0)
+
+    def _set_all_section_cards_expanded(self, expanded: bool) -> None:
+        for card in self.section_cards:
+            if card.isVisible():
+                card.set_expanded(expanded)
+
+    def _edit_field_from_card(self, field_id: str) -> None:
+        target = str(field_id).strip()
+        if not target:
+            return
+        for row in range(self.fields_table.rowCount()):
+            item = self.fields_table.item(row, 0)
+            if item is not None and item.text().strip() == target:
+                self.fields_tabs.setCurrentIndex(0)
+                self.fields_table.clearSelection()
+                self.fields_table.selectRow(row)
+                self.fields_table.setCurrentCell(row, 0)
+                self.fields_table.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
+                return
+
+    def _move_section(self, section_name: str, direction: int) -> None:
+        fields = self._collect_fields(validate=False)
+        reordered = reorder_section_fields(fields, section_name, direction)
+        if reordered == fields:
+            return
+        self._load_fields_into_table(reordered)
+        self._schedule_editor_change()
+        self._refresh_section_tree()
 
     def _refresh_form_preview(self) -> None:
         if not hasattr(self, "form_preview"):
@@ -883,42 +964,48 @@ class TemplateEditorDialog(QDialog):
             )
 
     def _rename_section(self) -> None:
-        item = self.section_tree.currentItem()
-        if item is None:
-            QMessageBox.warning(self, "Selecionar seção", "Selecione uma seção na árvore.")
+        fields = self._collect_fields(validate=False)
+        sections = [model["title"] for model in build_section_card_models(fields)]
+        if not sections:
+            QMessageBox.warning(self, "Sem seções", "Adicione ou localize campos antes de renomear uma seção.")
             return
-        old_name = str(item.data(0, Qt.ItemDataRole.UserRole) or "").strip()
-        if not old_name:
-            return
-        new_name, accepted = QInputDialog.getText(
-            self, "Renomear seção", "Novo nome:", text=old_name
+        old_name, accepted = QInputDialog.getItem(
+            self, "Renomear seção", "Seção:", sections, 0, False
         )
-        if not accepted or not new_name.strip() or new_name.strip() == old_name:
+        if not accepted or not str(old_name).strip():
             return
-        for row in range(self.fields_table.rowCount()):
-            section_item = self.fields_table.item(row, 5)
-            if section_item and section_item.text().strip() == old_name:
-                section_item.setText(new_name.strip())
+        self._rename_section_by_name(str(old_name))
+
+    def _rename_section_by_name(self, old_name: str) -> None:
+        new_name, accepted = QInputDialog.getText(
+            self, "Renomear seção", "Novo nome:", text=str(old_name)
+        )
+        if not accepted or not new_name.strip() or new_name.strip() == str(old_name).strip():
+            return
+        fields = self._collect_fields(validate=False)
+        try:
+            renamed = rename_section_fields(fields, str(old_name), new_name)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Nome inválido", str(exc))
+            return
+        self._load_fields_into_table(renamed)
         self._schedule_editor_change()
         self._refresh_section_tree()
 
     def _assign_selected_to_section(self) -> None:
         rows = self._selected_field_rows()
         if not rows:
-            QMessageBox.warning(self, "Selecionar campos", "Selecione um ou mais campos na aba Campos.")
+            QMessageBox.warning(
+                self,
+                "Selecionar campos",
+                "Selecione um ou mais campos na aba Campos antes de atribuí-los a uma seção.",
+            )
             return
-        available = []
-        for row in range(self.fields_table.rowCount()):
-            item = self.fields_table.item(row, 5)
-            name = item.text().strip() if item else ""
-            if name and name not in available:
-                available.append(name)
-        current_item = self.section_tree.currentItem()
-        current_section = str(current_item.data(0, Qt.ItemDataRole.UserRole) or "").strip() if current_item else ""
+        fields = self._collect_fields(validate=False)
+        available = [model["title"] for model in build_section_card_models(fields)]
         if available:
-            default_index = available.index(current_section) if current_section in available else 0
             name, accepted = QInputDialog.getItem(
-                self, "Atribuir seção", "Seção:", available, default_index, True
+                self, "Atribuir seção", "Seção:", available, 0, True
             )
         else:
             name, accepted = QInputDialog.getText(self, "Atribuir seção", "Seção:")
@@ -1286,7 +1373,15 @@ class TemplateEditorDialog(QDialog):
             QMessageBox.critical(self, 'Não foi possível analisar o DOCX', str(exc))
             return
         if not fields:
-            QMessageBox.warning(self, 'Nenhum campo encontrado', 'Nenhum marcador ou controle identificado foi encontrado.')
+            QMessageBox.warning(
+                self,
+                'Nenhum campo encontrado',
+                (
+                    'Nenhuma tag ou controle do Word foi encontrado.\n\n'
+                    'Use Ferramentas DOCX > Detectar campos sem tags para receber '
+                    'sugestões de áreas preenchíveis.'
+                ),
+            )
             return
         self._load_fields_into_table(fields)
         self._schedule_editor_change()
@@ -1314,6 +1409,110 @@ class TemplateEditorDialog(QDialog):
                 'Análise inteligente concluída',
                 details,
             )
+
+    def _detect_fields_without_tags(self) -> None:
+        if self.selected_docx is None:
+            QMessageBox.warning(
+                self,
+                'Nenhum DOCX selecionado',
+                'Selecione primeiro um arquivo DOCX.',
+            )
+            return
+
+        try:
+            existing = self._collect_fields(validate=False)
+            existing_ids = {
+                str(field.get('id', '')).strip()
+                for field in existing
+                if str(field.get('id', '')).strip()
+            }
+            candidates = detect_docx_field_candidates(
+                self.selected_docx,
+                existing_field_ids=existing_ids,
+            )
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                'Não foi possível detectar áreas preenchíveis',
+                str(exc),
+            )
+            return
+
+        if not candidates:
+            QMessageBox.information(
+                self,
+                'Nenhuma sugestão encontrada',
+                (
+                    'O documento não contém áreas não marcadas que possam ser '
+                    'identificadas com segurança. As tags e controles existentes '
+                    'continuam disponíveis em Localizar campos.'
+                ),
+            )
+            return
+
+        dialog = AutomaticDetectionDialog(candidates, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        accepted = dialog.accepted_candidates()
+        if not accepted:
+            return
+
+        work_path: Path | None = None
+        try:
+            work_dir = self.data_dir / 'template_editor_work'
+            work_dir.mkdir(parents=True, exist_ok=True)
+            stem = self.selected_docx.stem[:80] or 'modelo'
+            work_path = work_dir / f'{stem}-detectado-{uuid4().hex[:10]}.docx'
+            apply_docx_field_candidates(
+                self.selected_docx,
+                work_path,
+                accepted,
+            )
+            detected_fields = candidate_field_definitions(accepted)
+            fields = smart_fields_from_docx(
+                work_path,
+                [*existing, *detected_fields],
+            )
+        except Exception as exc:
+            if work_path is not None:
+                try:
+                    work_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            QMessageBox.critical(
+                self,
+                'Não foi possível preparar o modelo',
+                str(exc),
+            )
+            return
+
+        self._automatic_work_files.add(work_path)
+        self.selected_docx = work_path
+        self.docx_was_replaced = True
+        self.docx_input.setText(str(work_path))
+        self.docx_drop_zone.set_selected_file(work_path)
+        self._load_fields_into_table(fields)
+        self._refresh_duplicate_status()
+        self._schedule_editor_change()
+        self._update_readiness()
+
+        show_toast(
+            self,
+            'Sugestões aplicadas',
+            (
+                f'{len(accepted)} área(s) aprovada(s) foram convertidas em tags '
+                'numa cópia de trabalho. Revise Campos e seções e a prévia antes de salvar.'
+            ),
+            duration=6200,
+        )
+
+    def _cleanup_automatic_work_files(self) -> None:
+        for path in list(self._automatic_work_files):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                continue
+            self._automatic_work_files.discard(path)
 
     def _show_diagnostics(self) -> None:
         if self.selected_docx is None:
@@ -2057,6 +2256,7 @@ class TemplateEditorDialog(QDialog):
         self._dirty = False
         self.change_timer.stop()
         self.editor_draft_path.unlink(missing_ok=True)
+        self._cleanup_automatic_work_files()
         self.reject()
 
     def closeEvent(self, event) -> None:
@@ -2133,4 +2333,5 @@ class TemplateEditorDialog(QDialog):
         self._dirty = False
         self.change_timer.stop()
         self.editor_draft_path.unlink(missing_ok=True)
+        self._cleanup_automatic_work_files()
         self.accept()

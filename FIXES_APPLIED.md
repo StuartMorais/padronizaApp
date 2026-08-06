@@ -64,3 +64,14 @@ A suíte agora contém 19 testes automatizados.
 - Conteúdo fixo na mesma linha é preservado ao lado do campo.
 - Conflitos de grade bloqueiam o salvamento e aparecem na verificação de prontidão.
 - Foi adicionada uma opção avançada para preservar intencionalmente uma posição parcial.
+
+## Editor "Seções e layout" em cartões
+
+- substituição da árvore tabular de baixo contraste por cartões de seção;
+- grupos de escolha, grades do documento e tabelas aparecem dentro do cartão da seção;
+- pesquisa por seção, rótulo e ID;
+- expandir/recolher todos os cartões;
+- renomear e mover seções diretamente pelo cabeçalho do cartão;
+- botão Editar abre o campo correspondente na aba Campos;
+- estilos próprios para os temas claro e escuro;
+- builder restaurado mantido sem alterações.
