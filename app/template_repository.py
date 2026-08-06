@@ -1033,6 +1033,19 @@ class TemplateRepository:
             "max_length",
             "pattern",
             "pattern_message",
+            "layout",
+            "layout_group",
+            "layout_group_label",
+            "layout_row",
+            "layout_row_label",
+            "layout_column",
+            "layout_column_index",
+            "layout_column_span",
+            "layout_grid_columns",
+            "layout_static_rows",
+            "layout_order",
+            "choice_required",
+            "tag_type",
         }
 
         for index, raw_field in enumerate(fields, start=1):

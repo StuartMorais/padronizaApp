@@ -34,9 +34,13 @@ def iter_unique_story_roots(document: Any) -> Iterator[Any]:
 
 def normalize_control_id(value: str) -> str:
     normalized = str(value).strip()
-    for prefix in ("checkbox:", "date:", "dropdown:"):
-        if normalized.casefold().startswith(prefix):
+    lowered = normalized.casefold()
+    for prefix in ("checkbox:", "date:"):
+        if lowered.startswith(prefix):
             return normalized.split(":", 1)[1].strip()
+    for prefix in ("dropdown:", "single_choice:"):
+        if lowered.startswith(prefix):
+            return normalized.split(":", 1)[1].split("|", 1)[0].strip()
     return normalized
 
 

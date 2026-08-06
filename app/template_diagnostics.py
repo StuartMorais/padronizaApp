@@ -293,7 +293,7 @@ def _placeholder_id(raw: str) -> str:
     lowered = raw.casefold()
     if lowered.startswith("checkbox:") or lowered.startswith("date:"):
         return raw.split(":", 1)[1].strip()
-    if lowered.startswith("dropdown:"):
+    if lowered.startswith(("dropdown:", "single_choice:")):
         return raw.split(":", 1)[1].split("|", 1)[0].strip()
     if lowered.startswith("repeat:"):
         return raw.split(":", 1)[1].strip()

@@ -25,6 +25,9 @@ REPEAT_MARKER_PATTERN = re.compile(
     r"\{\{\s*repeat:([A-Za-z][A-Za-z0-9_.-]*)\s*\}\}",
     re.IGNORECASE,
 )
+REPLACEMENT_TOKEN_PATTERN = re.compile(
+    "\ue000PADRONIZA:(\\d+)\ue001"
+)
 ROW_NUMBER_IDS = {
     "row.number",
     "row.index",
@@ -92,11 +95,6 @@ def generate_docx(
                 "Ainda existem campos não resolvidos: "
                 + ", ".join(sorted(unresolved))
             )
-
-        _set_document_text_color(
-            document,
-            "000000",
-        )
 
         output_path.parent.mkdir(
             parents=True,
@@ -286,6 +284,19 @@ def _replace_in_paragraph_element(
     paragraph_element,
     values: dict[str, Any],
 ) -> None:
+    """Replace placeholders without collapsing the paragraph runs.
+
+    Word frequently splits a placeholder across multiple ``w:t`` nodes,
+    even when it looks continuous in the editor. Rebuilding the complete
+    paragraph in its first node destroys bold, italic, underline, color,
+    hyperlinks, and other run-level formatting.
+
+    Replacements are therefore applied from right to left directly to the
+    nodes occupied by each placeholder. Text before and after a marker stays
+    in its original node and keeps its original formatting. Replacement text
+    inherits the marker's formatting except for color, which is always black.
+    """
+
     text_elements = _paragraph_text_elements(
         paragraph_element
     )
@@ -293,29 +304,306 @@ def _replace_in_paragraph_element(
     if not text_elements:
         return
 
-    original_text = "".join(
+    original_parts = [
         element.text or ""
         for element in text_elements
+    ]
+    original_text = "".join(original_parts)
+    matches = list(
+        PLACEHOLDER_PATTERN.finditer(original_text)
     )
 
-    updated_text = PLACEHOLDER_PATTERN.sub(
-        lambda match: _replace_placeholder(
-            match,
-            values,
-        ),
-        original_text,
-    )
-
-    if updated_text == original_text:
+    if not matches:
         return
 
-    _set_text_with_breaks(
-        text_elements[0],
-        updated_text,
+    spans = _text_element_spans(
+        text_elements,
+        original_parts,
+    )
+    changed = False
+    replacement_tokens: dict[str, str] = {}
+
+    # Right-to-left processing keeps all original offsets valid while text
+    # located after the current marker may grow or shrink. A temporary token
+    # is inserted instead of the final value. The tokens are materialized in
+    # dedicated runs afterwards, allowing only user-provided values to receive
+    # an explicit black font color without recoloring surrounding template text.
+    for replacement_index, match in enumerate(reversed(matches)):
+        replacement = _replace_placeholder(
+            match,
+            values,
+        )
+
+        # Missing values intentionally leave the marker unresolved so the
+        # final validation can report it with a useful field identifier.
+        if replacement == match.group(0):
+            continue
+
+        token = f"\ue000PADRONIZA:{replacement_index}\ue001"
+        replacement_tokens[token] = replacement
+
+        start_index = _span_index_for_position(
+            spans,
+            match.start(),
+        )
+        end_index = _span_index_for_position(
+            spans,
+            match.end() - 1,
+        )
+
+        if start_index is None or end_index is None:
+            raise DocumentGenerationError(
+                "Não foi possível localizar um marcador no XML do documento."
+            )
+
+        start_element, start_offset, _ = spans[start_index]
+        end_element, end_offset, _ = spans[end_index]
+        local_start = match.start() - start_offset
+        local_end = match.end() - end_offset
+
+        if start_index == end_index:
+            current_text = start_element.text or ""
+            _set_text_element_value(
+                start_element,
+                current_text[:local_start]
+                + token
+                + current_text[local_end:],
+            )
+        else:
+            start_text = start_element.text or ""
+            end_text = end_element.text or ""
+
+            _set_text_element_value(
+                start_element,
+                start_text[:local_start]
+                + token,
+            )
+
+            for element, _, _ in spans[
+                start_index + 1 : end_index
+            ]:
+                _set_text_element_value(
+                    element,
+                    "",
+                )
+
+            _set_text_element_value(
+                end_element,
+                end_text[local_end:],
+            )
+
+        changed = True
+
+    if not changed:
+        return
+
+    _materialize_black_replacements(
+        paragraph_element,
+        replacement_tokens,
     )
 
-    for element in text_elements[1:]:
-        element.text = ""
+
+def _materialize_black_replacements(
+    paragraph_element,
+    replacements: dict[str, str],
+) -> None:
+    """Turn temporary replacement tokens into black, formatting-aware runs.
+
+    The original run formatting is copied so bold, italic, underline, size,
+    font family, and other properties remain intact. Only ``w:color`` is
+    overridden for generated values. Static text before and after a marker is
+    recreated with the untouched template run properties.
+    """
+
+    for run in list(paragraph_element.iter(qn("w:r"))):
+        if _nearest_ancestor(run, qn("w:p")) is not paragraph_element:
+            continue
+
+        run_text = _run_visible_text(run)
+        if not REPLACEMENT_TOKEN_PATTERN.search(run_text):
+            continue
+
+        segments: list[tuple[str, bool]] = []
+        cursor = 0
+
+        for token_match in REPLACEMENT_TOKEN_PATTERN.finditer(run_text):
+            if token_match.start() > cursor:
+                segments.append(
+                    (run_text[cursor:token_match.start()], False)
+                )
+
+            token = token_match.group(0)
+            segments.append((replacements.get(token, ""), True))
+            cursor = token_match.end()
+
+        if cursor < len(run_text):
+            segments.append((run_text[cursor:], False))
+
+        parent = run.getparent()
+        if parent is None:
+            continue
+
+        insert_at = parent.index(run)
+        for segment_text, generated in segments:
+            if not segment_text:
+                continue
+
+            new_run = _clone_text_run(
+                run,
+                segment_text,
+                force_black=generated,
+            )
+            parent.insert(insert_at, new_run)
+            insert_at += 1
+
+        parent.remove(run)
+
+
+def _run_visible_text(run) -> str:
+    """Return a run's text while retaining tabs and line-break positions."""
+
+    parts: list[str] = []
+    for child in run.iterchildren():
+        if child.tag in {qn("w:t"), qn("w:instrText")}:
+            parts.append(child.text or "")
+        elif child.tag in {qn("w:br"), qn("w:cr")}:
+            parts.append("\n")
+        elif child.tag == qn("w:tab"):
+            parts.append("\t")
+        elif child.tag == qn("w:noBreakHyphen"):
+            parts.append("\u2011")
+        elif child.tag == qn("w:softHyphen"):
+            parts.append("\u00ad")
+
+    return "".join(parts)
+
+
+def _clone_text_run(
+    source_run,
+    value: str,
+    *,
+    force_black: bool,
+):
+    new_run = OxmlElement("w:r")
+    source_properties = source_run.find(qn("w:rPr"))
+
+    if source_properties is not None:
+        run_properties = deepcopy(source_properties)
+    else:
+        run_properties = OxmlElement("w:rPr")
+
+    if force_black:
+        _force_black_run_properties(run_properties)
+
+    if len(run_properties):
+        new_run.append(run_properties)
+
+    _append_run_value(new_run, value)
+    return new_run
+
+
+def _append_run_value(run, value: str) -> None:
+    """Append text, tabs, and line breaks to a run."""
+
+    normalized = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    text_buffer: list[str] = []
+
+    def flush_text() -> None:
+        if not text_buffer:
+            return
+        text_element = OxmlElement("w:t")
+        _set_text_element_value(text_element, "".join(text_buffer))
+        run.append(text_element)
+        text_buffer.clear()
+
+    for character in normalized:
+        if character == "\n":
+            flush_text()
+            run.append(OxmlElement("w:br"))
+        elif character == "\t":
+            flush_text()
+            run.append(OxmlElement("w:tab"))
+        else:
+            text_buffer.append(character)
+
+    flush_text()
+
+    if not len(run):
+        text_element = OxmlElement("w:t")
+        _set_text_element_value(text_element, "")
+        run.append(text_element)
+
+
+def _force_black_run_properties(run_properties) -> None:
+    """Apply an explicit black font color, overriding theme colors."""
+
+    color = run_properties.find(qn("w:color"))
+    if color is None:
+        color = OxmlElement("w:color")
+        run_properties.append(color)
+
+    color.set(qn("w:val"), "000000")
+    for attribute in (
+        qn("w:themeColor"),
+        qn("w:themeTint"),
+        qn("w:themeShade"),
+    ):
+        color.attrib.pop(attribute, None)
+
+
+def _force_run_black(run) -> None:
+    if run is None:
+        return
+
+    run_properties = run.find(qn("w:rPr"))
+    if run_properties is None:
+        run_properties = OxmlElement("w:rPr")
+        run.insert(0, run_properties)
+
+    _force_black_run_properties(run_properties)
+
+
+def _nearest_ancestor(element, tag):
+    current = element.getparent()
+    while current is not None:
+        if current.tag == tag:
+            return current
+        current = current.getparent()
+    return None
+
+
+def _text_element_spans(
+    text_elements: list[Any],
+    original_parts: list[str],
+) -> list[tuple[Any, int, int]]:
+    """Map each text node to its character range in the paragraph."""
+
+    spans: list[tuple[Any, int, int]] = []
+    cursor = 0
+
+    for element, text in zip(
+        text_elements,
+        original_parts,
+        strict=True,
+    ):
+        end = cursor + len(text)
+        spans.append((element, cursor, end))
+        cursor = end
+
+    return spans
+
+
+def _span_index_for_position(
+    spans: list[tuple[Any, int, int]],
+    position: int,
+) -> int | None:
+    """Return the text-node index containing a character position."""
+
+    for index, (_, start, end) in enumerate(spans):
+        if start <= position < end:
+            return index
+
+    return None
 
 
 def _replace_placeholder(
@@ -347,7 +635,7 @@ def _replace_placeholder(
 
         return str(values[field_id] or "")
 
-    if raw_value.lower().startswith("dropdown:"):
+    if raw_value.lower().startswith(("dropdown:", "single_choice:")):
         definition = raw_value.split(":", 1)[1]
 
         parts = [
@@ -621,6 +909,12 @@ def _set_content_control_text(
             text_elements[0],
             value,
         )
+        _force_run_black(
+            _nearest_ancestor(
+                text_elements[0],
+                qn("w:r"),
+            )
+        )
 
         for text_element in text_elements[1:]:
             text_element.text = ""
@@ -633,6 +927,9 @@ def _set_content_control_text(
     )
 
     run = OxmlElement("w:r")
+    run_properties = OxmlElement("w:rPr")
+    _force_black_run_properties(run_properties)
+    run.append(run_properties)
     text = OxmlElement("w:t")
     run.append(text)
     _set_text_with_breaks(text, value)
@@ -641,6 +938,30 @@ def _set_content_control_text(
         paragraph.append(run)
     else:
         content.append(run)
+
+
+def _set_text_element_value(
+    text_element,
+    value: Any,
+) -> None:
+    """Set text while keeping Word's significant-space metadata valid."""
+
+    normalized = str(value or "")
+    text_element.text = normalized
+    space_attribute = (
+        "{http://www.w3.org/XML/1998/namespace}space"
+    )
+
+    if normalized.startswith(" ") or normalized.endswith(" "):
+        text_element.set(
+            space_attribute,
+            "preserve",
+        )
+    else:
+        text_element.attrib.pop(
+            space_attribute,
+            None,
+        )
 
 
 def _set_text_with_breaks(
@@ -653,12 +974,10 @@ def _set_text_with_breaks(
     parent = text_element.getparent()
 
     first = segments[0] if segments else ""
-    text_element.text = first
-    if first.startswith(" ") or first.endswith(" "):
-        text_element.set(
-            "{http://www.w3.org/XML/1998/namespace}space",
-            "preserve",
-        )
+    _set_text_element_value(
+        text_element,
+        first,
+    )
 
     if parent is None or len(segments) <= 1:
         return
@@ -670,61 +989,12 @@ def _set_text_with_breaks(
         insert_at += 1
 
         next_text = OxmlElement("w:t")
-        next_text.text = segment
-        if segment.startswith(" ") or segment.endswith(" "):
-            next_text.set(
-                "{http://www.w3.org/XML/1998/namespace}space",
-                "preserve",
-            )
+        _set_text_element_value(
+            next_text,
+            segment,
+        )
         parent.insert(insert_at, next_text)
         insert_at += 1
-
-
-def _set_document_text_color(
-    document,
-    color_hex: str = "000000",
-) -> None:
-    """Apply one explicit text color to every Word run in the output.
-
-    Template authors frequently use red or another highlight color while
-    placing markers.  Generated documents should not inherit those editing
-    colors, so all text runs in the main document, tables, headers, footers,
-    text boxes, and other story parts are normalized to black while keeping
-    font family, size, emphasis, borders, and paragraph formatting intact.
-    """
-
-    normalized_color = str(color_hex).strip().lstrip("#").upper()
-    if not re.fullmatch(r"[0-9A-F]{6}", normalized_color):
-        raise ValueError(
-            "A cor do texto deve usar seis dígitos hexadecimais."
-        )
-
-    for root in iter_unique_story_roots(document):
-        for run_element in root.iter(qn("w:r")):
-            run_properties = run_element.find(qn("w:rPr"))
-            if run_properties is None:
-                run_properties = OxmlElement("w:rPr")
-                run_element.insert(0, run_properties)
-
-            color_element = run_properties.find(qn("w:color"))
-            if color_element is None:
-                color_element = OxmlElement("w:color")
-                run_properties.append(color_element)
-
-            color_element.set(
-                qn("w:val"),
-                normalized_color,
-            )
-
-            for attribute_name in (
-                "w:themeColor",
-                "w:themeTint",
-                "w:themeShade",
-            ):
-                color_element.attrib.pop(
-                    qn(attribute_name),
-                    None,
-                )
 
 
 def _find_unresolved_placeholders(

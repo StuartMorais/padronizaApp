@@ -397,6 +397,10 @@ $dataDirectories = @(
         Target = "examples"
     },
     @{
+        Source = "docs"
+        Target = "docs"
+    },
+    @{
         Source = "assets"
         Target = "assets"
     }

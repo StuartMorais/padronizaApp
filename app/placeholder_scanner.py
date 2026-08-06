@@ -44,6 +44,7 @@ def scan_docx_fields(docx_path: Path) -> list[dict[str, Any]]:
         {{date:document.date}}
         {{checkbox:declaration.accepted}}
         {{dropdown:process.modality|Pregão|Concorrência|Dispensa}}
+        {{single_choice:pca.status|Consta no PCA|Não consta no PCA}}
 
     Date behavior:
 
@@ -131,6 +132,28 @@ def scan_docx_fields(docx_path: Path) -> list[dict[str, Any]]:
                     if key in metadata:
                         existing[key] = metadata[key]
 
+            for key in (
+                "layout",
+                "layout_group",
+                "layout_group_label",
+                "group",
+                "selection",
+                "choice_required",
+                "tag_type",
+            ):
+                value = metadata.get(key)
+                if value in (None, "", False):
+                    continue
+                current = existing.get(key)
+                if current in (None, "", "auto", False):
+                    existing[key] = value
+            if (
+                metadata.get("layout") == "choice"
+                and label
+                and not str(existing.get("layout_group_label", "")).strip()
+            ):
+                existing["layout_group_label"] = label
+
             return
 
         field: dict[str, Any] = {
@@ -163,6 +186,25 @@ def scan_docx_fields(docx_path: Path) -> list[dict[str, Any]]:
             field["marker"] = str(
                 metadata.get("marker", f"repeat:{field_id}")
             )
+
+        for key in (
+            "layout",
+            "layout_group",
+            "layout_group_label",
+            "group",
+            "selection",
+            "choice_required",
+            "tag_type",
+        ):
+            value = metadata.get(key)
+            if value not in (None, "", False):
+                field[key] = value
+        if (
+            metadata.get("layout") == "choice"
+            and label
+            and not str(field.get("layout_group_label", "")).strip()
+        ):
+            field["layout_group_label"] = label
 
         field_indexes[field_id] = len(ordered_fields)
         ordered_fields.append(field)
@@ -600,6 +642,7 @@ def _scan_table_row_element(
                     parsed["type"],
                     parsed.get("options"),
                     previous_label,
+                    parsed.get("metadata"),
                 )
 
         _scan_xml_container(
@@ -653,6 +696,7 @@ def _scan_paragraph_element(
                 parsed["type"],
                 parsed.get("options"),
                 context_label,
+                parsed.get("metadata"),
             )
             previous_end = match.end()
 
@@ -898,6 +942,44 @@ def _parse_placeholder(
             "type": "date",
         }
 
+    if raw_value.lower().startswith("single_choice:"):
+        definition = raw_value.split(":", 1)[1]
+
+        parts = [
+            part.strip()
+            for part in definition.split("|")
+        ]
+
+        field_id = parts[0] if parts else ""
+        options = _clean_options(parts[1:])
+
+        if not field_id:
+            raise ValueError(
+                'Um marcador de escolha única não possui ID de campo.'
+            )
+
+        if len(options) < 2:
+            raise ValueError(
+                f"A escolha única '{field_id}' precisa de pelo menos duas opções.\n\n"
+                "Use: {{single_choice:campo.id|Opção A|Opção B}}\n"
+                "Para textos longos: {{single_choice:campo.id|Título curto => Texto completo}}"
+            )
+
+        group = f"single_choice_{field_id}"
+        return {
+            "id": field_id,
+            "type": "dropdown",
+            "options": options,
+            "metadata": {
+                "layout": "choice",
+                "layout_group": group,
+                "group": group,
+                "selection": "single",
+                "choice_required": True,
+                "tag_type": "single_choice",
+            },
+        }
+
     if raw_value.lower().startswith("dropdown:"):
         definition = raw_value.split(":", 1)[1]
 
@@ -967,6 +1049,7 @@ def create_default_fields(
             detected_columns: list[dict[str, Any]] = []
             minimum_rows = 0
             numbering_padding = 2
+            detected_metadata: dict[str, Any] = {}
         elif isinstance(scanned, dict):
             field_id = str(scanned.get("id", "")).strip()
             detected_label = _clean_context_label(
@@ -1008,6 +1091,19 @@ def create_default_fields(
                 1,
                 int(scanned.get("numbering_padding", 2) or 2),
             )
+            detected_metadata = {
+                key: scanned[key]
+                for key in (
+                    "layout",
+                    "layout_group",
+                    "layout_group_label",
+                    "group",
+                    "selection",
+                    "choice_required",
+                    "tag_type",
+                )
+                if key in scanned and scanned[key] not in (None, "", False)
+            }
         else:
             continue
 
@@ -1149,6 +1245,11 @@ def create_default_fields(
             else:
                 field.pop("columns", None)
 
+            for key, value in detected_metadata.items():
+                current = field.get(key)
+                if current in (None, "", "auto", False):
+                    field[key] = value
+
             fields.append(field)
             continue
 
@@ -1170,6 +1271,7 @@ def create_default_fields(
             field["numbering_padding"] = numbering_padding
             field["required"] = True
 
+        field.update(detected_metadata)
         fields.append(field)
 
     return fields

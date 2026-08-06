@@ -1224,3 +1224,154 @@ QLineEdit#repeatableColumnsSummary {
 QPushButton#repeatableColumnsEditButton {
     min-width: 72px;
 }
+
+/* Semantic generated-form layout ----------------------------------------- */
+QFrame#formProgressCard {
+    background-color: #1d242c;
+    border: 1px solid #343d47;
+    border-radius: 8px;
+}
+QLabel#formProgressDetails {
+    color: #aeb9c4;
+    font-weight: 600;
+}
+QProgressBar#formProgressBar {
+    background-color: #151a20;
+    border: 1px solid #3b4651;
+    border-radius: 5px;
+    min-height: 9px;
+    max-height: 9px;
+}
+QProgressBar#formProgressBar::chunk {
+    background-color: #2782e9;
+    border-radius: 4px;
+}
+QFrame#formSection {
+    background-color: #1d242c;
+    border: 1px solid #343d47;
+    border-radius: 8px;
+}
+QToolButton#formSectionToggle {
+    background-color: #232b34;
+    color: #edf2f7;
+    border: none;
+    border-bottom: 1px solid #343d47;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 700;
+}
+QToolButton#formSectionToggle:hover {
+    background-color: #29333e;
+}
+QFrame#formSectionBody,
+QFrame#formGridBlock {
+    background: transparent;
+    border: none;
+}
+
+QFrame#formDocumentGridCard,
+QFrame#formDocumentGrid,
+QFrame#formDocumentGridCell {
+    background: transparent;
+    border: none;
+}
+QFrame#formDocumentGridStatic {
+    background-color: #232c35;
+    border: 1px solid #3b4855;
+    border-radius: 6px;
+}
+QLabel#formDocumentGridStaticLabel {
+    color: #dfe8f1;
+    font-weight: 700;
+    background: transparent;
+    border: none;
+}
+QLabel#formDocumentGridStaticValue {
+    color: #b9c6d2;
+    background: transparent;
+    border: none;
+}
+
+QFrame#choiceGroupCard {
+    background-color: #202832;
+    border: 1px solid #3b4855;
+    border-radius: 7px;
+}
+QLabel#choiceGroupHint {
+    color: #9eabb8;
+    background: transparent;
+    border: none;
+}
+QToolButton#clearChoiceButton {
+    background: transparent;
+    border: none;
+    padding: 4px 6px;
+    text-decoration: underline;
+}
+QToolButton#clearChoiceButton:hover {
+    background: #29333e;
+    border-radius: 4px;
+}
+QFrame#formTableCard {
+    background: transparent;
+    border: none;
+}
+QScrollArea#formTableScroll,
+QFrame#formTableGrid {
+    background-color: #1b222a;
+    border: 1px solid #3a444f;
+    border-radius: 6px;
+}
+QLabel#formTableHeader {
+    background-color: #27313b;
+    color: #e8eef4;
+    border-right: 1px solid #3d4853;
+    border-bottom: 1px solid #3d4853;
+    padding: 7px;
+    font-weight: 700;
+}
+QLabel#formTableRowHeader {
+    background-color: #222b34;
+    color: #dce5ee;
+    border-right: 1px solid #3d4853;
+    border-bottom: 1px solid #3d4853;
+    padding: 7px;
+    font-weight: 600;
+}
+QFrame#formTableCell,
+QFrame#formTableEmptyCell {
+    background-color: #1d242c;
+    border-right: 1px solid #343d47;
+    border-bottom: 1px solid #343d47;
+}
+QFrame#choiceGroupCard[validationState="missing"],
+QFrame#formTableCell[validationState="missing"] {
+    background-color: #302b1d;
+    border: 1px solid #77652f;
+}
+QFrame#choiceGroupCard[validationState="invalid"],
+QFrame#formTableCell[validationState="invalid"] {
+    background-color: #321f22;
+    border: 1px solid #a75a60;
+}
+QTabWidget::pane {
+    border: 1px solid #343d47;
+    border-radius: 6px;
+    background-color: #1b2128;
+}
+QTabBar::tab {
+    background-color: #222a32;
+    color: #b9c4cf;
+    padding: 8px 13px;
+    border: 1px solid #343d47;
+    border-bottom: none;
+}
+QTabBar::tab:selected {
+    background-color: #1b2128;
+    color: #ffffff;
+}
+QTreeWidget {
+    background-color: #1d242c;
+    border: 1px solid #3b4651;
+    border-radius: 6px;
+}

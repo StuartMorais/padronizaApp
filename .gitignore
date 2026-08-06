@@ -1,3 +1,18 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# IDE and local state
+.idea/
+.storage-v1
+
+# Runtime and user data
+data/*
+!data/.gitkeep
+output/*
+!output/.gitkeep
+backups/
 
 # Windows build outputs
 build/

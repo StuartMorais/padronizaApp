@@ -2307,6 +2307,7 @@ class MainWindow(QMainWindow):
         field_id = str(
             issue.get("field_id", "")
         )
+        self.document_form.reveal_validation_for(field_id)
         target = self.document_form.focus_field(
             field_id
         )
@@ -2349,6 +2350,7 @@ class MainWindow(QMainWindow):
     def _validate_fields(self) -> None:
         self._refresh_generation_state()
         if self._validation_issues:
+            self.document_form.reveal_all_validation()
             self._review_next_issue()
             QMessageBox.warning(
                 self,

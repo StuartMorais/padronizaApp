@@ -264,6 +264,13 @@ class TutorialPage(QWidget):
                 'Use Título curto => Texto completo. O título facilita a escolha e o texto completo é inserido no DOCX. No Editor de Modelos, use o botão Editar... na coluna Opções para cadastrar textos com várias linhas.',
             )
         )
+        layout.addWidget(
+            self._marker_example_card(
+                'Escolha única em caixas',
+                '{{single_choice:pca_2025.situacao|Consta no PCA => Consta no Plano de Contratações Anual.|Não consta no PCA => Não consta no Plano de Contratações Anual.}}',
+                'Exibe as alternativas empilhadas como caixas grandes e clicáveis. Todo o texto fica visível e somente uma opção pode permanecer marcada.',
+            )
+        )
 
         example_group = QGroupBox('Exemplo administrativo completo')
         example_layout = QVBoxLayout(example_group)
@@ -446,7 +453,7 @@ class TutorialPage(QWidget):
                     ('Evite IDs genéricos', 'Não use apenas valor, texto ou campo1. Prefira IDs que expliquem o conteúdo, como responsavel.nome, objeto.descricao ou contrato.valor_total quando se tratar realmente de dinheiro.'),
                     ('Rótulo separado', 'O rótulo visível pode ter acentos e espaços. Somente o ID precisa seguir a regra técnica.'),
                     ('Correspondência exata', 'Ao renomear um ID, atualize o marcador no DOCX e a definição do campo.'),
-                    ('Prefixos especiais', 'Use somente date:, checkbox: e dropdown:. Outros tipos são escolhidos no Editor de Modelo.'),
+                    ('Prefixos especiais', 'Use date:, checkbox:, dropdown: e single_choice:. repeat: é usado somente em linhas de tabelas repetíveis. Outros tipos são escolhidos no Editor de Modelo.'),
                 ],
             )
         )
@@ -818,6 +825,10 @@ class TutorialPage(QWidget):
                 'Lista suspensa',
                 '{{dropdown:process.modality|Opção A|Título curto => Texto completo}}',
             ),
+            (
+                'Escolha única',
+                '{{single_choice:pca.status|Consta no PCA|Não consta no PCA}}',
+            ),
         ]
 
         for row, (kind, example) in enumerate(examples):
@@ -995,6 +1006,7 @@ class TutorialPage(QWidget):
             ('Data', '{{date:documento.data}}', 'Campo com calendário e formatação de data.'),
             ('Caixa de seleção', '{{checkbox:declaracao.aceita}}', 'Estado marcado ou desmarcado, exibido no DOCX como ☑ ou ☐.'),
             ('Lista suspensa', '{{dropdown:processo.modalidade|Pregão|Concorrência}}', 'Abre uma lista pesquisável. Opções longas podem ter um título curto separado do texto inserido no documento.'),
+            ('Escolha única', '{{single_choice:pca.situacao|Consta no PCA|Não consta no PCA}}', 'Mostra caixas grandes com o texto completo; somente uma alternativa pode ser marcada.'),
             ('Moeda', '{{contrato.valor_total}}', 'Formata valores monetários no padrão brasileiro, por exemplo R$ 1.250,00.'),
             ('Número inteiro', '{{item.quantidade}}', 'Aceita números inteiros, como quantidade ou prazo em dias.'),
             ('Número decimal', '{{item.peso}}', 'Aceita números decimais com separador local.'),

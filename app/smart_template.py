@@ -7,6 +7,7 @@ from typing import Any
 from xml.etree import ElementTree
 
 from app.field_utils import validation_hint
+from app.layout_inference import apply_layout_metadata, infer_docx_layout
 from app.placeholder_scanner import create_default_fields, scan_docx_fields
 
 VALID_FIELD_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
@@ -47,12 +48,26 @@ def smart_fields_from_docx(
 
     scanned = scan_docx_fields(Path(docx_path))
     fields = create_default_fields(scanned, existing_fields or [])
+    fields = apply_layout_metadata(
+        fields,
+        infer_docx_layout(Path(docx_path)),
+    )
 
     for field in fields:
         field_id = str(field.get("id", "")).strip()
         lowered = field_id.casefold()
 
         field.setdefault("section", suggest_section(lowered))
+        if (
+            str(field.get("tag_type", "")).casefold() == "single_choice"
+            and str(field.get("layout", "")).casefold() == "choice"
+            and not str(field.get("layout_group_label", "")).strip()
+        ):
+            field["layout_group_label"] = (
+                str(field.get("section", "")).strip()
+                or str(field.get("label", "")).strip()
+                or "Escolha uma opção"
+            )
 
         profile_key = suggest_profile_key(field_id)
         if profile_key:
@@ -342,7 +357,7 @@ def _field_id_from_token(raw: str) -> str:
     lowered = text.casefold()
     if lowered.startswith(("checkbox:", "date:")):
         return text.split(":", 1)[1].strip()
-    if lowered.startswith("dropdown:"):
+    if lowered.startswith(("dropdown:", "single_choice:")):
         return text.split(":", 1)[1].split("|", 1)[0].strip()
     if lowered.startswith("repeat:"):
         return text.split(":", 1)[1].strip()

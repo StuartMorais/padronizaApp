@@ -35,6 +35,9 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -43,13 +46,17 @@ from app.dialogs.diagnostics_dialog import DiagnosticsDialog
 from app.dialogs.filename_builder_dialog import FilenameBuilderDialog
 from app.dialogs.field_library_dialog import FieldLibraryDialog
 from app.field_library import FieldLibraryStore
+from app.app_paths import resolve_application_paths
 from app.field_utils import FIELD_TYPE_ORDER
 from app.smart_template import readiness_report, smart_fields_from_docx
 from app.template_diagnostics import diagnose_template, diagnostics_text
+from app.system_open import SystemOpenError, open_file
 from app.template_repository import TemplateRepository
 from app.widgets.clickable_drop_zone import ClickableDropZone
 from app.widgets.context_help import HelpIconButton, HelpLabel
 from app.widgets.toast import show_toast
+from app.widgets.document_form import DocumentForm
+from app.widgets.field_layout_editor import FieldLayoutEditor
 from app.widgets.repeatable_table import FieldConfigurationEditor
 
 
@@ -272,7 +279,7 @@ class TemplateEditorDialog(QDialog):
             'Montar nome do arquivo...'
         )
 
-        self.fields_table = QTableWidget(0, 10)
+        self.fields_table = QTableWidget(0, 11)
         self.fields_table.setHorizontalHeaderLabels(
             [
                 'ID do campo',
@@ -285,6 +292,7 @@ class TemplateEditorDialog(QDialog):
                 'Grupo',
                 'Escolha única',
                 'Visível quando',
+                'Layout',
             ]
         )
         self.fields_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -295,7 +303,7 @@ class TemplateEditorDialog(QDialog):
         header = self.fields_table.horizontalHeader()
         for column in range(self.fields_table.columnCount()):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
-        widths = [210, 210, 150, 80, 245, 150, 170, 130, 100, 190]
+        widths = [210, 210, 150, 80, 245, 170, 170, 130, 100, 190, 250]
         for column, width in enumerate(widths):
             self.fields_table.setColumnWidth(column, width)
 
@@ -310,6 +318,7 @@ class TemplateEditorDialog(QDialog):
             'Agrupa caixas de seleção relacionadas.',
             'Permite apenas uma caixa marcada dentro do mesmo grupo.',
             'Regra no formato campo.id=conteudo_esperado. Exemplo: declaracao.tipo=Integral.',
+            'Define se o campo fica em grade, largura total, grupo de escolha ou tabela. Use Detalhes para configurar grupo, linha e coluna.',
         ]
         for column, help_text in enumerate(field_header_help):
             header_item = self.fields_table.horizontalHeaderItem(column)
@@ -328,6 +337,34 @@ class TemplateEditorDialog(QDialog):
         self.save_button = QPushButton('Salvar alterações' if template_id else 'Criar modelo')
         self.save_button.setObjectName("primaryButton")
         self.cancel_button = QPushButton('Cancelar')
+
+        self.field_search_input = QLineEdit()
+        self.field_search_input.setPlaceholderText('Filtrar por ID, rótulo ou seção…')
+        self.simple_fields_checkbox = QCheckBox('Modo simples')
+        self.simple_fields_checkbox.setChecked(True)
+        self.tag_guide_button = QPushButton('Abrir guia de tags')
+
+        self.section_tree = QTreeWidget()
+        self.section_tree.setHeaderLabels(['Seção / grupo', 'Campos'])
+        self.section_tree.setAlternatingRowColors(True)
+        self.section_tree.setRootIsDecorated(True)
+        self.section_tree.setMinimumHeight(250)
+        self.section_tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.section_tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.new_section_button = QPushButton('Nova seção')
+        self.rename_section_button = QPushButton('Renomear seção')
+        self.assign_section_button = QPushButton('Atribuir seleção à seção')
+
+        self.form_preview = DocumentForm()
+        self.form_preview_scroll = QScrollArea()
+        self.form_preview_scroll.setWidgetResizable(True)
+        self.form_preview_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        preview_container = QWidget()
+        preview_layout = QVBoxLayout(preview_container)
+        preview_layout.setContentsMargins(8, 8, 8, 8)
+        preview_layout.addWidget(self.form_preview)
+        preview_layout.addStretch()
+        self.form_preview_scroll.setWidget(preview_container)
 
         self.docx_drop_zone.browse_requested.connect(
             self._choose_docx
@@ -349,6 +386,12 @@ class TemplateEditorDialog(QDialog):
         self.revert_button.clicked.connect(self._revert_editor_changes)
         self.save_button.clicked.connect(self._save_template)
         self.cancel_button.clicked.connect(self._cancel_editor)
+        self.field_search_input.textChanged.connect(self._filter_field_rows)
+        self.simple_fields_checkbox.toggled.connect(self._set_simple_fields_mode)
+        self.tag_guide_button.clicked.connect(self._open_tag_guide)
+        self.new_section_button.clicked.connect(self._create_section)
+        self.rename_section_button.clicked.connect(self._rename_section)
+        self.assign_section_button.clicked.connect(self._assign_selected_to_section)
 
         QShortcut(QKeySequence.StandardKey.Undo, self).activated.connect(self._undo_editor_change)
         QShortcut(QKeySequence.StandardKey.Redo, self).activated.connect(self._redo_editor_change)
@@ -636,16 +679,24 @@ class TemplateEditorDialog(QDialog):
             'Configuração dos campos',
             'Campos, seções e regras',
             (
-                '<p><b>Seção</b> organiza o formulário em grupos visuais.</p>'
-                '<p><b>Chave do perfil</b> associa o campo a dados reutilizáveis.</p>'
-                '<p>Em <b>Visível quando</b>, use o formato '
-                '<b>campo.id=conteudo_esperado</b> para criar uma regra condicional. '
-                'Exemplo: <b>declaracao.tipo=Integral</b>.</p>'
-                '<p>Caixas do mesmo grupo com <b>Escolha única</b> funcionam como '
-                'seleção exclusiva, mas todas continuam sendo impressas.</p>'
+                '<p><b>Campos</b> define o tipo, o rótulo e a validação.</p>'
+                '<p><b>Seções e layout</b> mostra como os campos serão agrupados. '
+                'Use o layout <b>Grupo de escolha</b> para alternativas exclusivas exibidas como '
+                'caixas grandes e clicáveis, e <b>Tabela</b> para responsáveis organizados '
+                'por linha e coluna.</p>'
+                '<p><b>Prévia do formulário</b> permite revisar a organização antes de salvar.</p>'
+                '<p>Em <b>Visível quando</b>, use '
+                '<b>campo.id=conteudo_esperado</b>. Exemplo: '
+                '<b>declaracao.tipo=Integral</b>.</p>'
             ),
         )
         help_text.label.setObjectName("mutedText")
+
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(7)
+        filter_row.addWidget(self.field_search_input, 1)
+        filter_row.addWidget(self.simple_fields_checkbox)
+        filter_row.addWidget(self.tag_guide_button)
 
         buttons = QHBoxLayout()
         buttons.setSpacing(6)
@@ -660,13 +711,233 @@ class TemplateEditorDialog(QDialog):
         buttons.addWidget(self.redo_button)
         buttons.addWidget(self.revert_button)
 
+        fields_tab = QWidget()
+        fields_layout = QVBoxLayout(fields_tab)
+        fields_layout.setContentsMargins(0, 0, 0, 0)
+        fields_layout.setSpacing(7)
+        fields_layout.addLayout(filter_row)
+        fields_layout.addLayout(buttons)
+        fields_layout.addWidget(self.fields_table, 1)
+
+        sections_tab = QWidget()
+        sections_layout = QVBoxLayout(sections_tab)
+        sections_layout.setContentsMargins(8, 8, 8, 8)
+        sections_layout.setSpacing(8)
+        section_hint = QLabel(
+            'A árvore abaixo resume a ordem do formulário. Selecione linhas na aba Campos '
+            'e use “Atribuir seleção à seção” para reorganizá-las. Os grupos de escolha '
+            'e tabelas aparecem como subgrupos.'
+        )
+        section_hint.setWordWrap(True)
+        section_hint.setObjectName('mutedText')
+        sections_layout.addWidget(section_hint)
+        sections_layout.addWidget(self.section_tree, 1)
+        section_buttons = QHBoxLayout()
+        section_buttons.addWidget(self.new_section_button)
+        section_buttons.addWidget(self.rename_section_button)
+        section_buttons.addWidget(self.assign_section_button)
+        section_buttons.addStretch()
+        sections_layout.addLayout(section_buttons)
+
+        preview_tab = QWidget()
+        preview_layout = QVBoxLayout(preview_tab)
+        preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_hint = QLabel(
+            'Prévia interativa para revisar a organização. Os valores digitados aqui não são salvos.'
+        )
+        preview_hint.setObjectName('mutedText')
+        preview_hint.setWordWrap(True)
+        preview_layout.addWidget(preview_hint)
+        preview_layout.addWidget(self.form_preview_scroll, 1)
+
+        self.fields_tabs = QTabWidget()
+        self.fields_tabs.addTab(fields_tab, 'Campos')
+        self.fields_tabs.addTab(sections_tab, 'Seções e layout')
+        self.fields_tabs.addTab(preview_tab, 'Prévia do formulário')
+        self.fields_tabs.currentChanged.connect(self._fields_tab_changed)
+
         layout = QVBoxLayout(group)
         layout.setContentsMargins(12, 16, 12, 12)
         layout.setSpacing(8)
         layout.addWidget(help_text)
-        layout.addLayout(buttons)
-        layout.addWidget(self.fields_table, 1)
+        layout.addWidget(self.fields_tabs, 1)
+        self._set_simple_fields_mode(True)
         return group
+
+    def _set_simple_fields_mode(self, enabled: bool) -> None:
+        # Essential columns stay visible; advanced automation rules are one click away.
+        for column in (6, 7, 8, 9):
+            self.fields_table.setColumnHidden(column, bool(enabled))
+        self.fields_table.setColumnHidden(10, False)
+        widths = (
+            [175, 185, 145, 82, 220, 150, 170, 130, 100, 190, 210]
+            if enabled
+            else [210, 210, 150, 80, 245, 170, 170, 130, 100, 190, 250]
+        )
+        for column, width in enumerate(widths):
+            self.fields_table.setColumnWidth(column, width)
+
+    def _filter_field_rows(self, text: str) -> None:
+        query = str(text).strip().casefold()
+        for row in range(self.fields_table.rowCount()):
+            haystack = " ".join(
+                (self.fields_table.item(row, column).text() if self.fields_table.item(row, column) else "")
+                for column in (0, 1, 5)
+            ).casefold()
+            self.fields_table.setRowHidden(row, bool(query) and query not in haystack)
+
+    def _fields_tab_changed(self, index: int) -> None:
+        if index == 1:
+            self._refresh_section_tree()
+        elif index == 2:
+            self._refresh_form_preview()
+
+    def _refresh_section_tree(self) -> None:
+        if not hasattr(self, "section_tree"):
+            return
+        fields = self._collect_fields(validate=False)
+        self.section_tree.clear()
+        sections: dict[str, QTreeWidgetItem] = {}
+        groups: dict[tuple[str, str, str], QTreeWidgetItem] = {}
+        for field in fields:
+            section = str(field.get("section", "")).strip() or "Dados do documento"
+            section_item = sections.get(section)
+            if section_item is None:
+                section_item = QTreeWidgetItem([section, "0"])
+                section_item.setData(0, Qt.ItemDataRole.UserRole, section)
+                self.section_tree.addTopLevelItem(section_item)
+                sections[section] = section_item
+
+            layout_type = str(field.get("layout", "auto")).strip() or "auto"
+            layout_group = str(field.get("layout_group", "")).strip()
+            parent = section_item
+            if layout_type in {"choice", "form_grid", "table"} and layout_group:
+                key = (section, layout_type, layout_group)
+                parent = groups.get(key)
+                if parent is None:
+                    label = str(field.get("layout_group_label", "")).strip() or layout_group
+                    prefix = {
+                        "choice": "Escolha",
+                        "form_grid": "Grade",
+                        "table": "Tabela",
+                    }.get(layout_type, "Grupo")
+                    parent = QTreeWidgetItem([f"{prefix}: {label}", "0"])
+                    parent.setData(0, Qt.ItemDataRole.UserRole, section)
+                    section_item.addChild(parent)
+                    groups[key] = parent
+
+            field_label = str(field.get("label", field.get("id", ""))).strip()
+            field_id = str(field.get("id", "")).strip()
+            parent.addChild(QTreeWidgetItem([field_label, field_id]))
+
+        for section_item in sections.values():
+            count = 0
+            stack = [section_item]
+            while stack:
+                item = stack.pop()
+                for index in range(item.childCount()):
+                    child = item.child(index)
+                    if child.childCount():
+                        stack.append(child)
+                    else:
+                        count += 1
+            section_item.setText(1, str(count))
+        for group_item in groups.values():
+            group_item.setText(1, str(group_item.childCount()))
+        self.section_tree.expandAll()
+
+    def _refresh_form_preview(self) -> None:
+        if not hasattr(self, "form_preview"):
+            return
+        fields = self._collect_fields(validate=False)
+        sections = self._build_sections(fields)
+        self.form_preview.set_template(fields, sections)
+
+    def _selected_field_rows(self) -> list[int]:
+        rows = sorted(index.row() for index in self.fields_table.selectionModel().selectedRows())
+        if not rows and self.fields_table.currentRow() >= 0:
+            rows = [self.fields_table.currentRow()]
+        return rows
+
+    def _create_section(self) -> None:
+        name, accepted = QInputDialog.getText(self, "Nova seção", "Nome da seção:")
+        if not accepted or not name.strip():
+            return
+        rows = self._selected_field_rows()
+        if rows:
+            for row in rows:
+                item = self.fields_table.item(row, 5)
+                if item is None:
+                    item = QTableWidgetItem()
+                    self.fields_table.setItem(row, 5, item)
+                item.setText(name.strip())
+        self._schedule_editor_change()
+        self._refresh_section_tree()
+        if not rows:
+            show_toast(
+                self,
+                "Seção criada",
+                "Selecione campos na aba Campos e use “Atribuir seleção à seção”.",
+                kind="info",
+            )
+
+    def _rename_section(self) -> None:
+        item = self.section_tree.currentItem()
+        if item is None:
+            QMessageBox.warning(self, "Selecionar seção", "Selecione uma seção na árvore.")
+            return
+        old_name = str(item.data(0, Qt.ItemDataRole.UserRole) or "").strip()
+        if not old_name:
+            return
+        new_name, accepted = QInputDialog.getText(
+            self, "Renomear seção", "Novo nome:", text=old_name
+        )
+        if not accepted or not new_name.strip() or new_name.strip() == old_name:
+            return
+        for row in range(self.fields_table.rowCount()):
+            section_item = self.fields_table.item(row, 5)
+            if section_item and section_item.text().strip() == old_name:
+                section_item.setText(new_name.strip())
+        self._schedule_editor_change()
+        self._refresh_section_tree()
+
+    def _assign_selected_to_section(self) -> None:
+        rows = self._selected_field_rows()
+        if not rows:
+            QMessageBox.warning(self, "Selecionar campos", "Selecione um ou mais campos na aba Campos.")
+            return
+        available = []
+        for row in range(self.fields_table.rowCount()):
+            item = self.fields_table.item(row, 5)
+            name = item.text().strip() if item else ""
+            if name and name not in available:
+                available.append(name)
+        current_item = self.section_tree.currentItem()
+        current_section = str(current_item.data(0, Qt.ItemDataRole.UserRole) or "").strip() if current_item else ""
+        if available:
+            default_index = available.index(current_section) if current_section in available else 0
+            name, accepted = QInputDialog.getItem(
+                self, "Atribuir seção", "Seção:", available, default_index, True
+            )
+        else:
+            name, accepted = QInputDialog.getText(self, "Atribuir seção", "Seção:")
+        if not accepted or not str(name).strip():
+            return
+        for row in rows:
+            item = self.fields_table.item(row, 5)
+            if item is None:
+                item = QTableWidgetItem()
+                self.fields_table.setItem(row, 5, item)
+            item.setText(str(name).strip())
+        self._schedule_editor_change()
+        self._refresh_section_tree()
+
+    def _open_tag_guide(self) -> None:
+        guide_path = resolve_application_paths().resource_root / "docs" / "GUIA_DE_TAGS_PADRONIZA.docx"
+        try:
+            open_file(guide_path)
+        except SystemOpenError as exc:
+            QMessageBox.warning(self, "Guia de tags indisponível", str(exc))
 
     def _create_output_group(self) -> QGroupBox:
         form_group, form = self._create_form_group(
@@ -1074,6 +1345,10 @@ class TemplateEditorDialog(QDialog):
             self.fields_table.blockSignals(previous)
         if hasattr(self, "readiness_label"):
             self._update_readiness()
+        if hasattr(self, "simple_fields_checkbox"):
+            self._set_simple_fields_mode(self.simple_fields_checkbox.isChecked())
+        if hasattr(self, "field_search_input"):
+            self._filter_field_rows(self.field_search_input.text())
 
     def _insert_field_row(self, field: dict[str, Any] | None = None) -> None:
         field = field or {}
@@ -1082,6 +1357,7 @@ class TemplateEditorDialog(QDialog):
         id_item = QTableWidgetItem(
             str(field.get("id", ""))
         )
+        id_item.setData(Qt.ItemDataRole.UserRole, deepcopy(field))
         label_item = QTableWidgetItem(
             str(field.get("label", ""))
         )
@@ -1158,6 +1434,9 @@ class TemplateEditorDialog(QDialog):
                 visible = ""
         self.fields_table.setItem(row, 9, QTableWidgetItem(str(visible)))
 
+        layout_editor = FieldLayoutEditor(field)
+        self.fields_table.setCellWidget(row, 10, layout_editor)
+
         type_combo.currentIndexChanged.connect(
             lambda _index, combo=type_combo, configuration_widget=configuration, required_widget=required, single_widget=single: self._type_changed(
                 str(combo.currentData() or "text"),
@@ -1172,6 +1451,7 @@ class TemplateEditorDialog(QDialog):
         configuration.configuration_changed.connect(self._schedule_editor_change)
         required.toggled.connect(self._schedule_editor_change)
         single.toggled.connect(self._schedule_editor_change)
+        layout_editor.configuration_changed.connect(self._schedule_editor_change)
         self._type_changed(field_type, configuration, required, single)
 
     @staticmethod
@@ -1251,6 +1531,7 @@ class TemplateEditorDialog(QDialog):
             profile_item = self.fields_table.item(row, 6)
             group_item = self.fields_table.item(row, 7)
             visible_item = self.fields_table.item(row, 9)
+            layout_input = self.fields_table.cellWidget(row, 10)
             required = self._checkbox_at(row, 3)
             single = self._checkbox_at(row, 8)
 
@@ -1270,12 +1551,33 @@ class TemplateEditorDialog(QDialog):
                 raise ValueError(f"ID de campo duplicado: {field_id}")
             seen.add(field_id)
 
+            original = (
+                id_item.data(Qt.ItemDataRole.UserRole)
+                if id_item is not None
+                else {}
+            )
+            original = deepcopy(original) if isinstance(original, dict) else {}
             field: dict[str, Any] = {
-                "id": field_id,
-                "label": label or field_id.replace(".", " ").replace("_", " ").title(),
-                "type": field_type,
-                "required": False if field_type == "checkbox" else bool(required and required.isChecked()),
+                key: original[key]
+                for key in (
+                    "tag_type",
+                    "layout_order",
+                    "layout_static_rows",
+                    "label_source",
+                    "section_source",
+                    "validation_hint",
+                    "format_hint",
+                )
+                if key in original
             }
+            field.update(
+                {
+                    "id": field_id,
+                    "label": label or field_id.replace(".", " ").replace("_", " ").title(),
+                    "type": field_type,
+                    "required": False if field_type == "checkbox" else bool(required and required.isChecked()),
+                }
+            )
 
             if field_type == "dropdown":
                 options = (
@@ -1327,7 +1629,101 @@ class TemplateEditorDialog(QDialog):
             if visible:
                 field["visible_when"] = visible
 
+            if isinstance(layout_input, FieldLayoutEditor):
+                layout_config = layout_input.configuration()
+                layout_type = str(layout_config.pop("layout", "auto")).strip() or "auto"
+                if layout_type != "auto":
+                    field["layout"] = layout_type
+                if layout_type == "full_width":
+                    field["full_width"] = True
+                for key, value in layout_config.items():
+                    if value not in (None, "", False):
+                        field[key] = value
+                if layout_type == "choice" and field_type in {"checkbox", "dropdown"}:
+                    layout_group = str(field.get("layout_group", "")).strip()
+                    if field_type == "dropdown" and not layout_group:
+                        layout_group = f"single_choice_{field_id}"
+                        field["layout_group"] = layout_group
+                    if layout_group:
+                        field["group"] = layout_group
+                    field["selection"] = "single"
+                    if field_type == "dropdown" and bool(field.get("required", False)):
+                        field["choice_required"] = True
+
+                if validate and layout_type == "choice":
+                    if field_type not in {"checkbox", "dropdown"}:
+                        raise ValueError(
+                            f"O campo '{field_id}' usa Grupo de escolha, mas não é uma caixa de seleção nem uma lista de opções."
+                        )
+                    if not str(field.get("layout_group", "")).strip():
+                        raise ValueError(
+                            f"O campo '{field_id}' precisa de um Grupo do layout para formar uma escolha exclusiva."
+                        )
+                if validate and layout_type == "form_grid":
+                    missing_layout = [
+                        label
+                        for key, label in (
+                            ("layout_group", "Grupo do layout"),
+                            ("layout_row", "Chave da linha"),
+                        )
+                        if not str(field.get(key, "")).strip()
+                    ]
+                    if missing_layout:
+                        raise ValueError(
+                            f"O campo '{field_id}' precisa configurar em Layout > Detalhes: "
+                            + ", ".join(missing_layout)
+                            + "."
+                        )
+
+                if validate and layout_type == "table":
+                    missing_layout = [
+                        label
+                        for key, label in (
+                            ("layout_group", "Grupo do layout"),
+                            ("layout_row", "Chave da linha"),
+                            ("layout_column", "Rótulo da coluna"),
+                        )
+                        if not str(field.get(key, "")).strip()
+                    ]
+                    if missing_layout:
+                        raise ValueError(
+                            f"O campo '{field_id}' precisa configurar em Layout > Detalhes: "
+                            + ", ".join(missing_layout)
+                            + "."
+                        )
+
             fields.append(field)
+
+        if validate:
+            choice_groups: dict[str, list[dict[str, Any]]] = {}
+            table_groups: dict[str, list[str]] = {}
+            for field in fields:
+                layout_type = str(field.get("layout", "auto")).strip()
+                group = str(field.get("layout_group", "")).strip()
+                if layout_type == "choice" and group:
+                    choice_groups.setdefault(group, []).append(field)
+                elif layout_type == "table" and group:
+                    table_groups.setdefault(group, []).append(str(field.get("id", "")))
+            for group, group_fields in choice_groups.items():
+                dropdown_fields = [
+                    field for field in group_fields
+                    if str(field.get("type", "")).strip() == "dropdown"
+                ]
+                if len(group_fields) == 1 and dropdown_fields:
+                    if len(dropdown_fields[0].get("options", [])) < 2:
+                        raise ValueError(
+                            f"O Grupo de escolha '{group}' precisa conter pelo menos duas opções."
+                        )
+                    continue
+                if len(group_fields) < 2:
+                    raise ValueError(
+                        f"O Grupo de escolha '{group}' precisa conter pelo menos duas opções."
+                    )
+            for group, field_ids in table_groups.items():
+                if len(field_ids) < 2:
+                    raise ValueError(
+                        f"A Tabela '{group}' precisa conter pelo menos dois campos."
+                    )
 
         return fields
 
@@ -1629,6 +2025,11 @@ class TemplateEditorDialog(QDialog):
                 )
             )
         self.safe_fix_button.setEnabled(bool(self.selected_docx))
+        if hasattr(self, "fields_tabs"):
+            if self.fields_tabs.currentIndex() == 1:
+                self._refresh_section_tree()
+            elif self.fields_tabs.currentIndex() == 2:
+                self._refresh_form_preview()
         self._update_undo_buttons()
 
     def _cancel_editor(self) -> None:
