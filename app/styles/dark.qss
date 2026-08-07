@@ -1486,3 +1486,35 @@ QLabel#templateSectionEmptyState {
     border-radius: 8px;
     padding: 22px;
 }
+
+/* Assisted template correction workflow ----------------------------------- */
+QFrame#assistedDetectionBanner {
+    background-color: #25271c;
+    border: 1px solid #6f6530;
+    border-radius: 8px;
+}
+
+QLabel#assistedDetectionTitle {
+    color: #f1dc8a;
+    font-weight: 700;
+    background: transparent;
+}
+
+QLabel#assistedDetectionText {
+    color: #c9c5ae;
+    background: transparent;
+}
+
+QToolButton#fieldCorrectionButton {
+    color: #9fc9f2;
+    background: transparent;
+    border: 1px solid #45586b;
+    border-radius: 5px;
+    padding: 2px 7px;
+    font-weight: 600;
+}
+
+QToolButton#fieldCorrectionButton:hover {
+    background-color: #223243;
+    border-color: #5b7690;
+}

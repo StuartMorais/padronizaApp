@@ -50,7 +50,8 @@ class AutomaticDetectionDialog(QDialog):
         "cep": "CEP",
         "phone": "Telefone",
         "email": "E-mail",
-        "checkbox_group": "Grupo de caixas exclusivo",
+        "checkbox_group": "Grupo de caixas de seleção",
+        "repeatable_table": "Tabela repetível",
     }
 
     def __init__(
@@ -73,9 +74,11 @@ class AutomaticDetectionDialog(QDialog):
         root.addWidget(title)
 
         description = QLabel(
-            "As tags existentes continuam sendo prioritárias. Apenas as sugestões marcadas "
-            "serão convertidas em tags dentro de uma cópia de trabalho do DOCX. "
-            "Sugestões de baixa confiança ficam desmarcadas."
+            "A detecção automática é assistida e pode interpretar alguns elementos do DOCX "
+            "de forma incorreta ou deixar campos sem identificar. As tags existentes continuam "
+            "sendo prioritárias. Apenas as sugestões marcadas serão convertidas em tags numa "
+            "cópia de trabalho; sugestões de baixa confiança ficam desmarcadas. Você pode editar "
+            "o modelo depois, inclusive durante o uso, se encontrar algo que precise de ajuste."
         )
         description.setWordWrap(True)
         root.addWidget(description)
@@ -195,12 +198,7 @@ class AutomaticDetectionDialog(QDialog):
             self.table.setItem(
                 row,
                 5,
-                QTableWidgetItem(
-                    self.TYPE_LABELS.get(
-                        str(candidate.get("type", "text")),
-                        str(candidate.get("type", "text")),
-                    )
-                ),
+                QTableWidgetItem(self._candidate_type_label(candidate)),
             )
             preview_item = QTableWidgetItem(str(candidate.get("preview", "")))
             preview_item.setToolTip(str(candidate.get("preview", "")))
@@ -214,10 +212,7 @@ class AutomaticDetectionDialog(QDialog):
         self.table.item(row, 3).setText(str(candidate.get("field_id", "")))
         self.table.item(row, 4).setText(str(candidate.get("label", "")))
         self.table.item(row, 5).setText(
-            self.TYPE_LABELS.get(
-                str(candidate.get("type", "text")),
-                str(candidate.get("type", "text")),
-            )
+            self._candidate_type_label(candidate)
         )
         use_item = self.table.item(row, 0)
         if candidate.get("requires_configuration"):
@@ -226,6 +221,14 @@ class AutomaticDetectionDialog(QDialog):
         else:
             use_item.setToolTip("")
         self._update_summary()
+
+    def _candidate_type_label(self, candidate: dict[str, Any]) -> str:
+        field_type = str(candidate.get("type", "text"))
+        if field_type == "checkbox_group":
+            if str(candidate.get("selection", "single")).casefold() == "multiple":
+                return "Caixas independentes (múltipla seleção)"
+            return "Grupo de escolha (uma opção)"
+        return self.TYPE_LABELS.get(field_type, field_type)
 
     def _update_summary(self) -> None:
         high = sum(float(item.get("confidence", 0.0)) >= 0.80 for item in self._candidates)
@@ -335,9 +338,12 @@ class _CandidateEditorDialog(QDialog):
         form.addRow("Rótulo", self.label_input)
 
         self.type_input = QComboBox()
+        source = str(candidate.get("source", ""))
         allowed_types = [field_type for field_type in FIELD_TYPE_ORDER if field_type != "repeatable_table"]
-        if str(candidate.get("source", "")) == "checkbox_choice":
+        if source == "checkbox_choice":
             allowed_types = ["checkbox_group"]
+        elif source == "repeatable_table":
+            allowed_types = ["repeatable_table"]
         for field_type in allowed_types:
             self.type_input.addItem(
                 AutomaticDetectionDialog.TYPE_LABELS.get(field_type, field_type),

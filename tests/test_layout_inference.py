@@ -413,3 +413,90 @@ def test_layout_quality_rejects_overlapping_form_grid_cells() -> None:
     )
 
     assert any("sobrepostas" in issue for issue in issues)
+
+
+def test_normalize_absorbs_adjacent_label_cell_into_field() -> None:
+    from app.layout_inference import normalize_form_layout
+
+    fields = normalize_form_layout(
+        [
+            {
+                "id": "auto.endereco_completo",
+                "label": "Endereço completo",
+                "type": "text",
+                "layout": "form_grid",
+                "layout_group": "g",
+                "layout_row": "r",
+                "layout_grid_columns": 2,
+                "layout_column_index": 1,
+                "layout_column_span": 1,
+                "layout_row_static_cells": [
+                    {
+                        "layout_row": "r",
+                        "layout_column_index": 0,
+                        "layout_column_span": 1,
+                        "layout_grid_columns": 2,
+                        "text": "Endereço completo:",
+                    }
+                ],
+            }
+        ]
+    )
+
+    field = fields[0]
+    assert field["layout_column_index"] == 0
+    assert field["layout_column_span"] == 2
+    assert field["full_width"] is True
+    assert not field.get("layout_row_static_cells")
+
+
+def test_normalize_removes_stale_dropdown_prompt_overlap() -> None:
+    from app.layout_inference import layout_quality_issues, normalize_form_layout
+
+    fields = normalize_form_layout(
+        [
+            {
+                "id": "auto.tipo",
+                "label": "Tipo",
+                "type": "dropdown",
+                "layout": "form_grid",
+                "layout_group": "g",
+                "layout_row": "r",
+                "layout_grid_columns": 4,
+                "layout_column_index": 3,
+                "layout_column_span": 1,
+                "layout_row_static_cells": [
+                    {
+                        "layout_row": "r",
+                        "layout_column_index": 3,
+                        "layout_column_span": 1,
+                        "layout_grid_columns": 4,
+                        "text": "Tipo: Escolher um item",
+                    }
+                ],
+            }
+        ]
+    )
+
+    assert not fields[0].get("layout_row_static_cells")
+    assert layout_quality_issues(fields) == []
+
+
+def test_data_table_preserves_original_row_header_title(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=3, cols=3)
+    table.cell(0, 0).text = "Item verificado"
+    table.cell(0, 1).text = "Situação"
+    table.cell(0, 2).text = "Observação curta"
+    table.cell(1, 0).text = "Documentação disponível"
+    table.cell(1, 1).text = "{{checkbox:item.conforme}} Conforme {{checkbox:item.nao}} Não conforme"
+    table.cell(1, 2).text = "{{item.observacao}}"
+    table.cell(2, 0).text = "Condições de segurança"
+    table.cell(2, 1).text = "{{checkbox:seguranca.conforme}} Conforme {{checkbox:seguranca.nao}} Não conforme"
+    table.cell(2, 2).text = "{{seguranca.observacao}}"
+    path = tmp_path / "row-header.docx"
+    document.save(path)
+
+    metadata = infer_docx_layout(path)
+    assert metadata["item.conforme"]["layout_row_header_label"] == "Item verificado"
+    assert metadata["item.observacao"]["layout_row_header_label"] == "Item verificado"

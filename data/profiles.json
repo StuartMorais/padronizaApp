@@ -1,1 +1,24 @@
-[]
+[
+  {
+    "id": "gati-test",
+    "name": "GATI Test",
+    "category": "GAti",
+    "values": {
+      "signatory.nome": "Empresa Exemplo Ltda.",
+      "signatory.matricula": "Exemplo de preenchimento",
+      "signatory.numero": "(61) 99876-5432"
+    },
+    "updated_at": "2026-08-07T09:14:05"
+  },
+  {
+    "id": "sedh-test",
+    "name": "SEDH Test",
+    "category": "SEDH",
+    "values": {
+      "signatory.nome": "Empresa Exemplo Ltda.",
+      "signatory.matricula": "Exemplo de preenchimento",
+      "signatory.numero": "(61) 99876-5432"
+    },
+    "updated_at": "2026-08-07T09:14:30"
+  }
+]

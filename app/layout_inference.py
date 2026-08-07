@@ -151,6 +151,54 @@ def apply_layout_metadata(
         current_layout = str(field.get("layout", "")).strip().casefold()
         current_layout_group = str(field.get("layout_group", "")).strip()
         inferred_layout = str(suggestion.get("layout", "")).strip().casefold()
+
+        # Automatic checkbox-choice detection initially renders a group as a
+        # standalone choice card.  When the DOCX structure later proves that
+        # the same options live inside a real table row (for example
+        # ``Item | Situação | Observação``), keep the exclusivity semantics but
+        # re-home the controls into the inferred table cell.  Explicit/manual
+        # layout choices remain untouched.
+        automatic_embedded_choice = (
+            str(field.get("detection_source", "")).strip().casefold() == "automatic"
+            and str(field.get("type", "")).strip().casefold() == "checkbox"
+            and current_layout == "choice"
+            and inferred_layout in {"table", "form_grid"}
+            and str(suggestion.get("layout_group", "")).strip()
+            and str(suggestion.get("layout_row", "")).strip()
+        )
+        if automatic_embedded_choice:
+            original_choice_group = str(
+                field.get("group") or current_layout_group
+            ).strip()
+            original_choice_label = str(
+                field.get("layout_group_label", "")
+            ).strip()
+            for stale_key in (
+                "layout",
+                "layout_group",
+                "layout_group_label",
+                "layout_row",
+                "layout_row_label",
+                "layout_row_header_label",
+                "layout_column",
+                "layout_column_index",
+                "layout_column_span",
+                "layout_grid_columns",
+                "layout_order",
+                "layout_static_rows",
+                "layout_row_static_cells",
+                "layout_position_locked",
+            ):
+                field.pop(stale_key, None)
+            if original_choice_group:
+                field["group"] = original_choice_group
+            if original_choice_label:
+                field["choice_group_label"] = original_choice_label
+            field["selection"] = "single"
+            field["choice_required"] = bool(field.get("choice_required", True))
+            field["compact_choice"] = True
+            current_layout = ""
+            current_layout_group = ""
         automatic_layout_migration = (
             current_layout in {"table", "form_grid"}
             and inferred_layout in {"table", "form_grid"}
@@ -181,6 +229,7 @@ def apply_layout_metadata(
             "layout_group_label",
             "layout_row",
             "layout_row_label",
+            "layout_row_header_label",
             "layout_column",
             "layout_column_index",
             "layout_column_span",
@@ -258,9 +307,81 @@ def normalize_form_layout(
                 field["layout_column_index"] = start
                 field["layout_column_span"] = span
 
+            # A very common Word-form pattern uses one cell only as the label
+            # and the immediately adjacent cell as the fill area.  Once the
+            # empty cell receives a tag, rendering the label cell as separate
+            # static content creates the ugly "label card + input" result.
+            # Absorb that label cell into the field's visual span instead.
+            #
+            # Also discard stale static prompt metadata that occupies the same
+            # physical cell as an editable field (for example
+            # ``Tipo: Escolher um item`` after that prompt was converted to a
+            # dropdown).  This keeps old automatically-generated model data
+            # from producing false overlap errors.
+            static_cells = [
+                dict(cell)
+                for cell in row_static.get(row_key, [])
+                if isinstance(cell, dict) and str(cell.get("text", "")).strip()
+            ]
+            suppressed_static_keys: set[tuple[int, int, str]] = set()
+
+            for static_cell in static_cells:
+                static_start = _safe_layout_int(static_cell.get("layout_column_index"), 0)
+                static_span = _safe_layout_int(static_cell.get("layout_column_span"), 1)
+                static_end = static_start + max(1, static_span)
+                static_text = str(static_cell.get("text", "")).strip()
+                static_key = (static_start, max(1, static_span), static_text)
+
+                for field in row_fields:
+                    field_start = _safe_layout_int(field.get("layout_column_index"), 0)
+                    field_span = _safe_layout_int(field.get("layout_column_span"), 1)
+                    field_end = field_start + max(1, field_span)
+
+                    if (
+                        static_end == field_start
+                        and _static_cell_describes_field(static_text, field)
+                        and not bool(field.get("layout_position_locked", False))
+                    ):
+                        field["layout_column_index"] = static_start
+                        field["layout_column_span"] = min(
+                            grid_columns - static_start,
+                            max(1, static_span) + max(1, field_span),
+                        )
+                        suppressed_static_keys.add(static_key)
+                        break
+
+                    overlaps = static_start < field_end and field_start < static_end
+                    if overlaps and _static_cell_describes_field(static_text, field):
+                        suppressed_static_keys.add(static_key)
+                        break
+
+            if suppressed_static_keys:
+                for field in row_fields:
+                    cleaned_cells: list[dict[str, Any]] = []
+                    for cell in field.get("layout_row_static_cells", []) or []:
+                        if not isinstance(cell, dict):
+                            continue
+                        key = (
+                            _safe_layout_int(cell.get("layout_column_index"), 0),
+                            max(1, _safe_layout_int(cell.get("layout_column_span"), 1)),
+                            str(cell.get("text", "")).strip(),
+                        )
+                        if key not in suppressed_static_keys:
+                            cleaned_cells.append(dict(cell))
+                    if cleaned_cells:
+                        field["layout_row_static_cells"] = cleaned_cells
+                    else:
+                        field.pop("layout_row_static_cells", None)
+
             same_row_static = [
-                cell for cell in row_static.get(row_key, [])
-                if str(cell.get("text", "")).strip()
+                cell
+                for cell in static_cells
+                if (
+                    _safe_layout_int(cell.get("layout_column_index"), 0),
+                    max(1, _safe_layout_int(cell.get("layout_column_span"), 1)),
+                    str(cell.get("text", "")).strip(),
+                )
+                not in suppressed_static_keys
             ]
             if (
                 len(row_fields) == 1
@@ -274,6 +395,33 @@ def normalize_form_layout(
                 row_fields[0]["full_width"] = True
 
     return result
+
+
+def _static_cell_describes_field(text: str, field: dict[str, Any]) -> bool:
+    """Return True when static text is really the field's own label/prompt."""
+
+    static_text = " ".join(str(text or "").split()).strip()
+    label = " ".join(str(field.get("label", "") or "").split()).strip()
+    if not static_text or not label:
+        return False
+
+    static_folded = static_text.casefold().rstrip(" :：–—-")
+    label_folded = label.casefold().rstrip(" :：–—-")
+    if static_folded == label_folded:
+        return True
+
+    prefix = label_folded + ":"
+    compact_static = static_text.casefold().replace("：", ":").strip()
+    if not compact_static.startswith(prefix):
+        return False
+    tail = compact_static[len(prefix) :].strip().rstrip(".")
+    return bool(
+        re.fullmatch(
+            r"(?:escolher|selecione|selecionar)\s+(?:um|uma)\s+(?:item|op[cç][aã]o)",
+            tail,
+            re.IGNORECASE,
+        )
+    )
 
 
 def layout_quality_issues(fields: Iterable[dict[str, Any]]) -> list[str]:
@@ -379,6 +527,8 @@ def layout_blocks(fields: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         field_type = str(field.get("type", "text")).strip().casefold()
 
         if layout == "choice" or (
+            layout not in {"table", "form_grid"}
+            and
             field_type == "checkbox"
             and str(field.get("selection", "")).casefold()
             in {"single", "exclusive", "radio"}
@@ -612,6 +762,7 @@ def _apply_data_table_row(
     table_group = f"doc_table_{table_index}"
     field_starts = [cell.start for cell, *_rest in row.matches]
     row_label = _row_label_from_visual_cells(row.plain_cells, field_starts)
+    row_header_label = _header_for_position(0, header_by_column) or "Função"
 
     for cell, field_id, _field_type, label in row.matches:
         values = metadata.setdefault(field_id, {})
@@ -627,6 +778,7 @@ def _apply_data_table_row(
                 "layout_group_label": current_section,
                 "layout_row": f"row_{row.index}",
                 "layout_row_label": row_label,
+                "layout_row_header_label": row_header_label,
                 "layout_column": column_label,
                 "layout_column_index": cell.start,
                 "layout_order": row.index,

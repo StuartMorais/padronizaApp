@@ -52,7 +52,7 @@ from app.automatic_field_detector import (
 )
 from app.field_library import FieldLibraryStore
 from app.app_paths import resolve_application_paths
-from app.field_utils import FIELD_TYPE_ORDER
+from app.field_utils import FIELD_TYPE_ORDER, preserved_editor_field_metadata
 from app.layout_inference import layout_quality_issues, normalize_form_layout
 from app.section_card_model import (
     build_section_card_models,
@@ -919,6 +919,11 @@ class TemplateEditorDialog(QDialog):
                 self.fields_table.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
                 return
 
+    def focus_field(self, field_id: str) -> None:
+        """Open the Campos tab and focus one field by its stable ID."""
+
+        self._edit_field_from_card(field_id)
+
     def _move_section(self, section_name: str, direction: int) -> None:
         fields = self._collect_fields(validate=False)
         reordered = reorder_section_fields(fields, section_name, direction)
@@ -1757,21 +1762,13 @@ class TemplateEditorDialog(QDialog):
                 else {}
             )
             original = deepcopy(original) if isinstance(original, dict) else {}
-            field: dict[str, Any] = {
-                key: original[key]
-                for key in (
-                    "tag_type",
-                    "layout_order",
-                    "layout_static_rows",
-                    "layout_row_static_cells",
-                    "layout_position_locked",
-                    "label_source",
-                    "section_source",
-                    "validation_hint",
-                    "format_hint",
-                )
-                if key in original
-            }
+            # Preserve semantic metadata that is not represented by an
+            # editable table column.  This is especially important for
+            # automatically detected checkbox groups embedded in a document
+            # grid: ``choice_group_label`` is the local question (for example
+            # "Há impedimento conhecido?"), while ``layout_group_label`` is
+            # the surrounding section title.
+            field: dict[str, Any] = preserved_editor_field_metadata(original)
             field.update(
                 {
                     "id": field_id,
@@ -1814,7 +1811,10 @@ class TemplateEditorDialog(QDialog):
                     else 2
                 )
             if field_type == "date":
-                field["automatic"] = True
+                # Preserve whether this specific date is automatic. Assisted
+                # detection marks date fill areas as editable (False), while
+                # legacy/system dates may explicitly opt into automatic today.
+                field["automatic"] = bool(original.get("automatic", False))
 
             section = section_item.text().strip() if section_item else ""
             profile_key = profile_item.text().strip() if profile_item else ""

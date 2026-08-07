@@ -1048,6 +1048,14 @@ class TemplateRepository:
             "layout_order",
             "choice_required",
             "tag_type",
+            "label_source",
+            "section_source",
+            "type_source",
+            "example",
+            "detection_source",
+            "detection_confidence",
+            "choice_group_label",
+            "compact_choice",
         }
 
         for index, raw_field in enumerate(fields, start=1):

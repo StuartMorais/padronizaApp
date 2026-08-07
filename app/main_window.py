@@ -44,7 +44,7 @@ from app.dialogs.global_search_dialog import GlobalSearchDialog
 from app.dialogs.profile_manager_dialog import ProfileManagerDialog
 from app.docx_engine import DocumentGenerationError, generate_docx
 from app.favorite_store import FavoriteStore
-from app.field_utils import condition_matches, validate_field
+from app.field_utils import condition_matches, uses_assisted_detection, validate_field
 from app.local_data import LocalDataStore
 from app.pdf_converter import PdfConversionError, available_converter, convert_docx_to_pdf
 from app.system_open import SystemOpenError, open_file, open_folder
@@ -55,6 +55,7 @@ from app.runtime_settings import (
     set_portable_mode,
 )
 from app.template_loader import TemplatePackage, discover_templates
+from app.template_manager.template_editor_dialog import TemplateEditorDialog
 from app.template_manager.template_manager_dialog import TemplateManagerDialog
 from app.template_repository import TemplateRepository
 from app.theme_manager import ThemeManager
@@ -625,6 +626,35 @@ class MainWindow(QMainWindow):
         self.template_header = TemplateHeader()
         layout.addWidget(self.template_header)
 
+        self.assisted_detection_banner = QFrame()
+        self.assisted_detection_banner.setObjectName("assistedDetectionBanner")
+        assisted_layout = QHBoxLayout(self.assisted_detection_banner)
+        assisted_layout.setContentsMargins(14, 10, 12, 10)
+        assisted_layout.setSpacing(10)
+
+        assisted_text_layout = QVBoxLayout()
+        assisted_text_layout.setSpacing(2)
+        assisted_title = QLabel("Modelo criado com detecção assistida")
+        assisted_title.setObjectName("assistedDetectionTitle")
+        assisted_message = QLabel(
+            "Alguns campos podem precisar de ajustes. Se algo parecer incorreto durante "
+            "o preenchimento, você pode editar o modelo e continuar usando-o normalmente."
+        )
+        assisted_message.setObjectName("assistedDetectionText")
+        assisted_message.setWordWrap(True)
+        assisted_text_layout.addWidget(assisted_title)
+        assisted_text_layout.addWidget(assisted_message)
+        assisted_layout.addLayout(assisted_text_layout, 1)
+
+        self.assisted_edit_button = QPushButton("Editar modelo")
+        self.assisted_edit_button.setToolTip(
+            "Abrir o modelo atual para corrigir campos, rótulos, opções ou organização."
+        )
+        self.assisted_edit_button.clicked.connect(self._edit_active_template)
+        assisted_layout.addWidget(self.assisted_edit_button)
+        self.assisted_detection_banner.hide()
+        layout.addWidget(self.assisted_detection_banner)
+
         self.profile_group = QGroupBox(
             'Perfil de preenchimento'
         )
@@ -660,8 +690,9 @@ class MainWindow(QMainWindow):
             (
                 '<p>Perfis guardam dados reutilizados com frequência, como '
                 'informações da empresa, representante e contato.</p>'
-                '<p><b>Aplicar perfil</b> preenche somente os campos associados '
-                'às chaves disponíveis no perfil. Revise os dados antes de gerar.</p>'
+                '<p><b>Aplicar perfil</b> restaura todos os campos compatíveis pelo ID '
+                'e usa a chave de perfil como alternativa entre modelos diferentes. '
+                'Revise os dados antes de gerar.</p>'
             ),
         )
         profile_row.addWidget(
@@ -681,6 +712,9 @@ class MainWindow(QMainWindow):
         self.document_form = DocumentForm()
         self.document_form.values_changed.connect(
             self._form_values_changed
+        )
+        self.document_form.edit_field_requested.connect(
+            self._edit_active_template_field
         )
         layout.addWidget(self.document_form)
         layout.addStretch()
@@ -1592,6 +1626,7 @@ class MainWindow(QMainWindow):
         else:
             self.generate_empty_state.show()
             self.template_header.hide()
+            self.assisted_detection_banner.hide()
             self.profile_group.hide()
             self.document_form.hide()
             self.document_form.set_template([], [])
@@ -1643,6 +1678,9 @@ class MainWindow(QMainWindow):
             package.fields,
             package.config.get("sections", []),
         )
+        self.assisted_detection_banner.setVisible(
+            uses_assisted_detection(package.fields)
+        )
         self._offer_saved_draft(package)
         self._update_favorite_controls()
         self._refresh_generation_state()
@@ -1692,6 +1730,47 @@ class MainWindow(QMainWindow):
         dialog = TemplateManagerDialog(self.templates_dir, self.favorite_store, self)
         dialog.exec()
         self._load_templates()
+
+    def _edit_active_template_field(self, field_id: str) -> None:
+        self._edit_active_template(field_id)
+
+    def _edit_active_template(self, field_id: str | bool | None = None) -> None:
+        package = self._selected_template()
+        if package is None:
+            return
+
+        # QPushButton.clicked may pass a bool. Only a string represents a field
+        # requested by DocumentForm's inline "Corrigir" action.
+        target_field = field_id if isinstance(field_id, str) else ""
+        current_values = self.document_form.current_values()
+        was_dirty = self._form_dirty
+
+        dialog = TemplateEditorDialog(self.repository, package.template_id, self)
+        if target_field:
+            dialog.focus_field(target_field)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        # Reload the saved model but keep the user's current work wherever field
+        # IDs still match. This makes fixing a detected field during filling a
+        # natural workflow instead of forcing the user to start over.
+        self._form_dirty = False
+        self._load_templates()
+        refreshed = self._selected_template()
+        if refreshed is not None and refreshed.template_id == package.template_id:
+            self.document_form.set_values(current_values, emit_signal=False)
+            self._form_dirty = was_dirty or self.document_form.has_meaningful_values(
+                current_values
+            )
+            if self._form_dirty:
+                self.autosave_timer.start()
+            self._refresh_generation_state()
+
+        show_toast(
+            self,
+            "Modelo atualizado",
+            "As alterações foram carregadas e os valores compatíveis foram mantidos.",
+        )
 
     # Favorites ----------------------------------------------------------------
     def _favorite_button_clicked(self, checked: bool) -> None:
@@ -1853,10 +1932,23 @@ class MainWindow(QMainWindow):
             return
         profile = self.local_store.get_profile(str(profile_id))
         if profile and isinstance(profile.get("values"), dict):
-            self.document_form.apply_profile(profile["values"])
+            applied_count = self.document_form.apply_profile(profile["values"])
             self._active_profile_id = str(profile.get("id", ""))
             self._active_profile_name = str(profile.get("name", ""))
-            self.status_message.setText(f"Perfil aplicado: {profile.get('name', '')}")
+            profile_name = str(profile.get("name", ""))
+            if applied_count:
+                self.status_message.setText(
+                    f"Perfil aplicado: {profile_name} — {applied_count} campo(s) preenchido(s)"
+                )
+            else:
+                self.status_message.setText(
+                    f"Perfil sem campos compatíveis com este modelo: {profile_name}"
+                )
+                show_toast(
+                    self,
+                    'Perfil sem correspondências',
+                    'Nenhum campo deste modelo corresponde aos dados salvos no perfil.',
+                )
 
     def _save_profile(self) -> None:
         if self._selected_template() is None:

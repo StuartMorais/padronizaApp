@@ -55,6 +55,71 @@ FIELD_TYPE_ORDER = (
 SUPPORTED_FIELD_TYPES = set(FIELD_TYPE_ORDER)
 
 
+def is_assisted_detection_field(field: dict[str, Any] | None) -> bool:
+    """Recognize fields created by assisted detection, including older saves.
+
+    Early assisted-detection builds did not persist ``detection_source`` through
+    repository normalization, but their generated IDs consistently used the
+    ``auto.`` namespace. Keeping that fallback makes the correction UX appear
+    for models created with those versions too.
+    """
+
+    if not isinstance(field, dict):
+        return False
+    if str(field.get("detection_source", "")).strip().casefold() == "automatic":
+        return True
+    return str(field.get("id", "")).strip().casefold().startswith("auto.")
+
+
+def uses_assisted_detection(fields: list[dict[str, Any]] | tuple[dict[str, Any], ...]) -> bool:
+    """Return True when at least one field originated from assisted detection."""
+
+    return any(is_assisted_detection_field(field) for field in fields)
+
+
+EDITOR_PRESERVED_METADATA_KEYS = (
+    "tag_type",
+    "layout_order",
+    "layout_static_rows",
+    "layout_row_static_cells",
+    "layout_row_header_label",
+    "layout_position_locked",
+    "label_source",
+    "section_source",
+    "type_source",
+    "validation_hint",
+    "format_hint",
+    "placeholder",
+    "example",
+    "detection_source",
+    "detection_confidence",
+    "choice_group_label",
+    "compact_choice",
+    "choice_required",
+)
+
+
+def preserved_editor_field_metadata(original: dict[str, Any] | None) -> dict[str, Any]:
+    """Keep non-column metadata while a field passes through the model editor.
+
+    Some automatic-detection semantics are intentionally not exposed as table
+    columns.  In particular, an exclusive checkbox group can be embedded into
+    a Word form-grid while retaining a separate semantic question label.  If
+    that ``choice_group_label`` is discarded, the renderer falls back to the
+    surrounding section title, which is misleading.
+    """
+
+    if not isinstance(original, dict):
+        return {}
+    from copy import deepcopy
+
+    return {
+        key: deepcopy(original[key])
+        for key in EDITOR_PRESERVED_METADATA_KEYS
+        if key in original
+    }
+
+
 REPEATABLE_COLUMN_TYPE_ALIASES = {
     **FIELD_TYPE_ALIASES,
     "auto": "auto_number",

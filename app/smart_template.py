@@ -81,7 +81,8 @@ def smart_fields_from_docx(
         # Explicit Word controls keep their type. Generic text markers use
         # both the technical ID and the nearby DOCX label as context.
         current_type = str(field.get("type", "text")).casefold()
-        if current_type == "text":
+        type_source = str(field.get("type_source", "")).strip().casefold()
+        if current_type == "text" and type_source != "automatic_detection":
             label = str(field.get("label", "")).strip()
             suggested_type = suggest_field_type(
                 f"{field_id} {label}"
@@ -193,8 +194,11 @@ def suggest_field_type(field_context: str) -> str:
             "descrição",
             "notes",
             "observations",
+            "observation",
             "observacoes",
             "observações",
+            "observacao",
+            "observação",
             "justification",
             "justificativa",
             "object",

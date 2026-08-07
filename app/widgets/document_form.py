@@ -28,6 +28,7 @@ from app.field_utils import (
     condition_matches,
     dropdown_option_values,
     infer_field_type,
+    is_assisted_detection_field,
     sample_value,
     validate_field,
     validation_hint,
@@ -39,6 +40,7 @@ from app.widgets.readable_checkbox import ReadableCheckBox
 from app.widgets.repeatable_table import RepeatableTableWidget
 from app.widgets.searchable_dropdown import SearchableDropdown
 from app.widgets.smart_line_edit import SmartLineEdit
+from app.profile_mapping import build_profile_payload, resolve_profile_values
 
 
 class _CollapsibleSection(QFrame):
@@ -86,6 +88,7 @@ class DocumentForm(QWidget):
     """Dynamic form with semantic sections, choices, tables and validation."""
 
     values_changed = Signal()
+    edit_field_requested = Signal(str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -346,10 +349,21 @@ class DocumentForm(QWidget):
             bool(field.get("choice_required", False) or field.get("required", False))
             for field in fields
         )
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(6)
         title = QLabel(f"{group_label} *" if required else group_label)
         title.setObjectName("fieldLabel")
         title.setWordWrap(True)
-        layout.addWidget(title)
+        title_row.addWidget(title, 1)
+        if fields:
+            correction = self._create_correction_button(
+                str(fields[0].get("id", "")),
+                fields[0],
+            )
+            if correction is not None:
+                title_row.addWidget(correction)
+        layout.addLayout(title_row)
 
         helper = QLabel(
             "Clique em qualquer parte da alternativa. Somente uma opção pode ser selecionada."
@@ -564,6 +578,23 @@ class DocumentForm(QWidget):
                 row_added = True
 
             for (start, span), cell_fields in cells.items():
+                # Keep an exclusive checkbox group that originally lived in one
+                # Word cell together.  Rendering the options as ordinary fields
+                # loses the question/prompt (for example ``Há impedimento
+                # conhecido? ☐ Sim ☐ Não``) and also drops exclusivity.
+                if self._is_embedded_choice_cell(cell_fields):
+                    cell_container, cell_added = self._create_embedded_choice_form_grid_cell(
+                        cell_fields,
+                        rendered_ids,
+                        section,
+                    )
+                    if cell_container is None or not cell_added:
+                        continue
+                    grid.addWidget(cell_container, visual_row, start, 1, span)
+                    added += cell_added
+                    row_added = True
+                    continue
+
                 cell_container = QFrame()
                 cell_container.setObjectName("formDocumentGridCell")
                 cell_layout = QVBoxLayout(cell_container)
@@ -604,6 +635,104 @@ class DocumentForm(QWidget):
             return None
         outer_layout.addWidget(grid_frame)
         return outer
+
+    def _create_embedded_choice_form_grid_cell(
+        self,
+        fields: list[dict[str, Any]],
+        rendered_ids: set[str],
+        section: _CollapsibleSection,
+    ) -> tuple[QFrame | None, int]:
+        """Render one exclusive choice together with its original question.
+
+        Automatic detection can find ``Question? ☐ A ☐ B`` inside a single
+        Word table cell.  Layout inference then correctly embeds those fields
+        into a form-grid row, but the option labels alone are not enough: the
+        question itself is the semantic label of the group.
+        """
+
+        cell = QFrame()
+        cell.setObjectName("formDocumentGridCell")
+        root = QVBoxLayout(cell)
+        root.setContentsMargins(10, 7, 10, 9)
+        root.setSpacing(7)
+
+        first = fields[0] if fields else {}
+        group_label = (
+            str(first.get("choice_group_label", "")).strip()
+            or str(first.get("layout_group_label", "")).strip()
+            or self._choice_group_label(fields)
+        )
+        required = any(
+            bool(field.get("choice_required", False) or field.get("required", False))
+            for field in fields
+        )
+        if group_label:
+            title_row = QHBoxLayout()
+            title_row.setContentsMargins(0, 0, 0, 0)
+            title_row.setSpacing(6)
+            title = QLabel(f"{group_label} *" if required else group_label)
+            title.setObjectName("fieldLabel")
+            title.setWordWrap(True)
+            title_row.addWidget(title, 1)
+            correction = self._create_correction_button(
+                str(first.get("id", "")),
+                first,
+            )
+            if correction is not None:
+                title_row.addWidget(correction)
+            root.addLayout(title_row)
+
+        # Short alternatives such as Sim/Não read better side by side.  Long
+        # legal/administrative options stay stacked so their full text remains
+        # clear and the whole label is still clickable.
+        option_labels = [str(field.get("label", "")).strip() for field in fields]
+        use_vertical = any(len(label) > 48 for label in option_labels)
+        options = QVBoxLayout() if use_vertical else QHBoxLayout()
+        options.setContentsMargins(0, 0, 0, 0)
+        options.setSpacing(10)
+
+        button_group = QButtonGroup(cell)
+        button_group.setExclusive(True)
+        self.button_groups.append(button_group)
+
+        group_name = str(
+            first.get("group") or first.get("layout_group") or ""
+        ).strip()
+        added = 0
+        for source_field in fields:
+            field = dict(source_field)
+            field["compact_choice"] = True
+            registered = self._register_field(field, rendered_ids, section)
+            if registered is None:
+                continue
+            field_id, _field_type, widget = registered
+            if not isinstance(widget, ReadableCheckBox):
+                continue
+            button_group.addButton(widget)
+            options.addWidget(widget)
+            self.field_containers[field_id] = cell
+            self.checkbox_groups.setdefault(group_name, []).append(field_id)
+            added += 1
+
+        if not added:
+            cell.deleteLater()
+            return None, 0
+
+        if not use_vertical:
+            options.addStretch(1)
+        root.addLayout(options)
+
+        error = QLabel()
+        error.setObjectName("fieldValidationMessage")
+        error.setWordWrap(True)
+        error.hide()
+        root.addWidget(error)
+        for field in fields:
+            field_id = str(field.get("id", "")).strip()
+            if field_id in self.field_widgets:
+                self.field_error_labels[field_id] = error
+
+        return cell, added
 
     @staticmethod
     def _create_form_grid_static(text: str) -> QFrame:
@@ -682,10 +811,22 @@ class DocumentForm(QWidget):
         )
         column_offset = 1 if has_row_labels else 0
 
+        row_header_label = next(
+            (
+                str(field.get("layout_row_header_label", "")).strip()
+                for row_fields in rows.values()
+                for field in row_fields
+                if str(field.get("layout_row_header_label", "")).strip()
+            ),
+            "Função",
+        )
+
         if has_row_labels:
-            header = QLabel("Função")
+            header = QLabel(row_header_label)
             header.setObjectName("formTableHeader")
+            header.setWordWrap(True)
             grid.addWidget(header, 0, 0)
+            grid.setColumnStretch(0, 1)
         for index, label in enumerate(column_labels):
             header = QLabel(label)
             header.setObjectName("formTableHeader")
@@ -709,7 +850,7 @@ class DocumentForm(QWidget):
                 label_widget.setWordWrap(True)
                 grid.addWidget(label_widget, row_number, 0)
 
-            by_column: dict[tuple[int, str], dict[str, Any]] = {}
+            by_column: dict[tuple[int, str], list[dict[str, Any]]] = {}
             for field in row_fields:
                 key = (
                     self._safe_int(field.get("layout_column_index"), 0),
@@ -719,23 +860,32 @@ class DocumentForm(QWidget):
                         or field.get("id")
                     ).strip().casefold(),
                 )
-                by_column[key] = field
+                by_column.setdefault(key, []).append(field)
 
             for column_number, key in enumerate(column_keys, start=column_offset):
-                field = by_column.get(key)
-                if field is None:
+                cell_fields = by_column.get(key, [])
+                if not cell_fields:
                     spacer = QFrame()
                     spacer.setObjectName("formTableEmptyCell")
                     grid.addWidget(spacer, row_number, column_number)
                     continue
 
-                registered = self._register_field(field, rendered_ids, section)
-                if registered is None:
+                if self._is_embedded_choice_cell(cell_fields):
+                    cell, cell_added = self._create_embedded_choice_table_cell(
+                        cell_fields,
+                        rendered_ids,
+                        section,
+                    )
+                    added += cell_added
+                else:
+                    cell, cell_added = self._create_stacked_table_cell(
+                        cell_fields,
+                        rendered_ids,
+                        section,
+                    )
+                    added += cell_added
+                if cell is None:
                     continue
-                field_id, field_type, widget = registered
-                added += 1
-                cell = self._create_table_cell(field_id, widget, field_type, field)
-                self.field_containers[field_id] = cell
                 grid.addWidget(cell, row_number, column_number)
 
         scroll = QScrollArea()
@@ -749,6 +899,118 @@ class DocumentForm(QWidget):
         scroll.setMaximumHeight(table_frame.sizeHint().height() + 22)
         outer_layout.addWidget(scroll)
         return outer if added else None
+
+    @staticmethod
+    def _is_embedded_choice_cell(fields: list[dict[str, Any]]) -> bool:
+        if len(fields) < 2:
+            return False
+        groups = {
+            str(field.get("group", "")).strip()
+            for field in fields
+            if str(field.get("group", "")).strip()
+        }
+        if len(groups) != 1:
+            return False
+        return all(
+            infer_field_type(str(field.get("id", "")), str(field.get("type", "text")))
+            == "checkbox"
+            and str(field.get("selection", "")).strip().casefold()
+            in {"single", "exclusive", "radio"}
+            for field in fields
+        )
+
+    def _create_embedded_choice_table_cell(
+        self,
+        fields: list[dict[str, Any]],
+        rendered_ids: set[str],
+        section: _CollapsibleSection,
+    ) -> tuple[QFrame | None, int]:
+        """Render an exclusive checkbox group inside its original table cell."""
+
+        cell = QFrame()
+        cell.setObjectName("formTableCell")
+        root = QVBoxLayout(cell)
+        root.setContentsMargins(7, 6, 7, 6)
+        root.setSpacing(4)
+
+        options = QHBoxLayout()
+        options.setContentsMargins(0, 0, 0, 0)
+        options.setSpacing(12)
+        button_group = QButtonGroup(cell)
+        button_group.setExclusive(True)
+        self.button_groups.append(button_group)
+
+        group_name = str(fields[0].get("group", "")).strip()
+        added = 0
+        for field in fields:
+            field = dict(field)
+            field["compact_choice"] = True
+            registered = self._register_field(field, rendered_ids, section)
+            if registered is None:
+                continue
+            field_id, _field_type, widget = registered
+            if not isinstance(widget, ReadableCheckBox):
+                continue
+            button_group.addButton(widget)
+            options.addWidget(widget)
+            self.field_containers[field_id] = cell
+            self.checkbox_groups.setdefault(group_name, []).append(field_id)
+            added += 1
+
+        if not added:
+            cell.deleteLater()
+            return None, 0
+
+        options.addStretch(1)
+        root.addLayout(options)
+
+        error = QLabel()
+        error.setObjectName("fieldValidationMessage")
+        error.setWordWrap(True)
+        error.hide()
+        root.addWidget(error)
+        for field in fields:
+            field_id = str(field.get("id", "")).strip()
+            if field_id in self.field_widgets:
+                self.field_error_labels[field_id] = error
+        return cell, added
+
+    def _create_stacked_table_cell(
+        self,
+        fields: list[dict[str, Any]],
+        rendered_ids: set[str],
+        section: _CollapsibleSection,
+    ) -> tuple[QFrame | None, int]:
+        cell = QFrame()
+        cell.setObjectName("formTableCell")
+        layout = QVBoxLayout(cell)
+        layout.setContentsMargins(7, 6, 7, 6)
+        layout.setSpacing(6)
+
+        added = 0
+        for field in fields:
+            registered = self._register_field(field, rendered_ids, section)
+            if registered is None:
+                continue
+            field_id, field_type, widget = registered
+            layout.addWidget(widget)
+            self.field_containers[field_id] = cell
+            hint = validation_hint(field)
+            if hint:
+                widget.setToolTip(hint)
+                widget.setProperty("baseToolTip", hint)
+            error = QLabel()
+            error.setObjectName("fieldValidationMessage")
+            error.setWordWrap(True)
+            error.hide()
+            layout.addWidget(error)
+            self.field_error_labels[field_id] = error
+            added += 1
+
+        if not added:
+            cell.deleteLater()
+            return None, 0
+        return cell, added
 
     def _create_table_cell(
         self,
@@ -894,7 +1156,7 @@ class DocumentForm(QWidget):
         for field in self.fields:
             if not bool(field.get("choice_required", False)):
                 continue
-            group = str(field.get("layout_group") or field.get("group") or "").strip()
+            group = str(field.get("group") or field.get("layout_group") or "").strip()
             if group:
                 choice_groups.setdefault(group, []).append(field)
         existing_ids = {issue["field_id"] for issue in issues}
@@ -912,7 +1174,11 @@ class DocumentForm(QWidget):
             field_id = str(first.get("id", ""))
             if field_id in existing_ids:
                 continue
-            label = str(first.get("layout_group_label", "")).strip() or self._choice_group_label(visible_fields)
+            label = (
+                str(first.get("choice_group_label", "")).strip()
+                or str(first.get("layout_group_label", "")).strip()
+                or self._choice_group_label(visible_fields)
+            )
             issues.append(
                 {
                     "field_id": field_id,
@@ -1069,30 +1335,13 @@ class DocumentForm(QWidget):
         if emit_signal:
             self.values_changed.emit()
 
-    def apply_profile(self, profile_values: dict[str, Any]) -> None:
-        mapped: dict[str, Any] = {}
-        for field in self.fields:
-            field_id = str(field.get("id", "")).strip()
-            profile_key = str(field.get("profile_key", field_id)).strip() or field_id
-            if profile_key in profile_values:
-                mapped[field_id] = profile_values[profile_key]
-            elif field_id in profile_values:
-                mapped[field_id] = profile_values[field_id]
+    def apply_profile(self, profile_values: dict[str, Any]) -> int:
+        mapped = resolve_profile_values(self.fields, profile_values)
         self.set_values(mapped)
+        return len(mapped)
 
     def profile_payload(self) -> dict[str, Any]:
-        current = self.current_values()
-        result: dict[str, Any] = {}
-        for field in self.fields:
-            field_id = str(field.get("id", "")).strip()
-            if not field_id:
-                continue
-            profile_key = str(field.get("profile_key", "")).strip()
-            if profile_key:
-                result[profile_key] = current.get(field_id)
-            elif field_id.startswith(("company.", "representative.", "contact.", "bank.")):
-                result[field_id] = current.get(field_id)
-        return result or current
+        return build_profile_payload(self.fields, self.current_values())
 
     def clear_values(self) -> None:
         self._updating = True
@@ -1131,6 +1380,11 @@ class DocumentForm(QWidget):
         label = str(field.get("label", field_id))
 
         if field_type == "checkbox":
+            if bool(field.get("compact_choice", False)):
+                checkbox = ReadableCheckBox()
+                checkbox.setObjectName("embeddedChoiceCheckBox")
+                checkbox.setText(label)
+                return checkbox
             if force_choice or str(field.get("selection", "")).casefold() in {"single", "exclusive", "radio"}:
                 return ChoiceOptionCheckBox(label)
             checkbox = ReadableCheckBox()
@@ -1186,17 +1440,22 @@ class DocumentForm(QWidget):
             label_row.addWidget(label_widget, 1)
             if help_text:
                 label_row.addWidget(HelpIconButton(help_title, f"<p>{escape(help_text)}</p>"))
+            correction = self._create_correction_button(field_id, field)
+            if correction is not None:
+                label_row.addWidget(correction)
             layout.addLayout(label_row)
             layout.addWidget(widget)
-        elif help_text:
+        else:
             checkbox_row = QHBoxLayout()
             checkbox_row.setContentsMargins(0, 0, 0, 0)
             checkbox_row.setSpacing(6)
             checkbox_row.addWidget(widget, 1)
-            checkbox_row.addWidget(HelpIconButton(help_title, f"<p>{escape(help_text)}</p>"))
+            if help_text:
+                checkbox_row.addWidget(HelpIconButton(help_title, f"<p>{escape(help_text)}</p>"))
+            correction = self._create_correction_button(field_id, field)
+            if correction is not None:
+                checkbox_row.addWidget(correction)
             layout.addLayout(checkbox_row)
-        else:
-            layout.addWidget(widget)
 
         hint_text = validation_hint(field)
         if hint_text:
@@ -1213,6 +1472,28 @@ class DocumentForm(QWidget):
         layout.addWidget(error_label)
         self.field_error_labels[field_id] = error_label
         return card
+
+    def _create_correction_button(
+        self,
+        field_id: str,
+        field: dict[str, Any],
+    ) -> QToolButton | None:
+        if not is_assisted_detection_field(field):
+            return None
+        target = str(field_id).strip()
+        if not target:
+            return None
+        button = QToolButton()
+        button.setObjectName("fieldCorrectionButton")
+        button.setText("Corrigir")
+        button.setToolTip(
+            "Abrir este campo no editor do modelo. Use quando a detecção assistida "
+            "identificar um rótulo, tipo ou organização incorretamente."
+        )
+        button.clicked.connect(
+            lambda _checked=False, key=target: self.edit_field_requested.emit(key)
+        )
+        return button
 
     @staticmethod
     def _field_help_text(field: dict[str, Any]) -> str:
@@ -1318,7 +1599,7 @@ class DocumentForm(QWidget):
             if not self._field_is_visible(field_id):
                 continue
             field_type = infer_field_type(field_id, str(field.get("type", "text")))
-            group = str(field.get("layout_group") or field.get("group") or "").strip()
+            group = str(field.get("group") or field.get("layout_group") or "").strip()
             is_choice = field_type == "checkbox" and str(field.get("selection", "")).casefold() in {"single", "exclusive", "radio"}
             if is_choice and group:
                 if group in counted_choice_groups:
@@ -1327,7 +1608,7 @@ class DocumentForm(QWidget):
                 group_fields = [
                     item
                     for item in self.fields
-                    if str(item.get("layout_group") or item.get("group") or "").strip() == group
+                    if str(item.get("group") or item.get("layout_group") or "").strip() == group
                     and self._field_is_visible(str(item.get("id", "")))
                 ]
                 total += 1

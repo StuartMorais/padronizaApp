@@ -1,5 +1,21 @@
 [
   {
+    "timestamp": "2026-08-07T09:14:30",
+    "action": "profile_saved",
+    "description": "SEDH Test",
+    "details": {
+      "profile_id": "sedh-test"
+    }
+  },
+  {
+    "timestamp": "2026-08-07T09:14:05",
+    "action": "profile_saved",
+    "description": "GATI Test",
+    "details": {
+      "profile_id": "gati-test"
+    }
+  },
+  {
     "timestamp": "2026-08-06T13:55:52",
     "action": "document_generated",
     "description": "Dfd Diversos Sedh Sia11Div_2.docx",

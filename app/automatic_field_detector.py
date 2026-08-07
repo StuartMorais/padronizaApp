@@ -24,7 +24,23 @@ from app.smart_template import suggest_field_type
 X_PLACEHOLDER_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])(?:\(\d{2}\)\s*)?[Xx]{4,}(?:\s*[@./()\-]\s*[Xx]{2,})*(?![A-Za-z0-9])"
 )
-UNDERSCORE_PLACEHOLDER_PATTERN = re.compile(r"_{4,}")
+# Underscore masks are often short (``UF: __`` or ``Banco: ___``) and can
+# include punctuation (``__/__/____``, ``___.___.___-__``).  Match the whole
+# visual mask instead of only the longest underscore fragment so the inserted
+# tag replaces the complete fill area.
+UNDERSCORE_PLACEHOLDER_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9])_{2,}(?:\s*[/.:\-]\s*_{2,})*(?![A-Za-z0-9])"
+)
+ZERO_PHONE_PLACEHOLDER_PATTERN = re.compile(
+    r"(?<!\d)\(\s*0{2}\s*\)\s*0{4,5}\s*-\s*0{4}(?!\d)"
+)
+SAMPLE_EMAIL_PLACEHOLDER_PATTERN = re.compile(
+    r"(?i)(?<![A-Za-z0-9._%+\-])"
+    r"(?:contato|email|e-mail|exemplo|teste|usuario|usu[aá]rio|user|x{4,})"
+    r"@(?:empresa|exemplo|example|dominio|dom[ií]nio|x{4,})"
+    r"(?:\.[A-Za-zx]{2,}){1,3}"
+    r"(?![A-Za-z0-9._%+\-])"
+)
 CHOICE_SEPARATOR_PATTERN = re.compile(r"^\s*OU\s*$", re.IGNORECASE)
 INSTRUCTION_PATTERN = re.compile(
     r"^\s*(?:informar|informe|descrever|descreva|detalhar|detalhe|"
@@ -36,16 +52,19 @@ GENERIC_DROPDOWN_PATTERN = re.compile(
     re.IGNORECASE,
 )
 CHECKBOX_LINE_PATTERN = re.compile(r"^\s*(?:☐|□|☑|☒|\(\s*\))\s*(.+?)\s*$")
+CHECKBOX_TOKEN_PATTERN = re.compile(r"(?:☐|□|☑|☒|\(\s*\))")
 SECTION_NUMBER_PATTERN = re.compile(r"^\s*\d+(?:\.\d+)*\.?\s*")
 LABEL_TAIL_PATTERN = re.compile(r"([^:;|]{2,120})\s*[:：]\s*$")
 
 
 _SOURCE_LABELS = {
     "long_choice": "Alternativas separadas por OU",
+    "repeatable_table": "Tabela com linhas repetíveis",
     "inline_placeholder": "Texto de preenchimento (XXXX ou sublinhado)",
     "instruction": "Texto instrucional substituível",
     "empty_cell": "Célula vazia ao lado de um rótulo",
     "dropdown_prompt": "Indicação 'Escolher um item'",
+    "sample_value": "Valor de exemplo após o rótulo",
     "checkbox_choice": "Opções com caixas de seleção",
 }
 
@@ -143,6 +162,20 @@ def detect_docx_field_candidates(
         )
         known_ids.add(str(candidate.get("field_id", "")))
 
+    repeatable_tables = _detect_repeatable_tables(
+        document,
+        records,
+        known_ids,
+        reserved_ordinals,
+    )
+    for candidate in repeatable_tables:
+        candidates.append(candidate)
+        reserved_ordinals.update(
+            int(value)
+            for value in candidate.get("location", {}).get("paragraphs", [])
+        )
+        known_ids.add(str(candidate.get("field_id", "")))
+
     checkbox_choices = _detect_checkbox_choice_groups(
         document,
         records,
@@ -164,6 +197,34 @@ def detect_docx_field_candidates(
         if _contains_authoritative_marker(record.paragraph):
             continue
 
+        dropdown_prompt = _detect_dropdown_prompt(
+            record,
+            records,
+            known_ids,
+        )
+        if dropdown_prompt is not None:
+            candidates.append(dropdown_prompt)
+            known_ids.add(str(dropdown_prompt.get("field_id", "")))
+            continue
+
+        sample_value = _detect_labeled_sample_value(
+            record,
+            known_ids,
+        )
+        if sample_value is not None:
+            candidates.append(sample_value)
+            known_ids.add(str(sample_value.get("field_id", "")))
+            continue
+
+        labeled_instruction = _detect_labeled_instruction(
+            record,
+            known_ids,
+        )
+        if labeled_instruction is not None:
+            candidates.append(labeled_instruction)
+            known_ids.add(str(labeled_instruction.get("field_id", "")))
+            continue
+
         inline = _detect_inline_placeholders(
             record,
             records,
@@ -176,32 +237,6 @@ def detect_docx_field_candidates(
 
         text = _normalize_space(record.text)
         if not text:
-            continue
-
-        if GENERIC_DROPDOWN_PATTERN.match(text):
-            label = _context_label_for_record(record, records)
-            field_id = _unique_field_id(
-                _make_field_id(label or "opcao"),
-                known_ids,
-            )
-            known_ids.add(field_id)
-            candidates.append(
-                _candidate(
-                    field_id=field_id,
-                    label=label or "Selecione uma opção",
-                    field_type="dropdown",
-                    confidence=0.70,
-                    source="dropdown_prompt",
-                    preview=text,
-                    location={
-                        "kind": "paragraph",
-                        "paragraph": record.ordinal,
-                    },
-                    options=[],
-                    default_selected=False,
-                    requires_configuration=True,
-                )
-            )
             continue
 
         if _is_instruction_candidate(record):
@@ -228,6 +263,16 @@ def detect_docx_field_candidates(
                     },
                 )
             )
+            continue
+
+        label_only = _detect_label_only_field(
+            record,
+            records,
+            known_ids,
+        )
+        if label_only is not None:
+            candidates.append(label_only)
+            known_ids.add(str(label_only.get("field_id", "")))
 
     candidates.extend(
         _detect_empty_cells(
@@ -281,10 +326,16 @@ def apply_docx_field_candidates(
     # stored Paragraph XML objects used by the span replacements below.
     for candidate in accepted:
         kind = str(candidate.get("location", {}).get("kind", ""))
-        if kind == "paragraph_block":
+        if kind == "repeatable_table":
+            _apply_repeatable_table(candidate, document)
+        elif kind == "paragraph_block":
             _apply_paragraph_block(candidate, by_ordinal)
         elif kind == "checkbox_group":
             _apply_checkbox_group(candidate, by_ordinal)
+        elif kind == "checkbox_group_inline":
+            _apply_inline_checkbox_group(candidate, by_ordinal)
+        elif kind == "checkbox_group_multi_cell":
+            _apply_multi_cell_checkbox_group(candidate, by_ordinal)
 
     # Apply text spans from right to left inside each paragraph so offsets stay
     # valid even when one line contains several placeholders.
@@ -316,6 +367,16 @@ def apply_docx_field_candidates(
     for candidate in accepted:
         location = candidate.get("location", {}) or {}
         kind = str(location.get("kind", ""))
+        if kind == "append_tag":
+            ordinal = int(location.get("paragraph", -1))
+            record = by_ordinal.get(ordinal)
+            if record is None:
+                raise AutomaticDetectionError(
+                    "Não foi possível localizar uma área aprovada no DOCX. "
+                    "Execute a análise novamente."
+                )
+            _append_tag_to_paragraph(record.paragraph, _tag_for_candidate(candidate))
+            continue
         if kind not in {"paragraph", "empty_cell"}:
             continue
         ordinal = int(location.get("paragraph", -1))
@@ -339,6 +400,33 @@ def candidate_field_definitions(
     fields: list[dict[str, Any]] = []
     for candidate in candidates:
         if not isinstance(candidate, dict):
+            continue
+        if str(candidate.get("source", "")) == "repeatable_table":
+            field_id = str(candidate.get("field_id", "")).strip()
+            if not field_id:
+                continue
+            fields.append(
+                {
+                    "id": field_id,
+                    "label": str(candidate.get("label", "")).strip() or field_id,
+                    "type": "repeatable_table",
+                    "columns": [
+                        dict(column)
+                        for column in candidate.get("columns", []) or []
+                        if isinstance(column, dict)
+                    ],
+                    "minimum_rows": 1,
+                    "numbering_padding": 2,
+                    "required": True,
+                    "label_source": "automatic_detection",
+                    "type_source": "automatic_detection",
+                    "detection_source": "automatic",
+                    "detection_confidence": float(candidate.get("confidence", 0.0)),
+                    "full_width": True,
+                }
+            )
+            if str(candidate.get("section", "")).strip():
+                fields[-1]["section"] = str(candidate.get("section", "")).strip()
             continue
         if str(candidate.get("source", "")) == "checkbox_choice":
             for raw_field in candidate.get("fields", []) or []:
@@ -367,6 +455,9 @@ def candidate_field_definitions(
         options = compact_dropdown_options(candidate.get("options", []))
         if options:
             field["options"] = options
+        placeholder = str(candidate.get("placeholder", "")).strip()
+        if placeholder:
+            field["placeholder"] = placeholder
         if str(candidate.get("layout", "")) == "choice":
             group = str(candidate.get("layout_group", f"auto_choice_{field_id}"))
             field.update(
@@ -380,6 +471,11 @@ def candidate_field_definitions(
                     "tag_type": "single_choice",
                 }
             )
+        # Automatically detected dates represent visible fill areas in the
+        # source document (for example ``Data: __/__/____``). They must stay
+        # editable instead of being silently replaced with today's date.
+        if field["type"] == "date":
+            field["automatic"] = False
         if field["type"] == "multiline":
             field["full_width"] = True
         fields.append(field)
@@ -407,6 +503,7 @@ def _candidate(
     requires_configuration: bool = False,
     layout: str = "",
     layout_group: str = "",
+    placeholder: str = "",
 ) -> dict[str, Any]:
     confidence = max(0.0, min(float(confidence), 1.0))
     if default_selected is None:
@@ -429,6 +526,8 @@ def _candidate(
         result["layout"] = layout
     if layout_group:
         result["layout_group"] = layout_group
+    if str(placeholder).strip():
+        result["placeholder"] = str(placeholder).strip()
     return result
 
 
@@ -609,6 +708,155 @@ def _detect_long_choice_blocks(
     return result
 
 
+def _detect_repeatable_tables(
+    document: _Document,
+    records: list[_ParagraphRecord],
+    known_ids: set[str],
+    reserved_ordinals: set[int],
+) -> list[dict[str, Any]]:
+    """Detect conservative numbered tables that represent repeated records.
+
+    The automatic detector only proposes a repeatable table when the evidence
+    is strong: a header row, at least two numbered data rows, and at least two
+    editable columns.  This intentionally avoids turning questionnaire tables
+    (which also have repeated visual rows) into repeatable item editors.
+    """
+
+    top_level_index = {
+        id(table._tbl): index
+        for index, table in enumerate(document.tables)
+    }
+    by_table: dict[int, list[_ParagraphRecord]] = defaultdict(list)
+    table_refs: dict[int, Table] = {}
+    for record in records:
+        if record.story != "body" or record.table is None or record.table_index is None:
+            continue
+        table_key = id(record.table._tbl)
+        if table_key not in top_level_index:
+            continue
+        by_table[table_key].append(record)
+        table_refs[table_key] = record.table
+
+    result: list[dict[str, Any]] = []
+    for table_key, table_records in by_table.items():
+        table = table_refs[table_key]
+        if len(table.rows) < 3:
+            continue
+        if any(
+            record.ordinal in reserved_ordinals
+            or _contains_authoritative_marker(record.paragraph)
+            for record in table_records
+        ):
+            continue
+
+        header_cells = _unique_row_cells(table.rows[0])
+        if len(header_cells) < 3:
+            continue
+        headers = [_clean_label(cell.text) for cell in header_cells]
+        if sum(_is_reasonable_label(value, maximum=80) for value in headers) < 3:
+            continue
+
+        data_rows: list[int] = []
+        number_values: list[int] = []
+        for row_index in range(1, len(table.rows)):
+            cells = _unique_row_cells(table.rows[row_index])
+            if len(cells) != len(header_cells):
+                break
+            number_text = _normalize_space(cells[0].text)
+            if not re.fullmatch(r"0*\d{1,4}", number_text):
+                break
+            data_rows.append(row_index)
+            number_values.append(int(number_text))
+
+        if len(data_rows) < 2:
+            continue
+        expected = list(range(number_values[0], number_values[0] + len(number_values)))
+        if number_values != expected:
+            continue
+
+        number_header = _slug(headers[0])
+        if number_header not in {"n", "no", "numero", "item", "n_item"}:
+            continue
+
+        editable_columns: list[int] = []
+        for column_index in range(1, len(header_cells)):
+            values = [
+                _normalize_space(_unique_row_cells(table.rows[row_index])[column_index].text)
+                for row_index in data_rows
+            ]
+            if any(_looks_like_fill_area_text(value) or not value for value in values):
+                editable_columns.append(column_index)
+        if len(editable_columns) < 2:
+            continue
+
+        first_record = min(table_records, key=lambda item: item.ordinal)
+        section_title = _nearest_section_title(first_record, records, preserve_number=True)
+        label = _clean_label(section_title) if section_title else "Itens da tabela"
+        field_id = _unique_field_id(_make_field_id(label), known_ids)
+
+        columns: list[dict[str, Any]] = [
+            {
+                "id": "item",
+                "label": headers[0] or "Item",
+                "type": "auto_number",
+                "required": False,
+            }
+        ]
+        used_column_ids = {"item"}
+        for column_index in editable_columns:
+            header = headers[column_index] or f"Coluna {column_index + 1}"
+            column_values = [
+                _normalize_space(_unique_row_cells(table.rows[row_index])[column_index].text)
+                for row_index in data_rows
+            ]
+            column_id = _slug(header) or f"coluna_{column_index + 1}"
+            base_column_id = column_id
+            suffix = 2
+            while column_id in used_column_ids:
+                column_id = f"{base_column_id}_{suffix}"
+                suffix += 1
+            used_column_ids.add(column_id)
+            columns.append(
+                {
+                    "id": column_id,
+                    "label": header,
+                    "type": _repeatable_column_type(header, column_values),
+                    "required": True,
+                    "column_index": column_index,
+                }
+            )
+
+        row_ordinals = sorted(
+            record.ordinal
+            for record in table_records
+            if record.row_index in data_rows
+        )
+        result.append(
+            _candidate(
+                field_id=field_id,
+                label=label,
+                field_type="repeatable_table",
+                confidence=0.95,
+                source="repeatable_table",
+                preview=" | ".join(headers)
+                + f" — {len(data_rows)} linha(s) modelo detectada(s)",
+                location={
+                    "kind": "repeatable_table",
+                    "document_table_index": top_level_index[table_key],
+                    "template_row": data_rows[0],
+                    "data_rows": data_rows,
+                    "paragraphs": row_ordinals,
+                },
+            )
+        )
+        result[-1]["columns"] = columns
+        if section_title:
+            result[-1]["section"] = section_title.rstrip(":").strip()
+        result[-1]["selected"] = True
+
+    return result
+
+
 def _detect_checkbox_choice_groups(
     document: _Document,
     records: list[_ParagraphRecord],
@@ -616,16 +864,96 @@ def _detect_checkbox_choice_groups(
     reserved_ordinals: set[int],
 ) -> list[dict[str, Any]]:
     del document
+    result: list[dict[str, Any]] = []
+    used_ordinals: set[int] = set(reserved_ordinals)
+
+    # 1) Several checkbox options on the same visual line/cell, e.g.
+    # ``Natureza: ☐ Material  ☐ Serviço  ☐ Material e serviço``.
+    for record in records:
+        if record.ordinal in used_ordinals or _contains_authoritative_marker(record.paragraph):
+            continue
+        parsed = _inline_checkbox_options(record.text or "")
+        if parsed is None:
+            continue
+        prefix, options, token_spans = parsed
+        label = _local_label(prefix) or _context_label_for_record(record, records)
+        candidate = _checkbox_candidate(
+            label=label,
+            options=options,
+            known_ids=known_ids,
+            confidence=0.92,
+            location={
+                "kind": "checkbox_group_inline",
+                "paragraph": record.ordinal,
+                "checkbox_spans": [list(span) for span in token_spans],
+            },
+        )
+        result.append(candidate)
+        used_ordinals.add(record.ordinal)
+
+    # 1b) One checkbox option in each cell of the same visual row.  Word forms
+    # often use this for alternatives such as ``Entrega imediata`` versus
+    # ``Entrega parcelada``.  The cell may also contain explanatory text after
+    # a manual line break, so the ordinary whole-line checkbox regex cannot
+    # safely recognize it.  Keep that explanatory text in the document and
+    # use it as additional context in the client-facing option label.
+    by_row: dict[tuple[str, int, int], list[_ParagraphRecord]] = defaultdict(list)
+    for record in records:
+        if (
+            record.table_index is None
+            or record.row_index is None
+            or record.ordinal in used_ordinals
+            or _contains_authoritative_marker(record.paragraph)
+        ):
+            continue
+        by_row[(record.story, int(record.table_index), int(record.row_index))].append(record)
+
+    for row_records in by_row.values():
+        parsed_cells: list[tuple[_ParagraphRecord, str, tuple[int, int]]] = []
+        seen_cells: set[int] = set()
+        for record in sorted(row_records, key=lambda item: (item.cell_index or 0, item.ordinal)):
+            if record.cell is None:
+                continue
+            cell_key = id(record.cell._tc)
+            if cell_key in seen_cells:
+                continue
+            parsed = _single_checkbox_cell_option(record.text or "")
+            if parsed is None:
+                continue
+            option_label, token_span = parsed
+            seen_cells.add(cell_key)
+            parsed_cells.append((record, option_label, token_span))
+
+        if len(parsed_cells) < 2 or len(parsed_cells) > 6:
+            continue
+
+        label = _nearest_section_title(parsed_cells[0][0], records)
+        if not label:
+            label = _context_label_for_record(parsed_cells[0][0], records)
+        candidate = _checkbox_candidate(
+            label=label,
+            options=[option_label for _record, option_label, _span in parsed_cells],
+            known_ids=known_ids,
+            confidence=0.94,
+            location={
+                "kind": "checkbox_group_multi_cell",
+                "paragraphs": [record.ordinal for record, _label, _span in parsed_cells],
+                "checkbox_spans": [list(span) for _record, _label, span in parsed_cells],
+            },
+        )
+        result.append(candidate)
+        used_ordinals.update(record.ordinal for record, _label, _span in parsed_cells)
+
+    # 2) Several checkbox paragraphs inside the same Word cell.
     by_cell: dict[int, list[_ParagraphRecord]] = defaultdict(list)
     for record in records:
-        if record.cell is not None and record.ordinal not in reserved_ordinals:
+        if record.cell is not None and record.ordinal not in used_ordinals:
             by_cell[id(record.cell._tc)].append(record)
 
-    result: list[dict[str, Any]] = []
     for cell_records in by_cell.values():
         matched: list[tuple[_ParagraphRecord, re.Match[str]]] = []
         for record in cell_records:
-            if _contains_authoritative_marker(record.paragraph):
+            if record.ordinal in used_ordinals or _contains_authoritative_marker(record.paragraph):
                 continue
             match = CHECKBOX_LINE_PATTERN.match(record.text or "")
             if match:
@@ -634,50 +962,206 @@ def _detect_checkbox_choice_groups(
             continue
 
         label = _context_label_for_record(matched[0][0], records)
-        group_id = _unique_field_id(_make_field_id(label or "escolha"), known_ids)
-        ui_group = f"auto_checkbox_{group_id}"
-        fields: list[dict[str, Any]] = []
-        paragraphs: list[int] = []
-        for index, (record, match) in enumerate(matched, start=1):
-            option_text = _normalize_space(match.group(1))
-            option_id = _unique_field_id(
-                f"{group_id}.{_slug(option_text)[:34] or f'opcao_{index}'}",
-                known_ids,
+        candidate = _checkbox_candidate(
+            label=label,
+            options=[_normalize_space(match.group(1)) for _record, match in matched],
+            known_ids=known_ids,
+            confidence=0.90,
+            location={
+                "kind": "checkbox_group",
+                "paragraphs": [record.ordinal for record, _match in matched],
+            },
+        )
+        result.append(candidate)
+        used_ordinals.update(record.ordinal for record, _match in matched)
+
+    # 3) A checkbox on each consecutive row of a simple one-column table.
+    # This is common for declarations/acknowledgements and previously made an
+    # entire section disappear from automatic detection.
+    by_table: dict[int, dict[int, list[_ParagraphRecord]]] = defaultdict(lambda: defaultdict(list))
+    for record in records:
+        if (
+            record.table_index is None
+            or record.row_index is None
+            or record.ordinal in used_ordinals
+        ):
+            continue
+        by_table[int(record.table_index)][int(record.row_index)].append(record)
+
+    for rows in by_table.values():
+        matching_rows: dict[int, tuple[_ParagraphRecord, re.Match[str]]] = {}
+        for row_index, row_records in rows.items():
+            nonempty = [record for record in row_records if _normalize_space(record.text)]
+            matches: list[tuple[_ParagraphRecord, re.Match[str]]] = []
+            for record in nonempty:
+                if _contains_authoritative_marker(record.paragraph):
+                    continue
+                match = CHECKBOX_LINE_PATTERN.match(record.text or "")
+                if match:
+                    matches.append((record, match))
+            if len(nonempty) == 1 and len(matches) == 1:
+                matching_rows[row_index] = matches[0]
+
+        ordered_rows = sorted(matching_rows)
+        run: list[int] = []
+        runs: list[list[int]] = []
+        for row_index in ordered_rows:
+            if run and row_index != run[-1] + 1:
+                if len(run) >= 2:
+                    runs.append(run)
+                run = []
+            run.append(row_index)
+        if len(run) >= 2:
+            runs.append(run)
+
+        for row_run in runs:
+            matched = [matching_rows[row_index] for row_index in row_run]
+            if len(matched) > 8:
+                matched = matched[:8]
+            if any(record.ordinal in used_ordinals for record, _match in matched):
+                continue
+            label = _context_label_for_record(matched[0][0], records)
+            candidate = _checkbox_candidate(
+                label=label,
+                options=[_normalize_space(match.group(1)) for _record, match in matched],
+                known_ids=known_ids,
+                confidence=0.87,
+                location={
+                    "kind": "checkbox_group",
+                    "paragraphs": [record.ordinal for record, _match in matched],
+                },
             )
-            known_ids.add(option_id)
-            fields.append(
+            result.append(candidate)
+            used_ordinals.update(record.ordinal for record, _match in matched)
+
+    return result
+
+
+def _inline_checkbox_options(
+    text: str,
+) -> tuple[str, list[str], list[tuple[int, int]]] | None:
+    matches = list(CHECKBOX_TOKEN_PATTERN.finditer(str(text or "")))
+    if len(matches) < 2 or len(matches) > 8:
+        return None
+
+    options: list[str] = []
+    spans: list[tuple[int, int]] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        option = _normalize_space(text[match.end() : end]).strip(" |;–—-")
+        if not option or len(option) > 220:
+            return None
+        options.append(option)
+        spans.append((match.start(), match.end()))
+    return text[: matches[0].start()], options, spans
+
+
+def _single_checkbox_cell_option(
+    text: str,
+) -> tuple[str, tuple[int, int]] | None:
+    """Parse one checkbox-led option from a table cell.
+
+    The first visual line is the option itself.  Any following lines are kept
+    as explanatory context in the UI label while remaining untouched in the
+    DOCX when the checkbox token is replaced by a tag.
+    """
+
+    value = str(text or "")
+    tokens = list(CHECKBOX_TOKEN_PATTERN.finditer(value))
+    if len(tokens) != 1:
+        return None
+    token = tokens[0]
+    if value[: token.start()].strip():
+        return None
+
+    remainder = value[token.end() :].strip()
+    if not remainder:
+        return None
+    lines = [_normalize_space(line) for line in remainder.splitlines() if _normalize_space(line)]
+    if not lines:
+        return None
+    option = lines[0].strip(" |;–—-")
+    if not option or len(option) > 220:
+        return None
+
+    context = " ".join(line.strip() for line in lines[1:] if line.strip())
+    if context:
+        context = context.lstrip("*•-–— ").strip()
+        if context and context.casefold() not in option.casefold():
+            option = f"{option} — {context}"
+    return _normalize_space(option), (token.start(), token.end())
+
+
+def _checkbox_candidate(
+    *,
+    label: str,
+    options: list[str],
+    known_ids: set[str],
+    confidence: float,
+    location: dict[str, Any],
+) -> dict[str, Any]:
+    clean_options = [_normalize_space(option) for option in options if _normalize_space(option)]
+    selection = _infer_checkbox_selection(label, clean_options)
+    group_id = _unique_field_id(_make_field_id(label or "escolha"), known_ids)
+    known_ids.add(group_id)
+    ui_group = f"auto_checkbox_{group_id}"
+    fields: list[dict[str, Any]] = []
+
+    for index, option_text in enumerate(clean_options, start=1):
+        option_id = _unique_field_id(
+            f"{group_id}.{_slug(option_text)[:34] or f'opcao_{index}'}",
+            known_ids,
+        )
+        known_ids.add(option_id)
+        field: dict[str, Any] = {
+            "id": option_id,
+            "label": option_text,
+            "type": "checkbox",
+            "required": False,
+            "selection": selection,
+        }
+        if selection == "single":
+            field.update(
                 {
-                    "id": option_id,
-                    "label": option_text,
-                    "type": "checkbox",
-                    "required": False,
                     "layout": "choice",
                     "layout_group": ui_group,
                     "layout_group_label": label or "Escolha uma opção",
                     "group": ui_group,
-                    "selection": "single",
                     "choice_required": True,
                 }
             )
-            paragraphs.append(record.ordinal)
+        fields.append(field)
 
-        candidate = {
-            "field_id": group_id,
-            "label": label or "Escolha uma opção",
-            "type": "checkbox_group",
-            "confidence": 0.88,
-            "source": "checkbox_choice",
-            "preview": " | ".join(field["label"] for field in fields),
-            "location": {
-                "kind": "checkbox_group",
-                "paragraphs": paragraphs,
-            },
-            "fields": fields,
-            "selected": True,
-            "requires_configuration": False,
-        }
-        result.append(candidate)
-    return result
+    return {
+        "field_id": group_id,
+        "label": label or ("Selecione as opções aplicáveis" if selection == "multiple" else "Escolha uma opção"),
+        "type": "checkbox_group",
+        "selection": selection,
+        "confidence": confidence,
+        "source": "checkbox_choice",
+        "preview": " | ".join(clean_options),
+        "location": dict(location),
+        "fields": fields,
+        "selected": True,
+        "requires_configuration": False,
+    }
+
+
+def _infer_checkbox_selection(label: str, options: list[str]) -> str:
+    combined = " ".join([str(label or ""), *options]).casefold()
+    multiple_tokens = (
+        "declaro",
+        "declaramos",
+        "autorizo",
+        "autorizamos",
+        "confirmo",
+        "confirmamos",
+        "aceito os termos",
+        "ciência das declarações",
+    )
+    if any(token in combined for token in multiple_tokens):
+        return "multiple"
+    return "single"
 
 
 def _detect_inline_placeholders(
@@ -691,7 +1175,21 @@ def _detect_inline_placeholders(
 
     matches = list(X_PLACEHOLDER_PATTERN.finditer(text))
     matches.extend(UNDERSCORE_PLACEHOLDER_PATTERN.finditer(text))
-    matches.sort(key=lambda match: match.start())
+    matches.extend(ZERO_PHONE_PLACEHOLDER_PATTERN.finditer(text))
+    matches.extend(SAMPLE_EMAIL_PLACEHOLDER_PATTERN.finditer(text))
+    matches.sort(key=lambda match: (match.start(), -(match.end() - match.start())))
+    # Some patterns intentionally overlap (for example an xxxxx@example style
+    # e-mail also matches the generic X placeholder). Keep only the widest
+    # non-overlapping span so one visual fill area becomes one field.
+    non_overlapping: list[re.Match[str]] = []
+    for match in matches:
+        if any(
+            match.start() < existing.end() and existing.start() < match.end()
+            for existing in non_overlapping
+        ):
+            continue
+        non_overlapping.append(match)
+    matches = sorted(non_overlapping, key=lambda match: match.start())
     if not matches:
         return []
 
@@ -706,7 +1204,7 @@ def _detect_inline_placeholders(
             known_ids,
         )
         known_ids.add(field_id)
-        field_type = suggest_field_type(label or field_id)
+        field_type = _detected_placeholder_type(label or field_id, match.group(0))
         result.append(
             _candidate(
                 field_id=field_id,
@@ -726,6 +1224,212 @@ def _detect_inline_placeholders(
         )
         previous_end = match.end()
     return result
+
+
+def _detect_dropdown_prompt(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    known_ids: set[str],
+) -> dict[str, Any] | None:
+    text = record.text or ""
+    if not text or PLACEHOLDER_PATTERN.search(text):
+        return None
+
+    prompt_pattern = re.compile(
+        r"(?:escolher|selecione|selecionar)\s+(?:um|uma)\s+"
+        r"(?:item|op[cç][aã]o)\.?\s*$",
+        re.IGNORECASE,
+    )
+    match = prompt_pattern.search(text)
+    if match is None:
+        return None
+
+    prefix = text[: match.start()]
+    label = _local_label(prefix) or _context_label_for_record(record, records)
+    field_id = _unique_field_id(_make_field_id(label or "opcao"), known_ids)
+    return _candidate(
+        field_id=field_id,
+        label=label or "Selecione uma opção",
+        field_type="dropdown",
+        confidence=0.82 if label else 0.70,
+        source="dropdown_prompt",
+        preview=match.group(0),
+        location={
+            "kind": "text_span",
+            "paragraph": record.ordinal,
+            "start": match.start(),
+            "end": match.end(),
+            "original": match.group(0),
+        },
+        options=[],
+        default_selected=False,
+        requires_configuration=True,
+    )
+
+
+def _detect_labeled_sample_value(
+    record: _ParagraphRecord,
+    known_ids: set[str],
+) -> dict[str, Any] | None:
+    """Detect short example/default values that should still be editable.
+
+    This is deliberately whitelist-based.  Institutional fixed text such as
+    ``Órgão: Secretaria ...`` must stay static, while values such as
+    ``País: Brasil`` are commonly examples/defaults that help the user
+    understand what belongs in the field.
+    """
+
+    text = record.text or ""
+    if not text or PLACEHOLDER_PATTERN.search(text) or ":" not in text:
+        return None
+
+    colon = text.find(":")
+    label = _clean_label(text[:colon])
+    value_start = colon + 1
+    while value_start < len(text) and text[value_start].isspace():
+        value_start += 1
+    value = _normalize_space(text[value_start:])
+    if not value or len(value) > 80:
+        return None
+
+    normalized_label = _slug(label)
+    editable_example_labels = {
+        "pais",
+        "nacionalidade",
+    }
+    if normalized_label not in editable_example_labels:
+        return None
+    if (
+        INSTRUCTION_PATTERN.match(value)
+        or GENERIC_DROPDOWN_PATTERN.match(value)
+        or CHECKBOX_TOKEN_PATTERN.search(value)
+        or X_PLACEHOLDER_PATTERN.search(value)
+        or UNDERSCORE_PLACEHOLDER_PATTERN.search(value)
+        or ZERO_PHONE_PLACEHOLDER_PATTERN.search(value)
+        or SAMPLE_EMAIL_PLACEHOLDER_PATTERN.search(value)
+    ):
+        return None
+
+    field_id = _unique_field_id(_make_field_id(label), known_ids)
+    return _candidate(
+        field_id=field_id,
+        label=label,
+        field_type=suggest_field_type(label),
+        confidence=0.86,
+        source="sample_value",
+        preview=value,
+        location={
+            "kind": "text_span",
+            "paragraph": record.ordinal,
+            "start": value_start,
+            "end": len(text),
+            "original": text[value_start:],
+        },
+        placeholder=value,
+    )
+
+
+def _detect_labeled_instruction(
+    record: _ParagraphRecord,
+    known_ids: set[str],
+) -> dict[str, Any] | None:
+    text = record.text or ""
+    if not text or PLACEHOLDER_PATTERN.search(text) or ":" not in text:
+        return None
+    colon = text.find(":")
+    label = _clean_label(text[:colon])
+    tail_start = colon + 1
+    while tail_start < len(text) and text[tail_start].isspace():
+        tail_start += 1
+    tail = text[tail_start:]
+    if not _is_reasonable_label(label, maximum=120) or not INSTRUCTION_PATTERN.match(tail):
+        return None
+    if len(_normalize_space(tail)) < 12 or len(_normalize_space(tail)) > 800:
+        return None
+
+    field_type = suggest_field_type(label)
+    if field_type == "text" and len(_normalize_space(tail)) >= 70:
+        field_type = "multiline"
+    field_id = _unique_field_id(_make_field_id(label), known_ids)
+    return _candidate(
+        field_id=field_id,
+        label=label,
+        field_type=field_type,
+        confidence=0.90 if _paragraph_is_red(record.paragraph) else 0.82,
+        source="instruction",
+        preview=tail,
+        location={
+            "kind": "text_span",
+            "paragraph": record.ordinal,
+            "start": tail_start,
+            "end": len(text),
+            "original": tail,
+        },
+    )
+
+
+def _detect_label_only_field(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    known_ids: set[str],
+) -> dict[str, Any] | None:
+    text = _normalize_space(record.text)
+    if (
+        not text.endswith(":")
+        or record.cell is None
+        or len(record.cell.paragraphs) != 1
+        or _contains_authoritative_marker(record.paragraph)
+    ):
+        return None
+    label = _clean_label(text)
+    if not _is_reasonable_label(label, maximum=100):
+        return None
+    if _looks_like_section_label(text) and SECTION_NUMBER_PATTERN.match(text):
+        return None
+
+    # A bare label inside a form row is a useful suggestion when an adjacent
+    # cell is another fill area. This catches forms that visually leave the
+    # rest of the same cell blank, e.g. ``Responsável legal:``.
+    has_form_neighbor = False
+    if record.table is not None and record.row_index is not None:
+        try:
+            row = record.table.rows[record.row_index]
+            for cell in row.cells:
+                if id(cell._tc) == id(record.cell._tc):
+                    continue
+                neighbor = _normalize_space(cell.text)
+                # When the adjacent cell is truly empty, ``_detect_empty_cells``
+                # owns that fill area and uses this label as its context. Do not
+                # create a second field in the label cell.
+                if not neighbor:
+                    return None
+                if (
+                    X_PLACEHOLDER_PATTERN.search(neighbor)
+                    or UNDERSCORE_PLACEHOLDER_PATTERN.search(neighbor)
+                    or ZERO_PHONE_PLACEHOLDER_PATTERN.search(neighbor)
+                    or SAMPLE_EMAIL_PLACEHOLDER_PATTERN.search(neighbor)
+                    or GENERIC_DROPDOWN_PATTERN.search(neighbor)
+                ):
+                    has_form_neighbor = True
+                    break
+        except (IndexError, AttributeError):
+            pass
+    if not has_form_neighbor:
+        return None
+
+    field_id = _unique_field_id(_make_field_id(label), known_ids)
+    return _candidate(
+        field_id=field_id,
+        label=label,
+        field_type=suggest_field_type(label),
+        confidence=0.82,
+        source="empty_cell",
+        preview="Área vazia após o rótulo",
+        location={
+            "kind": "append_tag",
+            "paragraph": record.ordinal,
+        },
+    )
 
 
 def _detect_empty_cells(
@@ -762,9 +1466,11 @@ def _detect_empty_cells(
             previous_cell = record.table.rows[record.row_index].cells[record.cell_index - 1]
         except (IndexError, AttributeError):
             continue
-        label = _normalize_space(previous_cell.text).strip(" :：–—-")
+        previous_text = _normalize_space(previous_cell.text)
+        label = previous_text.strip(" :：–—-")
         if not _is_reasonable_label(label):
             continue
+        explicit_label = previous_text.rstrip().endswith((":", "："))
         ordinal = cell_records[0].ordinal
         field_id = _unique_field_id(_make_field_id(label), known_ids)
         known_ids.add(field_id)
@@ -773,17 +1479,154 @@ def _detect_empty_cells(
                 field_id=field_id,
                 label=label,
                 field_type=suggest_field_type(label),
-                confidence=0.68,
+                confidence=0.84 if explicit_label else 0.68,
                 source="empty_cell",
                 preview="Célula vazia",
                 location={
                     "kind": "empty_cell",
                     "paragraph": ordinal,
                 },
-                default_selected=False,
+                default_selected=explicit_label,
             )
         )
     return result
+
+
+def _unique_row_cells(row) -> list[_Cell]:
+    result: list[_Cell] = []
+    seen: set[int] = set()
+    for cell in row.cells:
+        key = id(cell._tc)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(cell)
+    return result
+
+
+def _looks_like_fill_area_text(value: str) -> bool:
+    text = str(value or "")
+    if not _normalize_space(text):
+        return True
+    return bool(
+        PLACEHOLDER_PATTERN.search(text)
+        or X_PLACEHOLDER_PATTERN.search(text)
+        or UNDERSCORE_PLACEHOLDER_PATTERN.search(text)
+        or ZERO_PHONE_PLACEHOLDER_PATTERN.search(text)
+        or SAMPLE_EMAIL_PLACEHOLDER_PATTERN.search(text)
+        or GENERIC_DROPDOWN_PATTERN.search(text)
+        or CHECKBOX_TOKEN_PATTERN.search(text)
+    )
+
+
+def _nearest_section_title(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    *,
+    preserve_number: bool = False,
+) -> str:
+    for previous in reversed(records[: record.ordinal]):
+        value = _normalize_space(previous.text)
+        if not value:
+            continue
+        if SECTION_NUMBER_PATTERN.match(value) and len(value) <= 190:
+            return value.rstrip(":").strip() if preserve_number else _clean_label(value)
+        if previous.table_index == record.table_index:
+            continue
+        if _looks_like_section_label(value) and len(value) <= 190:
+            return value.rstrip(":").strip() if preserve_number else _clean_label(value)
+    return ""
+
+
+def _repeatable_column_type(header: str, values: list[str]) -> str:
+    for value in values:
+        compact = _normalize_space(value)
+        if re.fullmatch(r"_{2,}\s*/\s*_{2,}\s*/\s*_{2,}", compact):
+            return "date"
+        if ZERO_PHONE_PLACEHOLDER_PATTERN.fullmatch(compact):
+            return "phone"
+        if SAMPLE_EMAIL_PLACEHOLDER_PATTERN.fullmatch(compact):
+            return "email"
+    return suggest_field_type(header)
+
+
+def _detected_placeholder_type(label: str, preview: str) -> str:
+    normalized_label = _slug(label)
+    compact = _normalize_space(preview)
+    if "observacao_curta" in normalized_label:
+        return "text"
+    if re.fullmatch(r"_{2,}\s*/\s*_{2,}\s*/\s*_{2,}", compact):
+        return "date"
+    if ZERO_PHONE_PLACEHOLDER_PATTERN.fullmatch(compact):
+        return "phone"
+    if SAMPLE_EMAIL_PLACEHOLDER_PATTERN.fullmatch(compact):
+        return "email"
+    return suggest_field_type(label)
+
+
+def _same_cell_previous_label(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+) -> str:
+    if record.cell is None:
+        return ""
+    cell_key = id(record.cell._tc)
+    for previous in reversed(records[: record.ordinal]):
+        if previous.cell is None or id(previous.cell._tc) != cell_key:
+            continue
+        value = _normalize_space(previous.text)
+        if not value or _looks_like_fill_area_text(value):
+            continue
+        if value.endswith((":", "：")) and _is_reasonable_label(value, maximum=140):
+            return _clean_label(value)
+        if _is_reasonable_label(value, maximum=100) and len(value.split()) <= 12:
+            return _clean_label(value)
+    return ""
+
+
+def _table_axis_context(record: _ParagraphRecord) -> tuple[str, str]:
+    """Return (row label, column label) for a field inside a table grid."""
+
+    if record.table is None or record.row_index is None or record.cell_index is None:
+        return "", ""
+    try:
+        row = record.table.rows[record.row_index]
+        current_key = id(record.cell._tc) if record.cell is not None else None
+        row_label = ""
+        seen: set[int] = set()
+        for cell_index, cell in enumerate(row.cells):
+            key = id(cell._tc)
+            if key in seen:
+                continue
+            seen.add(key)
+            if current_key is not None and key == current_key:
+                break
+            value = _normalize_space(cell.text)
+            if (
+                _is_reasonable_label(value, maximum=120)
+                and not _looks_like_fill_area_text(value)
+                and not re.fullmatch(r"\d+", value)
+            ):
+                row_label = _clean_label(value)
+
+        column_label = ""
+        for row_index in range(record.row_index - 1, -1, -1):
+            earlier = record.table.rows[row_index]
+            if record.cell_index >= len(earlier.cells):
+                continue
+            value = _normalize_space(earlier.cells[record.cell_index].text)
+            if not value or _looks_like_fill_area_text(value):
+                continue
+            cleaned = _clean_label(value)
+            if (
+                _is_reasonable_label(cleaned, maximum=90)
+                and not SECTION_NUMBER_PATTERN.match(cleaned)
+            ):
+                column_label = cleaned
+                break
+        return row_label, column_label
+    except (IndexError, AttributeError):
+        return "", ""
 
 
 def _context_label_for_record(
@@ -796,16 +1639,28 @@ def _context_label_for_record(
         if _is_reasonable_label(before):
             return _clean_label(before)
 
+    same_cell = _same_cell_previous_label(record, records)
+    if same_cell:
+        return same_cell
+
     # Same table: prefer the previous cell in the same row.
     if record.table is not None and record.row_index is not None and record.cell_index is not None:
         try:
             row = record.table.rows[record.row_index]
             if record.cell_index > 0:
                 previous = _normalize_space(row.cells[record.cell_index - 1].text)
-                if _is_reasonable_label(previous):
+                if _is_reasonable_label(previous) and not _looks_like_fill_area_text(previous):
                     return _clean_label(previous)
         except (IndexError, AttributeError):
             pass
+
+        row_label, column_label = _table_axis_context(record)
+        if row_label and column_label and row_label.casefold() != column_label.casefold():
+            return f"{row_label} — {column_label}"
+        if column_label:
+            return column_label
+        if row_label:
+            return row_label
 
         # Search earlier rows for a section-like merged title or a short label.
         try:
@@ -933,6 +1788,103 @@ def _apply_paragraph_block(
         _remove_paragraph(record.paragraph)
 
 
+def _apply_repeatable_table(
+    candidate: dict[str, Any],
+    document: _Document,
+) -> None:
+    location = candidate.get("location", {}) or {}
+    try:
+        table_index = int(location.get("document_table_index", -1))
+        template_row_index = int(location.get("template_row", -1))
+        data_rows = sorted(
+            {int(value) for value in location.get("data_rows", []) or []}
+        )
+    except (TypeError, ValueError):
+        raise AutomaticDetectionError("Tabela repetível detectada com posição inválida.")
+
+    if table_index < 0 or table_index >= len(document.tables):
+        raise AutomaticDetectionError("A tabela repetível detectada não foi encontrada no DOCX.")
+    table = document.tables[table_index]
+    if template_row_index < 0 or template_row_index >= len(table.rows):
+        raise AutomaticDetectionError("A linha modelo da tabela repetível não foi encontrada.")
+
+    field_id = str(candidate.get("field_id", "")).strip()
+    columns = [
+        dict(column)
+        for column in candidate.get("columns", []) or []
+        if isinstance(column, dict)
+    ]
+    if not field_id or len(columns) < 2:
+        raise AutomaticDetectionError("A tabela repetível detectada está incompleta.")
+
+    row = table.rows[template_row_index]
+    cells = _unique_row_cells(row)
+    repeat_marker_written = False
+    for column in columns:
+        column_type = str(column.get("type", "text")).strip().casefold()
+        column_id = str(column.get("id", "")).strip()
+        if not column_id:
+            continue
+        if column_type == "auto_number":
+            column_index = 0
+            text = f"{{{{repeat:{field_id}}}}} {{{{row.number}}}}"
+            repeat_marker_written = True
+        else:
+            try:
+                column_index = int(column.get("column_index", -1))
+            except (TypeError, ValueError):
+                column_index = -1
+            if column_index < 0:
+                continue
+            child_id = f"{field_id}.{column_id}"
+            if column_type == "date":
+                text = f"{{{{date:{child_id}}}}}"
+            elif column_type == "checkbox":
+                text = f"{{{{checkbox:{child_id}}}}}"
+            else:
+                text = f"{{{{{child_id}}}}}"
+
+        if column_index >= len(cells):
+            raise AutomaticDetectionError(
+                "A estrutura de colunas da tabela repetível mudou após a análise."
+            )
+        _replace_cell_with_text(cells[column_index], text)
+
+    if not repeat_marker_written:
+        # The detector currently requires an auto-number column, but keep this
+        # fallback so reviewed candidates remain robust if that rule evolves.
+        first_editable = next(
+            (
+                column
+                for column in columns
+                if str(column.get("type", "")).casefold() != "auto_number"
+            ),
+            None,
+        )
+        if first_editable is None:
+            raise AutomaticDetectionError("A tabela repetível não possui coluna editável.")
+        column_index = int(first_editable.get("column_index", 0))
+        paragraph = cells[column_index].paragraphs[0]
+        paragraph.insert_paragraph_before(f"{{{{repeat:{field_id}}}}}")
+
+    # Keep only the first detected data row as the Word model row. The DOCX
+    # engine duplicates it according to the rows entered by the client.
+    for row_index in sorted(data_rows, reverse=True):
+        if row_index == template_row_index or row_index >= len(table.rows):
+            continue
+        table._tbl.remove(table.rows[row_index]._tr)
+
+
+def _replace_cell_with_text(cell: _Cell, text: str) -> None:
+    paragraphs = list(cell.paragraphs)
+    if not paragraphs:
+        cell.add_paragraph(text)
+        return
+    _replace_entire_paragraph(paragraphs[0], text)
+    for paragraph in paragraphs[1:]:
+        _remove_paragraph(paragraph)
+
+
 def _apply_checkbox_group(
     candidate: dict[str, Any],
     by_ordinal: dict[int, _ParagraphRecord],
@@ -956,6 +1908,61 @@ def _apply_checkbox_group(
         _replace_entire_paragraph(record.paragraph, replacement)
 
 
+def _apply_inline_checkbox_group(
+    candidate: dict[str, Any],
+    by_ordinal: dict[int, _ParagraphRecord],
+) -> None:
+    location = candidate.get("location", {}) or {}
+    ordinal = int(location.get("paragraph", -1))
+    record = by_ordinal.get(ordinal)
+    if record is None:
+        raise AutomaticDetectionError("Grupo de caixas de seleção não encontrado.")
+    fields = [dict(field) for field in candidate.get("fields", []) or []]
+    spans = [
+        tuple(int(value) for value in span)
+        for span in location.get("checkbox_spans", []) or []
+        if isinstance(span, (list, tuple)) and len(span) == 2
+    ]
+    if len(fields) != len(spans) or not fields:
+        raise AutomaticDetectionError("Grupo de caixas de seleção inconsistente.")
+    replacements = [
+        (start, end, f"{{{{checkbox:{field['id']}}}}}")
+        for (start, end), field in zip(spans, fields, strict=True)
+    ]
+    _replace_paragraph_spans(record.paragraph, replacements)
+
+
+def _apply_multi_cell_checkbox_group(
+    candidate: dict[str, Any],
+    by_ordinal: dict[int, _ParagraphRecord],
+) -> None:
+    location = candidate.get("location", {}) or {}
+    ordinals = [int(value) for value in location.get("paragraphs", []) or []]
+    spans = [
+        tuple(int(value) for value in span)
+        for span in location.get("checkbox_spans", []) or []
+        if isinstance(span, (list, tuple)) and len(span) == 2
+    ]
+    fields = [dict(field) for field in candidate.get("fields", []) or []]
+    if not fields or len(fields) != len(ordinals) or len(fields) != len(spans):
+        raise AutomaticDetectionError("Grupo de caixas de seleção entre células inconsistente.")
+
+    for ordinal, span, field in zip(ordinals, spans, fields, strict=True):
+        record = by_ordinal.get(ordinal)
+        if record is None:
+            raise AutomaticDetectionError("Opção de caixa de seleção não encontrada.")
+        start, end = span
+        text = record.paragraph.text or ""
+        if start < 0 or end <= start or end > len(text):
+            raise AutomaticDetectionError("A posição de uma opção mudou após a análise.")
+        if not CHECKBOX_TOKEN_PATTERN.fullmatch(text[start:end]):
+            raise AutomaticDetectionError("O marcador de uma opção mudou após a análise.")
+        _replace_paragraph_spans(
+            record.paragraph,
+            [(start, end, f"{{{{checkbox:{field['id']}}}}}")],
+        )
+
+
 def _replace_entire_paragraph(paragraph: Paragraph, text: str) -> None:
     runs = list(paragraph.runs)
     if runs:
@@ -964,6 +1971,12 @@ def _replace_entire_paragraph(paragraph: Paragraph, text: str) -> None:
             run.text = ""
     else:
         paragraph.add_run(text)
+
+
+def _append_tag_to_paragraph(paragraph: Paragraph, tag: str) -> None:
+    current = paragraph.text or ""
+    separator = "" if not current or current.endswith((" ", "\t")) else " "
+    paragraph.add_run(separator + str(tag))
 
 
 def _replace_paragraph_spans(
@@ -1071,6 +2084,21 @@ def _validate_accepted_candidates(candidates: list[dict[str, Any]]) -> None:
         if not field_id:
             raise AutomaticDetectionError("Uma sugestão selecionada não possui ID.")
         ids.append(field_id)
+        if str(candidate.get("source", "")) == "repeatable_table":
+            columns = [
+                dict(column)
+                for column in candidate.get("columns", []) or []
+                if isinstance(column, dict)
+            ]
+            column_ids = [str(column.get("id", "")).strip() for column in columns]
+            if len(columns) < 2 or any(not column_id for column_id in column_ids):
+                raise AutomaticDetectionError(
+                    f"A tabela repetível '{candidate.get('label', field_id)}' não possui colunas válidas."
+                )
+            if len(set(column_ids)) != len(column_ids):
+                raise AutomaticDetectionError(
+                    f"A tabela repetível '{candidate.get('label', field_id)}' possui colunas repetidas."
+                )
         if str(candidate.get("type", "")) == "dropdown":
             if len(compact_dropdown_options(candidate.get("options", []))) < 2:
                 raise AutomaticDetectionError(
