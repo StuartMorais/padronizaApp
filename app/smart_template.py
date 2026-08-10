@@ -205,6 +205,8 @@ def suggest_field_type(field_context: str) -> str:
             "objeto",
             "fundamentacao",
             "fundamentação",
+            "providencia",
+            "providência",
         )
     ):
         return "multiline"

@@ -339,6 +339,11 @@ def convert_pdf_to_docx(
                     and _block_text(block).strip()
                 ]
 
+                try:
+                    page_drawings = list(page.get_drawings())
+                except Exception:
+                    page_drawings = []
+
                 table_items: list[dict[str, Any]] = []
                 table_boxes: list[tuple[float, float, float, float]] = []
                 try:
@@ -353,6 +358,7 @@ def convert_pdf_to_docx(
                                 "kind": "table",
                                 "bbox": bbox,
                                 "rows": extracted,
+                                "table": found_table,
                             }
                         )
                         table_boxes.append(bbox)
@@ -415,13 +421,21 @@ def convert_pdf_to_docx(
                             document,
                             item["block"],
                             page_width=page.rect.width,
+                            page_drawings=page_drawings,
                             Inches=Inches,
                             Pt=Pt,
                             RGBColor=RGBColor,
                             alignment_enum=WD_ALIGN_PARAGRAPH,
                         )
                     elif kind == "table":
-                        _append_pdf_table(document, item["rows"], Pt=Pt)
+                        _append_pdf_table(
+                            document,
+                            item["rows"],
+                            Pt=Pt,
+                            page=page,
+                            table_geometry=item.get("table"),
+                            page_drawings=page_drawings,
+                        )
                         table_count += 1
                     elif kind == "image":
                         block = item["block"]
@@ -802,11 +816,30 @@ def _append_pdf_text_block(
     block: dict[str, Any],
     *,
     page_width: float,
+    page_drawings: list[dict[str, Any]],
     Inches: Any,
     Pt: Any,
     RGBColor: Any,
     alignment_enum: Any,
 ) -> None:
+    lines = list(block.get("lines", []) or [])
+
+    # PyMuPDF often stores several visually horizontal form cells as separate
+    # ``lines`` inside one text block.  Preserve that horizontal relationship
+    # as a one-row Word table instead of turning it into manual line breaks.
+    # This is important for PDF forms such as ``Placa | Data | Horário`` and
+    # ``Próxima revisão | Responsável``.
+    if _pdf_lines_form_one_visual_row(lines):
+        _append_pdf_visual_row_table(
+            document,
+            lines,
+            page_width=page_width,
+            page_drawings=page_drawings,
+            Inches=Inches,
+            Pt=Pt,
+        )
+        return
+
     paragraph = document.add_paragraph()
     bbox = tuple(float(value) for value in block.get("bbox", (0, 0, 0, 0)))
     block_width = max(1.0, bbox[2] - bbox[0])
@@ -824,31 +857,257 @@ def _append_pdf_text_block(
     paragraph.paragraph_format.space_after = Pt(1.5)
     paragraph.paragraph_format.line_spacing = 1.0
 
-    lines = block.get("lines", [])
     for line_index, line in enumerate(lines):
-        for span in line.get("spans", []):
-            text = str(span.get("text", ""))
-            if not text:
-                continue
+        line_text = _pdf_enriched_line_text(line, page_drawings)
+        spans = list(line.get("spans", []) or [])
+        original_text = "".join(str(span.get("text", "")) for span in spans).strip()
+        if spans and line_text == original_text:
+            # Preserve the original PDF formatting whenever no synthetic form
+            # marker or underline had to be inserted.
+            for span in spans:
+                text = str(span.get("text", ""))
+                if not text:
+                    continue
 
-            run = paragraph.add_run(text)
-            font_name = str(span.get("font", ""))
-            flags = int(span.get("flags", 0) or 0)
-            run.bold = bool(flags & 16) or "bold" in font_name.casefold()
-            run.italic = bool(flags & 2) or "italic" in font_name.casefold() or "oblique" in font_name.casefold()
-            run.font.size = Pt(max(5.0, min(float(span.get("size", 10.0)), 72.0)))
+                run = paragraph.add_run(text)
+                font_name = str(span.get("font", ""))
+                flags = int(span.get("flags", 0) or 0)
+                run.bold = bool(flags & 16) or "bold" in font_name.casefold()
+                run.italic = bool(flags & 2) or "italic" in font_name.casefold() or "oblique" in font_name.casefold()
+                run.font.size = Pt(max(5.0, min(float(span.get("size", 10.0)), 72.0)))
 
-            color_value = int(span.get("color", 0) or 0)
-            red = (color_value >> 16) & 255
-            green = (color_value >> 8) & 255
-            blue = color_value & 255
-            run.font.color.rgb = RGBColor(red, green, blue)
+                color_value = int(span.get("color", 0) or 0)
+                red = (color_value >> 16) & 255
+                green = (color_value >> 8) & 255
+                blue = color_value & 255
+                run.font.color.rgb = RGBColor(red, green, blue)
+        else:
+            run = paragraph.add_run(line_text)
+            if spans:
+                first = spans[0]
+                font_name = str(first.get("font", ""))
+                flags = int(first.get("flags", 0) or 0)
+                run.bold = bool(flags & 16) or "bold" in font_name.casefold()
+                run.italic = bool(flags & 2) or "italic" in font_name.casefold() or "oblique" in font_name.casefold()
+                run.font.size = Pt(max(5.0, min(float(first.get("size", 10.0)), 72.0)))
+                color_value = int(first.get("color", 0) or 0)
+                run.font.color.rgb = RGBColor(
+                    (color_value >> 16) & 255,
+                    (color_value >> 8) & 255,
+                    color_value & 255,
+                )
 
         if line_index < len(lines) - 1:
             paragraph.add_run().add_break()
 
 
-def _append_pdf_table(document: Any, rows: list[list[Any]], *, Pt: Any) -> None:
+def _pdf_lines_form_one_visual_row(lines: list[dict[str, Any]]) -> bool:
+    if len(lines) < 2:
+        return False
+    boxes = [tuple(float(v) for v in line.get("bbox", (0, 0, 0, 0))) for line in lines]
+    centers = [(box[1] + box[3]) / 2.0 for box in boxes]
+    if max(centers) - min(centers) > 2.8:
+        return False
+    ordered = sorted(boxes, key=lambda box: box[0])
+    return all(
+        ordered[index + 1][0] - ordered[index][2] >= 12.0
+        for index in range(len(ordered) - 1)
+    )
+
+
+def _append_pdf_visual_row_table(
+    document: Any,
+    lines: list[dict[str, Any]],
+    *,
+    page_width: float,
+    page_drawings: list[dict[str, Any]],
+    Inches: Any,
+    Pt: Any,
+) -> None:
+    ordered = sorted(lines, key=lambda line: float(line.get("bbox", (0, 0, 0, 0))[0]))
+    table = document.add_table(rows=1, cols=len(ordered))
+    table.autofit = False
+
+    starts = [float(line.get("bbox", (0, 0, 0, 0))[0]) for line in ordered]
+    right_edge = max(
+        float(ordered[-1].get("bbox", (0, 0, page_width, 0))[2]),
+        page_width - 42.0,
+    )
+    boundaries = starts[1:] + [right_edge]
+
+    for index, line in enumerate(ordered):
+        cell = table.cell(0, index)
+        width_points = max(42.0, boundaries[index] - starts[index])
+        cell.width = Inches(width_points / 72.0)
+        text = _pdf_enriched_line_text(line, page_drawings)
+        cell.text = text
+        for paragraph in cell.paragraphs:
+            paragraph.paragraph_format.space_after = Pt(0)
+            for run in paragraph.runs:
+                run.font.size = Pt(8.5)
+                spans = list(line.get("spans", []) or [])
+                if spans:
+                    first = spans[0]
+                    font_name = str(first.get("font", ""))
+                    flags = int(first.get("flags", 0) or 0)
+                    run.bold = bool(flags & 16) or "bold" in font_name.casefold()
+                    run.italic = bool(flags & 2) or "italic" in font_name.casefold() or "oblique" in font_name.casefold()
+
+
+def _pdf_enriched_line_text(
+    line: dict[str, Any],
+    page_drawings: list[dict[str, Any]],
+) -> str:
+    spans = list(line.get("spans", []) or [])
+    if not spans:
+        return ""
+    bbox = tuple(float(value) for value in line.get("bbox", (0, 0, 0, 0)))
+    components: list[tuple[float, str]] = []
+    for span in spans:
+        text = str(span.get("text", ""))
+        if text:
+            span_bbox = tuple(float(v) for v in span.get("bbox", bbox))
+            components.append((span_bbox[0], text))
+
+    for marker in _pdf_checkbox_rectangles(page_drawings):
+        marker_center_y = (marker[1] + marker[3]) / 2.0
+        line_center_y = (bbox[1] + bbox[3]) / 2.0
+        if abs(marker_center_y - line_center_y) > max(5.0, (bbox[3] - bbox[1]) * 0.75):
+            continue
+        if marker[2] <= bbox[0] + 4.0 and bbox[0] - marker[2] <= 18.0:
+            components.append((marker[0], "☐ "))
+
+    components.sort(key=lambda item: item[0])
+    text = "".join(value for _x, value in components).strip()
+
+    fill = _pdf_following_fill_line(bbox, page_drawings)
+    if fill is not None:
+        width = max(12.0, fill[2] - fill[0])
+        underscore_count = max(4, min(48, int(width / 6.0)))
+        text = f"{text} {'_' * underscore_count}".strip()
+    return text
+
+
+def _pdf_checkbox_rectangles(
+    page_drawings: list[dict[str, Any]],
+) -> list[tuple[float, float, float, float]]:
+    markers: list[tuple[float, float, float, float]] = []
+    for drawing in page_drawings:
+        rect = drawing.get("rect")
+        if rect is None:
+            continue
+        box = tuple(float(value) for value in rect)
+        width = box[2] - box[0]
+        height = box[3] - box[1]
+        if 5.0 <= width <= 16.0 and 5.0 <= height <= 16.0 and abs(width - height) <= 3.0:
+            markers.append(box)
+    return markers
+
+
+def _pdf_horizontal_fill_lines(
+    page_drawings: list[dict[str, Any]],
+) -> list[tuple[float, float, float, float]]:
+    lines: list[tuple[float, float, float, float]] = []
+    for drawing in page_drawings:
+        rect = drawing.get("rect")
+        if rect is None:
+            continue
+        box = tuple(float(value) for value in rect)
+        width = box[2] - box[0]
+        height = box[3] - box[1]
+        if width >= 20.0 and height <= 1.6:
+            lines.append(box)
+    return lines
+
+
+def _pdf_following_fill_line(
+    text_bbox: tuple[float, float, float, float],
+    page_drawings: list[dict[str, Any]],
+) -> tuple[float, float, float, float] | None:
+    candidates: list[tuple[float, tuple[float, float, float, float]]] = []
+    text_center_y = (text_bbox[1] + text_bbox[3]) / 2.0
+    for line in _pdf_horizontal_fill_lines(page_drawings):
+        line_y = (line[1] + line[3]) / 2.0
+        if line[0] < text_bbox[2] - 3.0:
+            continue
+        if line[0] - text_bbox[2] > 28.0:
+            continue
+        if abs(line_y - text_center_y) > 8.5:
+            continue
+        candidates.append((line[0] - text_bbox[2], line))
+    if not candidates:
+        return None
+    return min(candidates, key=lambda item: item[0])[1]
+
+
+def _pdf_cell_text_with_controls(
+    page: Any,
+    cell_bbox: tuple[float, float, float, float],
+    fallback: str,
+    page_drawings: list[dict[str, Any]],
+) -> str:
+    x0, y0, x1, y1 = cell_bbox
+    spans: list[tuple[float, float, str]] = []
+    try:
+        page_dict = page.get_text("dict", sort=True)
+        for block in page_dict.get("blocks", []):
+            if block.get("type") != 0:
+                continue
+            for line in block.get("lines", []):
+                for span in line.get("spans", []):
+                    span_bbox = tuple(float(v) for v in span.get("bbox", (0, 0, 0, 0)))
+                    cx = (span_bbox[0] + span_bbox[2]) / 2.0
+                    cy = (span_bbox[1] + span_bbox[3]) / 2.0
+                    if x0 <= cx <= x1 and y0 <= cy <= y1:
+                        text = str(span.get("text", "")).strip()
+                        if text:
+                            spans.append((span_bbox[0], span_bbox[1], text))
+    except Exception:
+        spans = []
+
+    markers = [
+        marker
+        for marker in _pdf_checkbox_rectangles(page_drawings)
+        if x0 <= (marker[0] + marker[2]) / 2.0 <= x1
+        and y0 <= (marker[1] + marker[3]) / 2.0 <= y1
+    ]
+
+    if markers and spans:
+        parts: list[str] = []
+        for marker in sorted(markers, key=lambda item: item[0]):
+            right_candidates = [span for span in spans if span[0] >= marker[2] - 1.0]
+            if not right_candidates:
+                continue
+            nearest = min(
+                right_candidates,
+                key=lambda span: (span[0] - marker[2], abs(span[1] - marker[1])),
+            )
+            label = nearest[2]
+            if label not in parts:
+                parts.append(label)
+        if parts:
+            return " ".join(f"☐ {part}" for part in parts)
+
+    text = str(fallback or "").strip()
+    if not text and any(
+        x0 <= (line[0] + line[2]) / 2.0 <= x1
+        and y0 <= (line[1] + line[3]) / 2.0 <= y1
+        for line in _pdf_horizontal_fill_lines(page_drawings)
+    ):
+        width = max(24.0, x1 - x0 - 12.0)
+        return "_" * max(4, min(40, int(width / 7.0)))
+    return text
+
+
+def _append_pdf_table(
+    document: Any,
+    rows: list[list[Any]],
+    *,
+    Pt: Any,
+    page: Any | None = None,
+    table_geometry: Any | None = None,
+    page_drawings: list[dict[str, Any]] | None = None,
+) -> None:
     cleaned_rows = [
         ["" if value is None else str(value) for value in row]
         for row in rows
@@ -863,9 +1122,26 @@ def _append_pdf_table(document: Any, rows: list[list[Any]], *, Pt: Any) -> None:
     except Exception:
         pass
 
+    geometry_rows = (
+        list(getattr(table_geometry, "rows", []) or [])
+        if table_geometry is not None
+        else []
+    )
+    drawings = list(page_drawings or [])
+
     for row_index, row in enumerate(cleaned_rows):
         for column_index in range(column_count):
             value = row[column_index] if column_index < len(row) else ""
+            if page is not None and row_index < len(geometry_rows):
+                cells = list(getattr(geometry_rows[row_index], "cells", []) or [])
+                if column_index < len(cells) and cells[column_index] is not None:
+                    value = _pdf_cell_text_with_controls(
+                        page,
+                        tuple(float(v) for v in cells[column_index]),
+                        value,
+                        drawings,
+                    )
+
             cell = table.cell(row_index, column_index)
             cell.text = value
             for paragraph in cell.paragraphs:
@@ -873,3 +1149,5 @@ def _append_pdf_table(document: Any, rows: list[list[Any]], *, Pt: Any) -> None:
                     run.font.size = Pt(8.5)
                     if row_index == 0:
                         run.bold = True
+
+

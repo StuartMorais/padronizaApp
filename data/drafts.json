@@ -164,5 +164,41 @@
       "auto.observacoes_adicionais": ""
     },
     "updated_at": "2026-08-07T11:50:09"
+  },
+  "10-solicitacao-viagem-deslocamento-misto": {
+    "values": {
+      "auto.nome_do_servidor": "",
+      "auto.matricula": "",
+      "auto.e_mail": "",
+      "auto.telefone": "",
+      "auto.unidade": "",
+      "auto.destino": "",
+      "auto.uf": "",
+      "auto.data_de_saida": "10/08/2026",
+      "auto.data_de_retorno": "10/08/2026",
+      "auto.meio_de_transporte": "",
+      "auto.finalidade_da_viagem": "",
+      "auto.necessita_hospedagem.sim": false,
+      "auto.necessita_hospedagem.nao": false,
+      "auto.tipo_de_diaria.integral": false,
+      "auto.tipo_de_diaria.parcial": false,
+      "auto.tipo_de_diaria.sem_diaria": false,
+      "auto.quantidade_de_diarias": "",
+      "auto.valor_estimado": "",
+      "auto.origem": "",
+      "auto.destino_2": "",
+      "auto.data": "10/08/2026",
+      "auto.origem_2": "",
+      "auto.destino_3": "",
+      "auto.data_2": "10/08/2026",
+      "auto.origem_3": "",
+      "auto.destino_4": "",
+      "auto.data_3": "10/08/2026",
+      "auto.declaro_que_as_informacoes_acima_sao_verdadeiras_li_e_concordo": false,
+      "auto.chefia_imediata": "",
+      "auto.decisao.autorizar": false,
+      "auto.decisao.nao_autorizar": false
+    },
+    "updated_at": "2026-08-10T10:52:08"
   }
 }

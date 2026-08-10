@@ -62,6 +62,11 @@ from app.section_card_model import (
 from app.smart_template import readiness_report, smart_fields_from_docx
 from app.template_diagnostics import diagnose_template, diagnostics_text
 from app.system_open import SystemOpenError, open_file
+from app.template_source import (
+    SUPPORTED_TEMPLATE_SUFFIXES,
+    TemplateSourceError,
+    prepare_template_source,
+)
 from app.template_repository import TemplateRepository
 from app.widgets.clickable_drop_zone import ClickableDropZone
 from app.widgets.context_help import HelpIconButton, HelpLabel
@@ -72,8 +77,8 @@ from app.widgets.repeatable_table import FieldConfigurationEditor
 from app.widgets.template_section_card import TemplateSectionCard
 
 
-class _TemplateDocxDropZone(ClickableDropZone):
-    SUPPORTED_SUFFIXES = frozenset({".docx"})
+class _TemplateFileDropZone(ClickableDropZone):
+    SUPPORTED_SUFFIXES = SUPPORTED_TEMPLATE_SUFFIXES
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
 
@@ -91,7 +96,7 @@ class _TemplateDocxDropZone(ClickableDropZone):
             QSizePolicy.Policy.Fixed,
         )
         self.setToolTip(
-            'Arraste um arquivo DOCX para cá ou clique para selecioná-lo.'
+            'Arraste um arquivo DOCX ou PDF para cá ou clique para selecioná-lo.'
         )
 
         layout = QVBoxLayout(self)
@@ -107,7 +112,7 @@ class _TemplateDocxDropZone(ClickableDropZone):
         )
 
         self.title_label = QLabel(
-            'Arraste um modelo DOCX para cá'
+            'Arraste um arquivo de modelo para cá'
         )
         self.title_label.setObjectName(
             "templateDocxDropTitle"
@@ -117,7 +122,7 @@ class _TemplateDocxDropZone(ClickableDropZone):
         )
 
         self.subtitle_label = QLabel(
-            'ou selecione um documento do Word'
+            'DOCX ou PDF'
         )
         self.subtitle_label.setObjectName(
             "templateDocxDropText"
@@ -128,7 +133,7 @@ class _TemplateDocxDropZone(ClickableDropZone):
         self.subtitle_label.setWordWrap(True)
 
         self.browse_button = self.create_browse_button(
-            "Selecionar DOCX"
+            "Selecionar arquivo"
         )
 
         self.add_drop_content(
@@ -150,10 +155,10 @@ class _TemplateDocxDropZone(ClickableDropZone):
             path.name
         )
         self.subtitle_label.setText(
-            'DOCX selecionado. Arraste outro arquivo para substituí-lo.'
+            f'{path.suffix.upper().lstrip(".")} selecionado. Arraste outro arquivo para substituí-lo.'
         )
         self.browse_button.setText(
-            'Substituir DOCX'
+            'Substituir arquivo'
         )
         self.set_drag_active(False)
 
@@ -191,6 +196,8 @@ class TemplateEditorDialog(QDialog):
         self.template_id = template_id
         self.saved_template_id: str | None = template_id
         self.selected_docx: Path | None = None
+        self.selected_input_file: Path | None = None
+        self.selected_input_was_pdf = False
         self.docx_was_replaced = False
         self.data_dir = self.repository.templates_dir.parent / "data"
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -206,6 +213,7 @@ class TemplateEditorDialog(QDialog):
         self._similar_name_matches: list[dict[str, Any]] = []
         self._original_template_name = ""
         self._automatic_work_files: set[Path] = set()
+        self._source_field_hints: list[dict[str, Any]] = []
 
         self.change_timer = QTimer(self)
         self.change_timer.setSingleShot(True)
@@ -252,13 +260,13 @@ class TemplateEditorDialog(QDialog):
         self.numbering_padding_input.setValue(4)
 
         self.docx_drop_zone = (
-            _TemplateDocxDropZone()
+            _TemplateFileDropZone()
         )
         self.browse_button = (
             self.docx_drop_zone.browse_button
         )
         self.docx_tools_button = QPushButton(
-            'Ferramentas DOCX'
+            'Ferramentas do arquivo'
         )
         self.docx_tools_menu = QMenu(self)
 
@@ -278,7 +286,7 @@ class TemplateEditorDialog(QDialog):
             self,
         )
         self.automatic_detection_action.setToolTip(
-            'Sugere áreas preenchíveis e converte somente as aprovadas em tags.'
+            'Sugere áreas preenchíveis em DOCX ou PDF e converte somente as aprovadas em campos do modelo.'
         )
         self.automatic_detection_action.triggered.connect(
             self._detect_fields_without_tags
@@ -416,10 +424,10 @@ class TemplateEditorDialog(QDialog):
         self.form_preview_scroll.setWidget(preview_container)
 
         self.docx_drop_zone.browse_requested.connect(
-            self._choose_docx
+            self._choose_template_file
         )
         self.docx_drop_zone.file_dropped.connect(
-            self._set_docx_file
+            self._set_template_file
         )
         self.filename_builder_button.clicked.connect(
             self._build_filename
@@ -677,13 +685,15 @@ class TemplateEditorDialog(QDialog):
 
         form.addRow(
             HelpLabel(
-                'Modelo DOCX:',
-                'Documento DOCX de origem',
+                'Arquivo do modelo:',
+                'Documento DOCX ou PDF de origem',
                 (
-                    '<p>Este arquivo contém o texto, a formatação e os marcadores '
+                    '<p>Selecione um DOCX ou PDF. O arquivo contém o texto e a estrutura '
                     'que serão preenchidos durante a geração.</p>'
                     '<p>Exemplo de marcador: <b>{{company.legal_name}}</b>.</p>'
-                    '<p>O Padroniza também avisa quando o mesmo conteúdo DOCX já '
+                    '<p>PDFs são reconstruídos internamente como DOCX antes da análise. '
+                    'A aparência pode ser simplificada em PDFs complexos.</p>'
+                    '<p>O Padroniza também avisa quando o mesmo conteúdo do modelo já '
                     'está sendo usado por outro modelo.</p>'
                 ),
             ),
@@ -715,7 +725,7 @@ class TemplateEditorDialog(QDialog):
                 'Verificação e correções seguras',
                 (
                     '<p>A verificação resume problemas que podem impedir ou prejudicar '
-                    'a geração, como DOCX ausente, campos inválidos ou marcadores sem configuração.</p>'
+                    'a geração, como arquivo ausente, campos inválidos ou marcadores sem configuração.</p>'
                     '<p><b>Aplicar correções seguras</b> cria ou ajusta somente itens que '
                     'podem ser corrigidos sem apagar conteúdo manual.</p>'
                 ),
@@ -1144,10 +1154,10 @@ class TemplateEditorDialog(QDialog):
             self.numbering_padding_input.setValue(int(numbering.get("padding", 4) or 4))
 
             self.selected_docx = self.repository.get_source_path(self.template_id)
-            self.docx_input.setText(str(self.selected_docx))
-            self.docx_drop_zone.set_selected_file(
-                self.selected_docx
-            )
+            self.selected_input_file = self.selected_docx
+            self.selected_input_was_pdf = False
+            self._source_field_hints = []
+            self._refresh_selected_file_ui()
             self._refresh_duplicate_status()
 
             fields = [dict(field) for field in config.get("fields", [])]
@@ -1165,62 +1175,97 @@ class TemplateEditorDialog(QDialog):
             QMessageBox.critical(self, "Não foi possível carregar o modelo", str(exc))
             self.reject()
 
-    def _choose_docx(self) -> None:
+    def _choose_template_file(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
             self,
-            'Selecionar modelo DOCX',
-            "",
-            'Documentos do Word (*.docx)',
+            'Selecionar arquivo de modelo',
+            '',
+            'Arquivos de modelo (*.docx *.pdf);;Documentos do Word (*.docx);;Documentos PDF (*.pdf)',
         )
 
         if filename:
-            self._set_docx_file(
-                filename
-            )
+            self._set_template_file(filename)
 
-    def _set_docx_file(
+    def _set_template_file(
         self,
         filename: str,
     ) -> None:
-        path = Path(filename)
+        source_path = Path(filename).expanduser()
 
-        if not path.exists():
-            QMessageBox.warning(
-                self,
-                'DOCX não encontrado',
-                'O arquivo DOCX selecionado não foi encontrado.',
+        try:
+            prepared = prepare_template_source(
+                source_path,
+                self.data_dir / 'template_editor_work',
             )
-            return
-
-        if (
-            not path.is_file()
-            or path.suffix.casefold()
-            != ".docx"
-        ):
+        except TemplateSourceError as exc:
             QMessageBox.warning(
                 self,
                 'Arquivo não compatível',
-                'Selecione um documento do Word no formato DOCX.',
+                str(exc),
             )
             return
 
-        self.selected_docx = path
+        if prepared.converted_from_pdf:
+            self._automatic_work_files.add(prepared.docx_path)
+
+        self.selected_input_file = prepared.original_path
+        self.selected_input_was_pdf = prepared.converted_from_pdf
+        self.selected_docx = prepared.docx_path
+        self._source_field_hints = [dict(field) for field in prepared.native_pdf_field_hints]
         self.docx_was_replaced = True
+
         if self.template_id is None and not self.name_input.text().strip():
-            suggested_name = path.stem.replace("_", " ").replace("-", " ").strip().title()
+            suggested_name = (
+                prepared.original_path.stem
+                .replace('_', ' ')
+                .replace('-', ' ')
+                .strip()
+                .title()
+            )
             self.name_input.setText(suggested_name)
-        self.docx_input.setText(
-            str(path)
-        )
-        self.docx_drop_zone.set_selected_file(
-            path
-        )
+
+        self._refresh_selected_file_ui()
         self._refresh_duplicate_status()
 
+        if prepared.converted_from_pdf:
+            details = (
+                'O PDF foi convertido para uma cópia DOCX de trabalho para que o mesmo '
+                'scanner de campos, prévia e gerador possam ser usados.'
+            )
+            if prepared.warnings:
+                details += ' ' + ' '.join(prepared.warnings[:2])
+            show_toast(
+                self,
+                'PDF preparado para análise',
+                details,
+                duration=7000,
+            )
+
+        found_fields = True
         if self.template_id is None or self.fields_table.rowCount() == 0:
-            self._smart_scan_fields(show_message=False)
+            found_fields = self._smart_scan_fields(show_message=False)
+        if prepared.converted_from_pdf and not found_fields:
+            QTimer.singleShot(0, self._detect_fields_without_tags)
         self._schedule_editor_change()
         self._update_readiness()
+
+    def _refresh_selected_file_ui(self) -> None:
+        display_path = self.selected_input_file or self.selected_docx
+        if display_path is None:
+            self.docx_input.clear()
+            return
+
+        self.docx_drop_zone.set_selected_file(display_path)
+        if self.selected_input_was_pdf and self.selected_docx is not None:
+            self.docx_input.setText(
+                f'{display_path}  →  DOCX de trabalho: {self.selected_docx.name}'
+            )
+            self.docx_input.setToolTip(
+                f'PDF original: {display_path}\nDOCX de trabalho: {self.selected_docx}'
+            )
+        else:
+            self.docx_input.setText(str(display_path))
+            self.docx_input.setToolTip(str(display_path))
 
     def _refresh_similar_name_status(self) -> None:
         self._similar_name_matches = []
@@ -1355,9 +1400,9 @@ class TemplateEditorDialog(QDialog):
         answer = QMessageBox.question(
             self,
             'Arquivo de modelo repetido',
-            "O DOCX selecionado possui o mesmo conteúdo de um arquivo de modelo existente. "
+            "O arquivo selecionado possui o mesmo conteúdo de um modelo existente. "
             f"\n\n{names}\n\n"
-            "Criar outro modelo usando este mesmo DOCX?",
+            "Criar outro modelo usando este mesmo arquivo?",
             QMessageBox.StandardButton.Yes
             | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -1367,27 +1412,35 @@ class TemplateEditorDialog(QDialog):
     def _scan_fields(self) -> None:
         self._smart_scan_fields(show_message=True)
 
-    def _smart_scan_fields(self, *, show_message: bool) -> None:
+    def _smart_scan_fields(self, *, show_message: bool) -> bool:
         if self.selected_docx is None:
-            QMessageBox.warning(self, 'Nenhum DOCX selecionado', 'Selecione primeiro um arquivo DOCX.')
-            return
+            if show_message:
+                QMessageBox.warning(self, 'Nenhum arquivo selecionado', 'Selecione primeiro um arquivo DOCX ou PDF.')
+            return False
         try:
             existing = self._collect_fields(validate=False)
-            fields = smart_fields_from_docx(self.selected_docx, existing)
+            # Native PDF form fields have technical AcroForm names that are
+            # intentionally different from the human labels printed on the
+            # page.  Seed the first/next scans with those source hints while
+            # letting any manual edits already present in the editor win.
+            seeded_existing = [*self._source_field_hints, *existing]
+            fields = smart_fields_from_docx(self.selected_docx, seeded_existing)
         except Exception as exc:
-            QMessageBox.critical(self, 'Não foi possível analisar o DOCX', str(exc))
-            return
+            if show_message:
+                QMessageBox.critical(self, 'Não foi possível analisar o arquivo', str(exc))
+            return False
         if not fields:
-            QMessageBox.warning(
-                self,
-                'Nenhum campo encontrado',
-                (
-                    'Nenhuma tag ou controle do Word foi encontrado.\n\n'
-                    'Use Ferramentas DOCX > Detectar campos sem tags para receber '
-                    'sugestões de áreas preenchíveis.'
-                ),
-            )
-            return
+            if show_message:
+                QMessageBox.warning(
+                    self,
+                    'Nenhum campo encontrado',
+                    (
+                        'Nenhuma tag ou controle reconhecido foi encontrado.\n\n'
+                        'Use Ferramentas do arquivo > Detectar campos sem tags para receber '
+                        'sugestões de áreas preenchíveis.'
+                    ),
+                )
+            return False
         self._load_fields_into_table(fields)
         self._schedule_editor_change()
         self._update_readiness()
@@ -1406,7 +1459,7 @@ class TemplateEditorDialog(QDialog):
             )
             details = (
                 f"{len(fields)} campo(s) configurados; "
-                f"{contextual_labels} rótulo(s) lidos do DOCX e "
+                f"{contextual_labels} rótulo(s) lidos do documento e "
                 f"{specialized_types} tipo(s) especializado(s)."
             )
             show_toast(
@@ -1414,13 +1467,14 @@ class TemplateEditorDialog(QDialog):
                 'Análise inteligente concluída',
                 details,
             )
+        return True
 
     def _detect_fields_without_tags(self) -> None:
         if self.selected_docx is None:
             QMessageBox.warning(
                 self,
-                'Nenhum DOCX selecionado',
-                'Selecione primeiro um arquivo DOCX.',
+                'Nenhum arquivo selecionado',
+                'Selecione primeiro um arquivo DOCX ou PDF.',
             )
             return
 
@@ -1494,8 +1548,7 @@ class TemplateEditorDialog(QDialog):
         self._automatic_work_files.add(work_path)
         self.selected_docx = work_path
         self.docx_was_replaced = True
-        self.docx_input.setText(str(work_path))
-        self.docx_drop_zone.set_selected_file(work_path)
+        self._refresh_selected_file_ui()
         self._load_fields_into_table(fields)
         self._refresh_duplicate_status()
         self._schedule_editor_change()
@@ -1506,7 +1559,7 @@ class TemplateEditorDialog(QDialog):
             'Sugestões aplicadas',
             (
                 f'{len(accepted)} área(s) aprovada(s) foram convertidas em tags '
-                'numa cópia de trabalho. Revise Campos e seções e a prévia antes de salvar.'
+                'numa cópia de trabalho. Revise Campos e seções e ajuste somente o que for necessário.'
             ),
             duration=6200,
         )
@@ -1521,7 +1574,7 @@ class TemplateEditorDialog(QDialog):
 
     def _show_diagnostics(self) -> None:
         if self.selected_docx is None:
-            QMessageBox.warning(self, 'Nenhum DOCX selecionado', 'Selecione primeiro um arquivo DOCX.')
+            QMessageBox.warning(self, 'Nenhum arquivo selecionado', 'Selecione primeiro um arquivo DOCX ou PDF.')
             return
         try:
             fields = self._collect_fields(validate=False)
@@ -1982,6 +2035,8 @@ class TemplateEditorDialog(QDialog):
             "version": self.version_input.text(),
             "description": self.description_input.toPlainText(),
             "docx": str(self.selected_docx or ""),
+            "input_file": str(self.selected_input_file or ""),
+            "input_was_pdf": self.selected_input_was_pdf,
             "filename_pattern": self.filename_input.text(),
             "folder_pattern": self.folder_pattern_input.text(),
             "numbering_enabled": self.numbering_checkbox.isChecked(),
@@ -2046,9 +2101,17 @@ class TemplateEditorDialog(QDialog):
             self.description_input.setPlainText(str(snapshot.get("description", "")))
             docx = Path(str(snapshot.get("docx", ""))) if snapshot.get("docx") else None
             self.selected_docx = docx if docx and docx.exists() else self.selected_docx
+            input_file = (
+                Path(str(snapshot.get("input_file", "")))
+                if snapshot.get("input_file")
+                else None
+            )
+            self.selected_input_file = (
+                input_file if input_file and input_file.exists() else self.selected_docx
+            )
+            self.selected_input_was_pdf = bool(snapshot.get("input_was_pdf", False))
             if self.selected_docx:
-                self.docx_input.setText(str(self.selected_docx))
-                self.docx_drop_zone.set_selected_file(self.selected_docx)
+                self._refresh_selected_file_ui()
                 self._refresh_duplicate_status()
                 if self.template_id is None:
                     self.docx_was_replaced = True
@@ -2169,7 +2232,7 @@ class TemplateEditorDialog(QDialog):
             self,
             'Correções seguras aplicadas',
             (
-                'Os campos foram sincronizados com o DOCX. '
+                'Os campos foram sincronizados com o arquivo do modelo. '
                 f'A contagem mudou em {after - before:+d} e os metadados personalizados foram preservados.'
             ),
             duration=5200,
@@ -2280,7 +2343,7 @@ class TemplateEditorDialog(QDialog):
             QMessageBox.warning(self, 'Nome do modelo ausente', 'Informe um nome para o modelo.')
             return
         if self.selected_docx is None:
-            QMessageBox.warning(self, 'DOCX ausente', 'Selecione um modelo DOCX.')
+            QMessageBox.warning(self, 'Arquivo ausente', 'Selecione um arquivo DOCX ou PDF.')
             return
         if not self._confirm_similar_name():
             return

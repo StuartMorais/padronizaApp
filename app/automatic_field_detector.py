@@ -17,6 +17,7 @@ from docx.text.paragraph import Paragraph
 from app.field_utils import compact_dropdown_options
 from app.placeholder_scanner import PLACEHOLDER_PATTERN, scan_docx_fields
 from app.smart_template import suggest_field_type
+from app.word_control_utils import classify_native_control, get_control_identifier
 
 
 # The automatic detector is deliberately conservative. Explicit tags and Word
@@ -53,6 +54,16 @@ GENERIC_DROPDOWN_PATTERN = re.compile(
 )
 CHECKBOX_LINE_PATTERN = re.compile(r"^\s*(?:☐|□|☑|☒|\(\s*\))\s*(.+?)\s*$")
 CHECKBOX_TOKEN_PATTERN = re.compile(r"(?:☐|□|☑|☒|\(\s*\))")
+# Checked Word forms are sometimes rendered as a bare check mark in an otherwise
+# empty narrow cell instead of a Unicode checked-box character. Keep these
+# glyphs restricted to the isolated-cell heuristic so they are not mistaken for
+# ordinary mathematical or prose characters elsewhere in the document.
+ISOLATED_CHECK_MARK_PATTERN = re.compile(r"(?:✓|✔|√)")
+FOLLOWUP_AREA_PATTERN = re.compile(
+    r"^\s*(?:observa[cç][aã]o(?:\s*/\s*justificativa)?|justificativa|"
+    r"complemento|detalhamento|informa[cç][oõ]es? complementares?)\b",
+    re.IGNORECASE,
+)
 SECTION_NUMBER_PATTERN = re.compile(r"^\s*\d+(?:\.\d+)*\.?\s*")
 LABEL_TAIL_PATTERN = re.compile(r"([^:;|]{2,120})\s*[:：]\s*$")
 
@@ -66,6 +77,7 @@ _SOURCE_LABELS = {
     "dropdown_prompt": "Indicação 'Escolher um item'",
     "sample_value": "Valor de exemplo após o rótulo",
     "checkbox_choice": "Opções com caixas de seleção",
+    "checkbox_single": "Caixa de seleção independente",
 }
 
 
@@ -191,6 +203,25 @@ def detect_docx_field_candidates(
         for field in candidate.get("fields", []) or []:
             known_ids.add(str(field.get("id", "")))
 
+    single_checkboxes = _detect_standalone_checkboxes(
+        records,
+        known_ids,
+        reserved_ordinals,
+    )
+    for candidate in single_checkboxes:
+        candidates.append(candidate)
+        reserved_ordinals.add(int(candidate.get("location", {}).get("paragraph", -1)))
+        known_ids.add(str(candidate.get("field_id", "")))
+
+    followup_areas = _detect_blank_followup_areas(
+        records,
+        known_ids,
+        reserved_ordinals,
+    )
+    for candidate in followup_areas:
+        candidates.append(candidate)
+        known_ids.add(str(candidate.get("field_id", "")))
+
     for record in records:
         if record.ordinal in reserved_ordinals:
             continue
@@ -263,6 +294,16 @@ def detect_docx_field_candidates(
                     },
                 )
             )
+            continue
+
+        adjacent_sample = _detect_adjacent_sample_value(
+            record,
+            records,
+            known_ids,
+        )
+        if adjacent_sample is not None:
+            candidates.append(adjacent_sample)
+            known_ids.add(str(adjacent_sample.get("field_id", "")))
             continue
 
         label_only = _detect_label_only_field(
@@ -944,6 +985,157 @@ def _detect_checkbox_choice_groups(
         result.append(candidate)
         used_ordinals.update(record.ordinal for record, _label, _span in parsed_cells)
 
+    # 1c) Checkbox marker isolated in a narrow cell with the option text in
+    # the adjacent cell. This pattern is common in institutional forms where
+    # the left column contains only a square and the right column contains a
+    # numbered occurrence/condition plus explanatory text.
+    by_table_rows: dict[int, dict[int, list[_ParagraphRecord]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    for record in records:
+        if (
+            record.table_index is None
+            or record.row_index is None
+            or record.ordinal in used_ordinals
+        ):
+            continue
+        by_table_rows[int(record.table_index)][int(record.row_index)].append(record)
+
+    for rows in by_table_rows.values():
+        row_options: dict[
+            int,
+            tuple[_ParagraphRecord, str, tuple[int, int] | None, str],
+        ] = {}
+        row_cells: dict[int, dict[int, list[_ParagraphRecord]]] = {}
+        explicit_marker_columns: set[int] = set()
+
+        # First pass: collect rows whose marker is structurally present in the
+        # narrow cell.  This is the normal case (Unicode marker, Word control,
+        # symbol or drawing).
+        for row_index, row_records in rows.items():
+            by_cell_index: dict[int, list[_ParagraphRecord]] = defaultdict(list)
+            for record in row_records:
+                if record.cell_index is None:
+                    continue
+                by_cell_index[int(record.cell_index)].append(record)
+            row_cells[row_index] = by_cell_index
+
+            ordered_cells = sorted(by_cell_index)
+            for cell_index in ordered_cells:
+                marker_records = sorted(
+                    by_cell_index[cell_index],
+                    key=lambda item: item.ordinal,
+                )
+                marker = _isolated_checkbox_marker(marker_records)
+                if marker is None:
+                    continue
+                marker_record, token_span, marker_mode = marker
+
+                # Require the immediately adjacent visual cell. This avoids
+                # pairing decorative checkboxes with unrelated text elsewhere
+                # in a wide row.
+                adjacent_records = sorted(
+                    by_cell_index.get(cell_index + 1, []),
+                    key=lambda item: item.ordinal,
+                )
+                option_text = _adjacent_checkbox_option_text(adjacent_records)
+                if not option_text:
+                    continue
+
+                row_options[row_index] = (
+                    marker_record,
+                    option_text,
+                    token_span,
+                    marker_mode,
+                )
+                explicit_marker_columns.add(cell_index)
+                break
+
+        # Second pass: some institutional DOCX files draw a checked square as
+        # an absolutely-positioned floating text box.  Visually it sits in the
+        # narrow marker cell, but the actual table cell is completely empty.
+        # Once this table has established a checkbox marker column from another
+        # row, an empty cell in that same column followed by option-like text is
+        # a strong signal that the row belongs to the same choice group.
+        #
+        # This intentionally does *not* infer a checkbox in arbitrary empty
+        # cells: a structural marker must already exist in the same table and
+        # the marker column must be narrow relative to its adjacent text cell.
+        for row_index, by_cell_index in row_cells.items():
+            if row_index in row_options:
+                continue
+            for cell_index in sorted(explicit_marker_columns):
+                marker_records = sorted(
+                    by_cell_index.get(cell_index, []),
+                    key=lambda item: item.ordinal,
+                )
+                adjacent_records = sorted(
+                    by_cell_index.get(cell_index + 1, []),
+                    key=lambda item: item.ordinal,
+                )
+                if not marker_records or not adjacent_records:
+                    continue
+                if not _is_blank_checkbox_marker_cell(marker_records, adjacent_records):
+                    continue
+                option_text = _adjacent_checkbox_option_text(adjacent_records)
+                if not option_text or not _looks_like_adjacent_choice_option(adjacent_records):
+                    continue
+
+                # Reuse the real blank paragraph in the marker cell. During
+                # application it will be replaced with the normal checkbox tag.
+                row_options[row_index] = (
+                    marker_records[0],
+                    option_text,
+                    None,
+                    "inferred_blank",
+                )
+                break
+
+        ordered_rows = sorted(row_options)
+        runs: list[list[int]] = []
+        current: list[int] = []
+        for row_index in ordered_rows:
+            if current and row_index != current[-1] + 1:
+                if len(current) >= 2:
+                    runs.append(current)
+                current = []
+            current.append(row_index)
+        if len(current) >= 2:
+            runs.append(current)
+
+        for row_run in runs:
+            matched = [row_options[row_index] for row_index in row_run]
+            if len(matched) > 8:
+                matched = matched[:8]
+            if any(record.ordinal in used_ordinals for record, _label, _span, _mode in matched):
+                continue
+
+            first_record = matched[0][0]
+            label = _adjacent_checkbox_group_label(first_record, records)
+            inferred_count = sum(
+                1 for _record, _label, _span, mode in matched if mode == "inferred_blank"
+            )
+            candidate = _checkbox_candidate(
+                label=label,
+                options=[option for _record, option, _span, _mode in matched],
+                known_ids=known_ids,
+                confidence=0.89 if inferred_count else 0.93,
+                location={
+                    "kind": "checkbox_group_multi_cell",
+                    "paragraphs": [record.ordinal for record, _label, _span, _mode in matched],
+                    "checkbox_spans": [
+                        list(span) if span is not None else [-1, -1]
+                        for _record, _label, span, _mode in matched
+                    ],
+                    "checkbox_marker_modes": [
+                        mode for _record, _label, _span, mode in matched
+                    ],
+                    "inferred_blank_markers": inferred_count,
+                },
+            )
+            result.append(candidate)
+            used_ordinals.update(record.ordinal for record, _label, _span, _mode in matched)
+
     # 2) Several checkbox paragraphs inside the same Word cell.
     by_cell: dict[int, list[_ParagraphRecord]] = defaultdict(list)
     for record in records:
@@ -1034,6 +1226,406 @@ def _detect_checkbox_choice_groups(
             result.append(candidate)
             used_ordinals.update(record.ordinal for record, _match in matched)
 
+    return result
+
+
+def _detect_standalone_checkboxes(
+    records: list[_ParagraphRecord],
+    known_ids: set[str],
+    reserved_ordinals: set[int],
+) -> list[dict[str, Any]]:
+    """Detect one independent checkbox embedded in an otherwise meaningful line.
+
+    Institutional forms commonly use a declaration such as
+    ``Declaro que ... ☐ Li e concordo``.  The multi-option detector correctly
+    ignores it because there is only one checkbox, but the checkbox is still a
+    real user input.  Keep this rule intentionally narrow: exactly one visible
+    checkbox token, meaningful surrounding text, and no authoritative tag or
+    Word control.
+    """
+
+    result: list[dict[str, Any]] = []
+    for record in records:
+        if record.ordinal in reserved_ordinals or _contains_authoritative_marker(record.paragraph):
+            continue
+        text = str(record.text or "")
+        matches = list(CHECKBOX_TOKEN_PATTERN.finditer(text))
+        if len(matches) != 1:
+            continue
+        match = matches[0]
+        before = _normalize_space(text[: match.start()]).strip(" :：;|–—-")
+        after = _normalize_space(text[match.end() :]).strip(" :：;|–—-")
+        if not before and not after:
+            continue
+        if len(before) > 240 or len(after) > 160:
+            continue
+
+        # A single marker that is merely decorative beside an empty area is too
+        # ambiguous.  Require actual declaration/option wording on at least one
+        # side of the marker.
+        semantic = after or before
+        if len(semantic) < 2:
+            continue
+
+        if before and after:
+            label = f"{before.rstrip('.;:')} — {after}"
+        else:
+            label = after or before
+        label = _clean_label(label)
+        if not label:
+            continue
+
+        field_id = _unique_field_id(_make_field_id(label), known_ids)
+        result.append(
+            _candidate(
+                field_id=field_id,
+                label=label,
+                field_type="checkbox",
+                confidence=0.92,
+                source="checkbox_single",
+                preview=_normalize_space(text),
+                location={
+                    "kind": "text_span",
+                    "paragraph": record.ordinal,
+                    "start": match.start(),
+                    "end": match.end(),
+                    "original": match.group(0),
+                },
+            )
+        )
+    return result
+
+
+def _isolated_checkbox_marker(
+    records: list[_ParagraphRecord],
+) -> tuple[_ParagraphRecord, tuple[int, int] | None, str] | None:
+    """Return an isolated checkbox marker from a narrow table cell.
+
+    Real-world Word forms use several representations for the same visual
+    square: Unicode box characters, bare check marks, unnamed content-control
+    checkboxes, legacy form fields, Wingdings symbols and sometimes a small
+    drawing/VML shape. This heuristic is intentionally limited to the narrow
+    marker cell beside an option-description cell.
+    """
+
+    # Controls are inspected before visible text so a named Word control can
+    # never be duplicated by automatic detection merely because its displayed
+    # result happens to look like a checkbox character.
+    for record in records:
+        element = record.paragraph._p
+        unnamed_controls = 0
+        named_controls = 0
+        for sdt in element.xpath(".//w:sdt"):
+            properties = sdt.find(qn("w:sdtPr"))
+            if properties is None:
+                continue
+            control_type, _control = classify_native_control(properties)
+            if control_type != "checkbox":
+                continue
+            if get_control_identifier(sdt):
+                named_controls += 1
+            else:
+                unnamed_controls += 1
+        if named_controls:
+            return None
+        if unnamed_controls == 1:
+            return record, None, "paragraph"
+
+        unnamed_legacy = 0
+        named_legacy = 0
+        for fld_char in element.xpath(".//w:fldChar"):
+            ff_data = fld_char.find(qn("w:ffData"))
+            if ff_data is None or ff_data.find(qn("w:checkBox")) is None:
+                continue
+            name = ff_data.find(qn("w:name"))
+            name_value = "" if name is None else str(name.get(qn("w:val"), "")).strip()
+            if name_value:
+                named_legacy += 1
+            else:
+                unnamed_legacy += 1
+        if named_legacy:
+            return None
+        if unnamed_legacy == 1:
+            return record, None, "paragraph"
+
+    nonempty = [record for record in records if _normalize_space(record.text)]
+
+    # Normal Unicode marker or a standalone check mark.
+    if len(nonempty) == 1:
+        record = nonempty[0]
+        if _contains_authoritative_marker(record.paragraph):
+            return None
+        value = record.text or ""
+        matches = list(CHECKBOX_TOKEN_PATTERN.finditer(value))
+        if len(matches) == 1:
+            match = matches[0]
+            if not value[: match.start()].strip() and not value[match.end() :].strip():
+                return record, (match.start(), match.end()), "text_span"
+
+        check_matches = list(ISOLATED_CHECK_MARK_PATTERN.finditer(value))
+        if len(check_matches) == 1:
+            match = check_matches[0]
+            if not value[: match.start()].strip() and not value[match.end() :].strip():
+                return record, (match.start(), match.end()), "text_span"
+
+    # Symbols and drawings often do not surface through paragraph.text.
+    for record in records:
+        element = record.paragraph._p
+        if _normalize_space(record.text):
+            continue
+
+        symbols = element.xpath(".//w:sym")
+        if len(symbols) == 1:
+            font_name = str(symbols[0].get(qn("w:font"), "")).casefold()
+            if any(token in font_name for token in ("wingdings", "webdings")):
+                return record, None, "paragraph"
+
+        # Old templates can use a tiny VML/Word drawing as the square/check.
+        # Treat a single drawing in this marker-only cell as a checkbox signal;
+        # the surrounding row-group requirement prevents isolated artwork from
+        # becoming a field by itself.
+        # Word commonly stores one drawing twice inside ``mc:AlternateContent``:
+        # a DrawingML ``w:drawing`` choice plus a VML ``w:pict`` fallback.
+        # Count that pair as one semantic marker rather than two independent
+        # drawings. This is how many real institutional templates represent
+        # an empty checkbox rectangle.
+        alternate_contents = element.xpath(".//*[local-name()='AlternateContent']")
+        if len(alternate_contents) == 1:
+            alt = alternate_contents[0]
+            alt_text = "".join((item.text or "") for item in alt.iter(qn("w:t"))).strip()
+            alt_drawings = alt.xpath(".//*[local-name()='drawing' or local-name()='pict']")
+            if alt_drawings and not alt_text:
+                return record, None, "paragraph"
+
+        drawings = element.xpath(".//w:drawing | .//w:pict")
+        if len(drawings) == 1:
+            return record, None, "paragraph"
+
+    return None
+
+
+def _cell_width_dxa(record: _ParagraphRecord) -> int | None:
+    if record.cell is None:
+        return None
+    tc_pr = record.cell._tc.tcPr
+    if tc_pr is None or tc_pr.tcW is None:
+        return None
+    raw = tc_pr.tcW.get(qn("w:w"))
+    try:
+        return int(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_blank_checkbox_marker_cell(
+    marker_records: list[_ParagraphRecord],
+    adjacent_records: list[_ParagraphRecord],
+) -> bool:
+    """Return whether an empty narrow cell can safely stand for a floating box.
+
+    Some Word templates place a drawn checkbox in a floating shape whose XML
+    is anchored outside the table. The table cell underneath is genuinely
+    empty. We infer that row only after another row has established the same
+    marker column as a checkbox column.
+    """
+
+    if not marker_records or not adjacent_records:
+        return False
+    if any(_normalize_space(record.text) for record in marker_records):
+        return False
+    for record in marker_records:
+        element = record.paragraph._p
+        if element.xpath(".//w:sdt | .//w:fldChar | .//w:sym | .//w:drawing | .//w:pict"):
+            return False
+
+    marker_width = _cell_width_dxa(marker_records[0])
+    adjacent_width = _cell_width_dxa(adjacent_records[0])
+    if marker_width is not None and adjacent_width is not None:
+        if marker_width > 1800 or marker_width * 3 > adjacent_width:
+            return False
+    return True
+
+
+def _looks_like_adjacent_choice_option(records: list[_ParagraphRecord]) -> bool:
+    """Conservative evidence that the adjacent cell is an option, not prose."""
+
+    visible = [record for record in records if _normalize_space(record.text)]
+    if not visible:
+        return False
+    first = visible[0]
+    value = _normalize_space(first.text)
+    if re.match(r"^\d{1,3}[.)]\s*\S", value):
+        return True
+    p_pr = first.paragraph._p.pPr
+    if p_pr is not None and p_pr.numPr is not None:
+        return True
+    # A short bold lead paragraph is also common for institutional options.
+    if len(value) <= 180 and first.paragraph.runs:
+        significant_runs = [run for run in first.paragraph.runs if (run.text or "").strip()]
+        if significant_runs and all(bool(run.bold) for run in significant_runs):
+            return True
+    return False
+
+
+def _remove_floating_checkmark_shapes(root: Any, *, limit: int) -> int:
+    """Remove standalone floating checked-box artwork from an assisted copy.
+
+    Word can render a checked square as a floating text box completely outside
+    the table that visually contains it. When we materialize an inferred blank
+    marker cell as a real tagged checkbox, that old floating artwork must be
+    removed or it would remain permanently checked in the generated document.
+    """
+
+    if limit <= 0:
+        return 0
+    mc_tag = "{http://schemas.openxmlformats.org/markup-compatibility/2006}AlternateContent"
+    tc_tag = qn("w:tc")
+    check_chars = set("✓✔√☑☒")
+    removed = 0
+    for node in list(root.iter(mc_tag)):
+        # Never remove artwork structurally inside a table cell here; regular
+        # marker-cell replacement already handles those nodes.
+        ancestor = node.getparent()
+        inside_cell = False
+        while ancestor is not None:
+            if ancestor.tag == tc_tag:
+                inside_cell = True
+                break
+            ancestor = ancestor.getparent()
+        if inside_cell:
+            continue
+
+        text = "".join((item.text or "") for item in node.iter(qn("w:t")))
+        compact = "".join(ch for ch in text if not ch.isspace())
+        if not compact or any(ch not in check_chars for ch in compact):
+            continue
+        parent = node.getparent()
+        if parent is None:
+            continue
+        parent.remove(node)
+        removed += 1
+        if removed >= limit:
+            break
+    return removed
+
+
+def _adjacent_checkbox_option_text(records: list[_ParagraphRecord]) -> str:
+    """Build the visible option label from the cell beside an isolated box."""
+
+    parts: list[str] = []
+    for record in records:
+        value = _normalize_space(record.text)
+        if not value:
+            continue
+        # A follow-up justification/observation prompt is a separate fill area,
+        # not part of the choice label itself.
+        if FOLLOWUP_AREA_PATTERN.match(value):
+            break
+        if _looks_like_fill_area_text(value):
+            continue
+        parts.append(value)
+    if not parts:
+        return ""
+    option = " — ".join(parts)
+    if len(option) > 360:
+        option = option[:357].rstrip(" ,;:-") + "…"
+    return _normalize_space(option)
+
+
+def _adjacent_checkbox_group_label(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+) -> str:
+    """Find a concise group prompt for a vertical checkbox+description table."""
+
+    prompt_map = {
+        "ocorrência": "Ocorrência verificada",
+        "ocorrências": "Ocorrências verificadas",
+        "situacao": "Situação verificada",
+        "situação": "Situação verificada",
+        "situações": "Situações verificadas",
+        "condição": "Condição verificada",
+        "condições": "Condições verificadas",
+        "alternativa": "Alternativa",
+        "alternativas": "Alternativas",
+        "opção": "Opção",
+        "opções": "Opções",
+    }
+    tail_pattern = re.compile(
+        r"(?:seguinte|seguintes)\s+"
+        r"(ocorr[eê]ncias?|situa[cç][aã]o(?:ões)?|condi[cç][aã]o(?:ões)?|"
+        r"alternativas?|op[cç][aã]o(?:ões)?)\s*:?\s*$",
+        re.IGNORECASE,
+    )
+    for previous in reversed(records[: record.ordinal]):
+        value = _normalize_space(previous.text)
+        if not value:
+            continue
+        if previous.table_index == record.table_index:
+            continue
+        match = tail_pattern.search(value)
+        if match:
+            token = match.group(1).casefold()
+            token = token.replace("ocorrencia", "ocorrência")
+            return prompt_map.get(token, _clean_label(match.group(1)))
+        if SECTION_NUMBER_PATTERN.match(value) and len(value) <= 190:
+            return _clean_label(value)
+        if value.endswith((":", "：")) and len(value) <= 110:
+            return _clean_label(value)
+        # Stop once we reach a normal prose paragraph outside this table. A
+        # long declaration is context, but should not become the field label.
+        if len(value) > 110:
+            break
+    return _nearest_section_title(record, records) or "Ocorrência verificada"
+
+
+def _detect_blank_followup_areas(
+    records: list[_ParagraphRecord],
+    known_ids: set[str],
+    reserved_ordinals: set[int],
+) -> list[dict[str, Any]]:
+    """Detect blank paragraphs directly after observation/justification prompts."""
+
+    by_cell: dict[int, list[_ParagraphRecord]] = defaultdict(list)
+    for record in records:
+        if record.cell is not None and record.story == "body":
+            by_cell[id(record.cell._tc)].append(record)
+
+    result: list[dict[str, Any]] = []
+    for cell_records in by_cell.values():
+        cell_records.sort(key=lambda item: item.ordinal)
+        for index, record in enumerate(cell_records[:-1]):
+            if record.ordinal in reserved_ordinals:
+                continue
+            prompt = _normalize_space(record.text)
+            if not prompt or not FOLLOWUP_AREA_PATTERN.match(prompt):
+                continue
+            # Use the first truly blank paragraph after the prompt, but do not
+            # jump over another visible paragraph.
+            target: _ParagraphRecord | None = None
+            for following in cell_records[index + 1 :]:
+                if _normalize_space(following.text):
+                    break
+                target = following
+                break
+            if target is None or target.ordinal in reserved_ordinals:
+                continue
+            label = _clean_label(prompt)
+            field_id = _unique_field_id(_make_field_id(label), known_ids)
+            result.append(
+                _candidate(
+                    field_id=field_id,
+                    label=label,
+                    field_type="multiline",
+                    confidence=0.82,
+                    source="empty_cell",
+                    preview=prompt,
+                    location={
+                        "kind": "paragraph",
+                        "paragraph": target.ordinal,
+                    },
+                )
+            )
     return result
 
 
@@ -1196,7 +1788,17 @@ def _detect_inline_placeholders(
     result: list[dict[str, Any]] = []
     previous_end = 0
     for match in matches:
-        label = _local_label(text[previous_end : match.start()])
+        local_context = text[previous_end : match.start()]
+        # PDF-to-DOCX reconstruction frequently groups several visual PDF
+        # lines into one Word paragraph separated by manual line breaks.
+        # Prefer the text on the current visual line so a paragraph such as
+        # ``Placa: ABC1D23\nData: __/__/____\nHorário: __:__`` yields
+        # ``Data`` and ``Horário`` instead of labels polluted by the previous
+        # line. Fall back to the complete local context for ordinary DOCX.
+        visual_line = local_context.rsplit("\n", 1)[-1]
+        label = _local_label(visual_line)
+        if not label and visual_line != local_context:
+            label = _local_label(local_context)
         if not label:
             label = _context_label_for_record(record, records)
         field_id = _unique_field_id(
@@ -1296,6 +1898,11 @@ def _detect_labeled_sample_value(
     editable_example_labels = {
         "pais",
         "nacionalidade",
+        # Common short defaults/examples in reconstructed PDF forms. These are
+        # deliberately label-whitelisted so institutional prose such as
+        # ``Órgão: Secretaria ...`` remains static.
+        "placa",
+        "setor_responsavel",
     }
     if normalized_label not in editable_example_labels:
         return None
@@ -1368,6 +1975,109 @@ def _detect_labeled_instruction(
     )
 
 
+def _detect_adjacent_sample_value(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    known_ids: set[str],
+) -> dict[str, Any] | None:
+    """Detect editable example/default values stored in the next table cell.
+
+    Many institutional forms use four physical cells per row::
+
+        E-mail: | servidor@orgao.gov.br | Telefone: | (83) 99999-9999
+
+    The values are examples/defaults, not fixed institutional prose.  Keep this
+    heuristic label-whitelisted so rows such as ``Órgão: Secretaria ...`` stay
+    read-only.
+    """
+
+    text = _normalize_space(record.text)
+    if (
+        not text.endswith(":")
+        or record.cell is None
+        or record.table is None
+        or record.row_index is None
+        or len(record.cell.paragraphs) != 1
+        or _contains_authoritative_marker(record.paragraph)
+    ):
+        return None
+
+    label = _clean_label(text)
+    if not _is_reasonable_label(label, maximum=100):
+        return None
+
+    normalized_label = _slug(label)
+    allowed_plain_labels = {
+        "unidade",
+        "lotacao",
+        "setor",
+        "municipio",
+        "cidade",
+        "pais",
+        "nacionalidade",
+    }
+    email_labels = {"email", "e_mail", "correio_eletronico"}
+    phone_labels = {"telefone", "celular", "fone"}
+
+    unique_cells = _unique_row_cells(record.table.rows[record.row_index])
+    current_index = next(
+        (index for index, cell in enumerate(unique_cells) if id(cell._tc) == id(record.cell._tc)),
+        -1,
+    )
+    if current_index < 0 or current_index + 1 >= len(unique_cells):
+        return None
+    value_cell = unique_cells[current_index + 1]
+    value_records = [item for item in records if item.cell is not None and id(item.cell._tc) == id(value_cell._tc)]
+    non_empty = [item for item in value_records if _normalize_space(item.text)]
+    if len(non_empty) != 1 or _contains_authoritative_marker(non_empty[0].paragraph):
+        return None
+
+    value_record = non_empty[0]
+    value = _normalize_space(value_record.text)
+    if not value or len(value) > 100 or _is_pure_fill_area_text(value):
+        return None
+
+    looks_editable = False
+    if normalized_label in email_labels:
+        looks_editable = bool(
+            re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", value, re.IGNORECASE)
+        )
+    elif normalized_label in phone_labels:
+        looks_editable = bool(
+            re.fullmatch(r"\(?\d{2}\)?\s*\d{4,5}\s*-\s*\d{4}", value)
+        )
+    elif normalized_label in allowed_plain_labels:
+        # Short human-readable defaults such as ``Diretoria Administrativa``
+        # are useful placeholders. Avoid values that look like sentences.
+        looks_editable = (
+            len(value) <= 60
+            and not value.endswith((".", ";"))
+            and len(value.split()) <= 6
+            and not CHECKBOX_TOKEN_PATTERN.search(value)
+        )
+
+    if not looks_editable:
+        return None
+
+    field_id = _unique_field_id(_make_field_id(label), known_ids)
+    return _candidate(
+        field_id=field_id,
+        label=label,
+        field_type=suggest_field_type(label),
+        confidence=0.88,
+        source="sample_value",
+        preview=value,
+        location={
+            "kind": "text_span",
+            "paragraph": value_record.ordinal,
+            "start": 0,
+            "end": len(value_record.text),
+            "original": value_record.text,
+        },
+        placeholder=value,
+    )
+
+
 def _detect_label_only_field(
     record: _ParagraphRecord,
     records: list[_ParagraphRecord],
@@ -1387,29 +2097,37 @@ def _detect_label_only_field(
     if _looks_like_section_label(text) and SECTION_NUMBER_PATTERN.match(text):
         return None
 
-    # A bare label inside a form row is a useful suggestion when an adjacent
-    # cell is another fill area. This catches forms that visually leave the
-    # rest of the same cell blank, e.g. ``Responsável legal:``.
+    # A bare label can represent a fill area inside its own cell (for example
+    # ``Responsável legal:``), but a very common Word grid stores the label in
+    # one cell and the actual mask/value in the immediately following cell. In
+    # that case the following cell owns the field and creating another tag in
+    # the label cell causes duplicate inputs and staircase layouts.
     has_form_neighbor = False
     if record.table is not None and record.row_index is not None:
         try:
-            row = record.table.rows[record.row_index]
-            for cell in row.cells:
+            unique_cells = _unique_row_cells(record.table.rows[record.row_index])
+            current_index = next(
+                (
+                    index
+                    for index, cell in enumerate(unique_cells)
+                    if id(cell._tc) == id(record.cell._tc)
+                ),
+                -1,
+            )
+            if current_index >= 0 and current_index + 1 < len(unique_cells):
+                immediate_text = _normalize_space(unique_cells[current_index + 1].text)
+                if not immediate_text:
+                    return None
+                if _is_pure_fill_area_text(immediate_text):
+                    return None
+
+            for cell in unique_cells:
                 if id(cell._tc) == id(record.cell._tc):
                     continue
                 neighbor = _normalize_space(cell.text)
-                # When the adjacent cell is truly empty, ``_detect_empty_cells``
-                # owns that fill area and uses this label as its context. Do not
-                # create a second field in the label cell.
                 if not neighbor:
                     return None
-                if (
-                    X_PLACEHOLDER_PATTERN.search(neighbor)
-                    or UNDERSCORE_PLACEHOLDER_PATTERN.search(neighbor)
-                    or ZERO_PHONE_PLACEHOLDER_PATTERN.search(neighbor)
-                    or SAMPLE_EMAIL_PLACEHOLDER_PATTERN.search(neighbor)
-                    or GENERIC_DROPDOWN_PATTERN.search(neighbor)
-                ):
+                if _looks_like_fill_area_text(neighbor):
                     has_form_neighbor = True
                     break
         except (IndexError, AttributeError):
@@ -1504,6 +2222,34 @@ def _unique_row_cells(row) -> list[_Cell]:
     return result
 
 
+def _is_pure_fill_area_text(value: str) -> bool:
+    """Return True when a cell consists only of the visual fill control.
+
+    This is stricter than :func:`_looks_like_fill_area_text`: ``CPF: ___`` is
+    *not* pure because the same cell contains another field's label, while
+    ``___``, ``R$ ____`` and ``☐ Sim ☐ Não`` are pure fill areas.
+    """
+
+    text = _normalize_space(value)
+    if not text:
+        return True
+    if X_PLACEHOLDER_PATTERN.fullmatch(text):
+        return True
+    if UNDERSCORE_PLACEHOLDER_PATTERN.fullmatch(text):
+        return True
+    if ZERO_PHONE_PLACEHOLDER_PATTERN.fullmatch(text):
+        return True
+    if SAMPLE_EMAIL_PLACEHOLDER_PATTERN.fullmatch(text):
+        return True
+    if GENERIC_DROPDOWN_PATTERN.fullmatch(text):
+        return True
+    if re.fullmatch(r"R\$\s*_{2,}(?:\s*[.,]\s*_{2,})*", text, re.IGNORECASE):
+        return True
+    if CHECKBOX_TOKEN_PATTERN.match(text) is not None:
+        return True
+    return False
+
+
 def _looks_like_fill_area_text(value: str) -> bool:
     text = str(value or "")
     if not _normalize_space(text):
@@ -1554,6 +2300,16 @@ def _detected_placeholder_type(label: str, preview: str) -> str:
     normalized_label = _slug(label)
     compact = _normalize_space(preview)
     if "observacao_curta" in normalized_label:
+        return "text"
+    # Questionnaire/matrix PDFs often reconstruct the short observation cell
+    # as a modest underline next to a fixed row label. Keep those compact
+    # instead of turning every label ending in ``Observação`` into a large
+    # multiline editor. Long blank areas still become multiline elsewhere.
+    if (
+        normalized_label.endswith("_observacao")
+        and re.fullmatch(r"_{2,}", compact)
+        and len(compact) <= 20
+    ):
         return "text"
     if re.fullmatch(r"_{2,}\s*/\s*_{2,}\s*/\s*_{2,}", compact):
         return "date"
@@ -1943,24 +2699,56 @@ def _apply_multi_cell_checkbox_group(
         for span in location.get("checkbox_spans", []) or []
         if isinstance(span, (list, tuple)) and len(span) == 2
     ]
+    marker_modes = [str(value or "text_span") for value in location.get("checkbox_marker_modes", []) or []]
     fields = [dict(field) for field in candidate.get("fields", []) or []]
-    if not fields or len(fields) != len(ordinals) or len(fields) != len(spans):
+    if not marker_modes:
+        marker_modes = ["text_span"] * len(fields)
+    if not fields or len(fields) != len(ordinals) or len(fields) != len(spans) or len(fields) != len(marker_modes):
         raise AutomaticDetectionError("Grupo de caixas de seleção entre células inconsistente.")
 
-    for ordinal, span, field in zip(ordinals, spans, fields, strict=True):
+    inferred_count = sum(1 for mode in marker_modes if mode == "inferred_blank")
+    if inferred_count:
+        first_record = by_ordinal.get(ordinals[0]) if ordinals else None
+        if first_record is not None:
+            _remove_floating_checkmark_shapes(
+                first_record.paragraph._p.getroottree().getroot(),
+                limit=inferred_count,
+            )
+
+    for ordinal, span, mode, field in zip(ordinals, spans, marker_modes, fields, strict=True):
         record = by_ordinal.get(ordinal)
         if record is None:
             raise AutomaticDetectionError("Opção de caixa de seleção não encontrada.")
+        replacement = f"{{{{checkbox:{field['id']}}}}}"
+        if mode in {"paragraph", "inferred_blank"}:
+            _replace_all_paragraph_content(record.paragraph, replacement)
+            continue
+
         start, end = span
         text = record.paragraph.text or ""
         if start < 0 or end <= start or end > len(text):
             raise AutomaticDetectionError("A posição de uma opção mudou após a análise.")
-        if not CHECKBOX_TOKEN_PATTERN.fullmatch(text[start:end]):
+        marker_text = text[start:end]
+        if not (
+            CHECKBOX_TOKEN_PATTERN.fullmatch(marker_text)
+            or ISOLATED_CHECK_MARK_PATTERN.fullmatch(marker_text)
+        ):
             raise AutomaticDetectionError("O marcador de uma opção mudou após a análise.")
         _replace_paragraph_spans(
             record.paragraph,
-            [(start, end, f"{{{{checkbox:{field['id']}}}}}")],
+            [(start, end, replacement)],
         )
+
+
+def _replace_all_paragraph_content(paragraph: Paragraph, text: str) -> None:
+    """Replace runs, controls, fields and symbols while preserving paragraph properties."""
+
+    element = paragraph._p
+    for child in list(element):
+        if child.tag == qn("w:pPr"):
+            continue
+        element.remove(child)
+    paragraph.add_run(text)
 
 
 def _replace_entire_paragraph(paragraph: Paragraph, text: str) -> None:
@@ -1983,29 +2771,34 @@ def _replace_paragraph_spans(
     paragraph: Paragraph,
     replacements: Iterable[tuple[int, int, str]],
 ) -> None:
-    text_elements = _paragraph_text_elements(paragraph._p)
-    original_parts = [element.text or "" for element in text_elements]
-    original_text = "".join(original_parts)
-    if not text_elements:
-        raise AutomaticDetectionError("O trecho detectado não contém texto editável no DOCX.")
-
-    spans: list[tuple[Any, int, int]] = []
+    # Candidate offsets are measured against ``Paragraph.text``. That text
+    # includes manual line breaks (w:br/w:cr) as ``\n`` and tabs (w:tab) as
+    # ``\t``. The old replacement code concatenated only w:t nodes, making
+    # every span after a break or tab drift to the right. This is especially
+    # common in DOCX files reconstructed from PDFs.
+    segments = _paragraph_position_segments(paragraph._p)
+    original_text = "".join(text for _element, text in segments)
+    editable_spans: list[tuple[Any, int, int]] = []
     cursor = 0
-    for element, text in zip(text_elements, original_parts, strict=True):
-        end = cursor + len(text)
-        spans.append((element, cursor, end))
-        cursor = end
+    for element, text in segments:
+        segment_end = cursor + len(text)
+        if element is not None and text:
+            editable_spans.append((element, cursor, segment_end))
+        cursor = segment_end
+
+    if not editable_spans:
+        raise AutomaticDetectionError("O trecho detectado não contém texto editável no DOCX.")
 
     for start, end, replacement in sorted(replacements, key=lambda item: item[0], reverse=True):
         if start < 0 or end <= start or end > len(original_text):
             raise AutomaticDetectionError("Posição de preenchimento inválida no DOCX.")
-        start_index = _span_index_for_position(spans, start)
-        end_index = _span_index_for_position(spans, end - 1)
+        start_index = _span_index_for_position(editable_spans, start)
+        end_index = _span_index_for_position(editable_spans, end - 1)
         if start_index is None or end_index is None:
             raise AutomaticDetectionError("Não foi possível localizar o trecho detectado no XML do DOCX.")
 
-        start_element, start_offset, _ = spans[start_index]
-        end_element, end_offset, _ = spans[end_index]
+        start_element, start_offset, _ = editable_spans[start_index]
+        end_element, end_offset, _ = editable_spans[end_index]
         local_start = start - start_offset
         local_end = end - end_offset
 
@@ -2020,9 +2813,39 @@ def _replace_paragraph_spans(
         start_text = start_element.text or ""
         end_text = end_element.text or ""
         _set_text_element_value(start_element, start_text[:local_start] + replacement)
-        for element, _node_start, _node_end in spans[start_index + 1 : end_index]:
+        for element, _node_start, _node_end in editable_spans[start_index + 1 : end_index]:
             _set_text_element_value(element, "")
         _set_text_element_value(end_element, end_text[local_end:])
+
+
+def _paragraph_position_segments(paragraph_element) -> list[tuple[Any | None, str]]:
+    """Return paragraph content in the same coordinate space as Paragraph.text.
+
+    Text/instruction nodes are editable and are returned with their XML node.
+    Manual line breaks and tabs occupy positions too, but are represented by a
+    ``None`` node because automatic field replacement should never overwrite
+    those structural elements. Nested paragraphs are processed separately.
+    """
+
+    segments: list[tuple[Any | None, str]] = []
+
+    def walk(element) -> None:
+        for child in element.iterchildren():
+            if child.tag == qn("w:p"):
+                continue
+            if child.tag in {qn("w:t"), qn("w:instrText")}:
+                segments.append((child, child.text or ""))
+                continue
+            if child.tag in {qn("w:br"), qn("w:cr")} :
+                segments.append((None, "\n"))
+                continue
+            if child.tag == qn("w:tab"):
+                segments.append((None, "\t"))
+                continue
+            walk(child)
+
+    walk(paragraph_element)
+    return segments
 
 
 def _paragraph_text_elements(paragraph_element) -> list[Any]:

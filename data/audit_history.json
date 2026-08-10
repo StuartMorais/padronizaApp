@@ -1,5 +1,25 @@
 [
   {
+    "timestamp": "2026-08-10T13:56:29",
+    "action": "document_generated",
+    "description": "13 Formulario Integrado Teste Final.docx",
+    "details": {
+      "document_id": "20260810135629416433",
+      "template_id": "13-formulario-integrado-teste-final",
+      "path": "C:\\Users\\ADM\\Desktop\\13 Formulario Integrado Teste Final.docx"
+    }
+  },
+  {
+    "timestamp": "2026-08-10T10:03:10",
+    "action": "document_generated",
+    "description": "09 Declaracao Disponibilidade Material Misto.docx",
+    "details": {
+      "document_id": "20260810100310494661",
+      "template_id": "09-declaracao-disponibilidade-material-misto",
+      "path": "C:\\Users\\ADM\\Desktop\\09 Declaracao Disponibilidade Material Misto.docx"
+    }
+  },
+  {
     "timestamp": "2026-08-07T09:14:30",
     "action": "profile_saved",
     "description": "SEDH Test",

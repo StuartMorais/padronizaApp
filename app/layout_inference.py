@@ -628,6 +628,12 @@ def _analyze_table(
     current_group = f"doc_table_{table_index}_segment_{segment_index}"
     static_rows_by_group: dict[str, list[dict[str, Any]]] = OrderedDict()
     first_form_field_by_group: dict[str, str] = {}
+    # A real data-table header is valid only inside its own logical segment.
+    # Large institutional forms often place several numbered sections in one
+    # physical Word table.  Without scoping, a header such as
+    # ``Trecho | Origem | Destino | Data`` can incorrectly classify fields in
+    # the following section as another data row.
+    active_data_headers: dict[int, str] = {}
 
     for row in rows:
         if not row.matches:
@@ -637,9 +643,11 @@ def _analyze_table(
                 segment_index += 1
                 current_group = f"doc_table_{table_index}_segment_{segment_index}"
                 static_rows_by_group.setdefault(current_group, [])
+                active_data_headers = {}
                 continue
 
             if row.index == data_header_index:
+                active_data_headers = dict(header_by_column)
                 continue
 
             for cell in row.plain_cells:
@@ -689,10 +697,8 @@ def _analyze_table(
                     values.setdefault("detected_label", label)
             continue
 
-        is_data_row = (
-            data_header_index is not None
-            and row.index > data_header_index
-            and _row_matches_data_header(row, header_by_column)
+        is_data_row = bool(active_data_headers) and _row_matches_data_header(
+            row, active_data_headers
         )
 
         if is_data_row:
@@ -700,7 +706,7 @@ def _analyze_table(
                 row,
                 table_index=table_index,
                 current_section=current_section,
-                header_by_column=header_by_column,
+                header_by_column=active_data_headers,
                 metadata=metadata,
             )
             continue

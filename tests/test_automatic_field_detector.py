@@ -4,6 +4,8 @@ from pathlib import Path
 
 from docx import Document
 from docx.shared import RGBColor
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
 from app.automatic_field_detector import (
     apply_docx_field_candidates,
@@ -552,3 +554,330 @@ def test_detects_checkbox_alternatives_split_across_table_cells(tmp_path: Path) 
     assert all(field.get("selection") == "single" for field in fields)
     assert all(field.get("layout") == "choice" for field in fields)
     assert all(field.get("layout_group_label") == "Forma de entrega" for field in fields)
+
+
+def test_detects_vertical_checkbox_markers_in_separate_cell_with_adjacent_option_text(tmp_path: Path) -> None:
+    document = Document()
+    intro = document.add_paragraph(
+        "Em cumprimento às diretrizes estabelecidas por este órgão, declaro que foi realizada "
+        "a verificação de existência de unidades do(s) produto(s) em estoque, apresentando "
+        "a seguinte ocorrência:"
+    )
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "☐"
+    table.cell(0, 1).text = "1. Existência de unidades em estoque;"
+    table.cell(0, 1).add_paragraph(
+        "Segue em anexo, relatório detalhado com o saldo de unidades em estoque."
+    )
+    table.cell(0, 1).add_paragraph(
+        "Observação/Justificativa em caso de insuficiência ou comprometimento de saldo de estoque"
+    )
+    table.cell(0, 1).add_paragraph("")
+    table.cell(1, 0).text = "☑"
+    table.cell(1, 1).text = "2. Unidade(s) do produto não registradas em estoque"
+    source = _save(document, tmp_path / "separate-checkbox-cells.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    choice = next(
+        item
+        for item in candidates
+        if item.get("source") == "checkbox_choice"
+        and item.get("location", {}).get("kind") == "checkbox_group_multi_cell"
+    )
+
+    assert choice["label"] == "Ocorrência verificada"
+    assert choice["selection"] == "single"
+    assert len(choice["fields"]) == 2
+    assert choice["fields"][0]["label"].startswith("1. Existência de unidades em estoque")
+    assert "Segue em anexo" in choice["fields"][0]["label"]
+    assert "Observação/Justificativa" not in choice["fields"][0]["label"]
+    assert choice["fields"][1]["label"].startswith(
+        "2. Unidade(s) do produto não registradas em estoque"
+    )
+
+    followup = next(
+        item
+        for item in candidates
+        if item.get("label", "").startswith("Observação/Justificativa")
+    )
+    assert followup["type"] == "multiline"
+    assert followup["selected"] is True
+
+    output = tmp_path / "separate-checkbox-cells-prepared.docx"
+    apply_docx_field_candidates(source, output, [choice, followup])
+    prepared = Document(str(output))
+    assert "{{checkbox:" in prepared.tables[0].cell(0, 0).text
+    assert "{{checkbox:" in prepared.tables[0].cell(1, 0).text
+    assert "1. Existência de unidades em estoque" in prepared.tables[0].cell(0, 1).text
+    assert "{{auto.observacao_justificativa" in prepared.tables[0].cell(0, 1).text
+
+    fields = smart_fields_from_docx(output, candidate_field_definitions([choice, followup]))
+    assert len([field for field in fields if field.get("selection") == "single"]) == 2
+    assert any(field["type"] == "multiline" for field in fields)
+
+
+
+def _append_unnamed_native_checkbox(paragraph, *, checked: bool) -> None:
+    sdt = OxmlElement("w:sdt")
+    props = OxmlElement("w:sdtPr")
+    checkbox = OxmlElement("w14:checkbox")
+    checked_el = OxmlElement("w14:checked")
+    checked_el.set(qn("w14:val"), "1" if checked else "0")
+    checkbox.append(checked_el)
+    props.append(checkbox)
+    sdt.append(props)
+
+    content = OxmlElement("w:sdtContent")
+    run = OxmlElement("w:r")
+    text = OxmlElement("w:t")
+    text.text = "☒" if checked else "☐"
+    run.append(text)
+    content.append(run)
+    sdt.append(content)
+    paragraph._p.append(sdt)
+
+
+def test_adjacent_checkbox_group_keeps_second_unnamed_native_checked_control(tmp_path: Path) -> None:
+    document = Document()
+    document.add_paragraph(
+        "Foi realizada a verificação, apresentando a seguinte ocorrência:"
+    )
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "☐"
+    table.cell(0, 1).text = "1. Existência de unidades em estoque"
+
+    second_marker = table.cell(1, 0)
+    second_marker.text = ""
+    _append_unnamed_native_checkbox(second_marker.paragraphs[0], checked=True)
+    table.cell(1, 1).text = "2. Unidade(s) do produto não registradas em estoque"
+    source = _save(document, tmp_path / "native-second-checkbox.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    choice = next(
+        item
+        for item in candidates
+        if item.get("source") == "checkbox_choice"
+        and item.get("location", {}).get("kind") == "checkbox_group_multi_cell"
+    )
+
+    assert len(choice["fields"]) == 2
+    assert choice["fields"][1]["label"].startswith(
+        "2. Unidade(s) do produto não registradas em estoque"
+    )
+    assert choice["location"]["checkbox_marker_modes"] == ["text_span", "paragraph"]
+
+    output = tmp_path / "native-second-checkbox-prepared.docx"
+    apply_docx_field_candidates(source, output, [choice])
+    prepared = Document(str(output))
+    assert "{{checkbox:" in prepared.tables[0].cell(0, 0).text
+    assert "{{checkbox:" in prepared.tables[0].cell(1, 0).text
+
+
+def test_adjacent_checkbox_group_accepts_bare_check_mark_for_selected_row(tmp_path: Path) -> None:
+    document = Document()
+    document.add_paragraph("Apresentando as seguintes situações:")
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "☐"
+    table.cell(0, 1).text = "Primeira situação"
+    table.cell(1, 0).text = "✓"
+    table.cell(1, 1).text = "Segunda situação já marcada"
+    source = _save(document, tmp_path / "checkmark-second-row.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    choice = next(
+        item
+        for item in candidates
+        if item.get("source") == "checkbox_choice"
+        and item.get("location", {}).get("kind") == "checkbox_group_multi_cell"
+    )
+    assert [field["label"] for field in choice["fields"]] == [
+        "Primeira situação",
+        "Segunda situação já marcada",
+    ]
+
+    output = tmp_path / "checkmark-second-row-prepared.docx"
+    apply_docx_field_candidates(source, output, [choice])
+    prepared = Document(str(output))
+    assert "{{checkbox:" in prepared.tables[0].cell(1, 0).text
+
+
+def test_adjacent_checkbox_group_infers_blank_row_when_word_uses_floating_checked_box(tmp_path: Path) -> None:
+    """Mirror a real Word pattern where only one table cell owns its square.
+
+    The first row stores an empty checkbox as DrawingML+VML AlternateContent.
+    The second row's narrow marker cell is genuinely blank because Word places
+    the visible checked square in an absolutely-positioned text box elsewhere.
+    Once the table establishes column 0 as the marker column, the blank second
+    row must still be included in the same choice group.
+    """
+    from lxml import etree
+
+    document = Document()
+    document.add_paragraph(
+        "Foi realizada a verificação, apresentando a seguinte ocorrência:"
+    )
+    table = document.add_table(rows=2, cols=2)
+    from docx.shared import Inches
+    for row in table.rows:
+        row.cells[0].width = Inches(0.55)
+        row.cells[1].width = Inches(4.5)
+
+    first_marker = table.cell(0, 0)
+    first_marker.text = ""
+    paragraph = first_marker.paragraphs[0]
+    run = paragraph.add_run()
+    mc_ns = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+    alt = etree.Element(f"{{{mc_ns}}}AlternateContent", nsmap={"mc": mc_ns})
+    choice = etree.SubElement(alt, f"{{{mc_ns}}}Choice")
+    drawing = OxmlElement("w:drawing")
+    choice.append(drawing)
+    fallback = etree.SubElement(alt, f"{{{mc_ns}}}Fallback")
+    pict = OxmlElement("w:pict")
+    fallback.append(pict)
+    run._r.append(alt)
+
+    table.cell(0, 1).text = "1. Existência de unidades em estoque"
+    table.cell(1, 0).text = ""
+    table.cell(1, 1).text = "2. Unidade(s) do produto não registradas em estoque"
+    source = _save(document, tmp_path / "floating-second-checkbox.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    choice_candidate = next(
+        item
+        for item in candidates
+        if item.get("source") == "checkbox_choice"
+        and item.get("location", {}).get("kind") == "checkbox_group_multi_cell"
+    )
+
+    assert len(choice_candidate["fields"]) == 2
+    assert choice_candidate["location"]["checkbox_marker_modes"] == [
+        "paragraph",
+        "inferred_blank",
+    ]
+    assert choice_candidate["location"]["inferred_blank_markers"] == 1
+
+    output = tmp_path / "floating-second-checkbox-prepared.docx"
+    apply_docx_field_candidates(source, output, [choice_candidate])
+    prepared = Document(str(output))
+    assert "{{checkbox:" in prepared.tables[0].cell(0, 0).text
+    assert "{{checkbox:" in prepared.tables[0].cell(1, 0).text
+
+
+def test_four_cell_form_grid_avoids_duplicate_label_fields_and_keeps_date_pairs(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=8, cols=4)
+
+    section_one = table.cell(0, 0).merge(table.cell(0, 3))
+    section_one.text = "1. Dados do solicitante"
+    table.cell(1, 0).text = "Nome do servidor:"
+    table.cell(1, 1).text = "XXXXXXXXXXXXXXXXXXXXXXXX"
+    table.cell(1, 2).text = "Matrícula:"
+    table.cell(1, 3).text = "__________"
+    table.cell(2, 0).text = "E-mail:"
+    table.cell(2, 1).text = "servidor@orgao.gov.br"
+    table.cell(2, 2).text = "Telefone:"
+    table.cell(2, 3).text = "(83) 99999-9999"
+    table.cell(3, 0).text = "Unidade:"
+    table.cell(3, 1).merge(table.cell(3, 3)).text = "Diretoria Administrativa"
+
+    section_two = table.cell(4, 0).merge(table.cell(4, 3))
+    section_two.text = "2. Dados da viagem"
+    table.cell(5, 0).text = "Destino:"
+    table.cell(5, 1).text = "________________________"
+    table.cell(5, 2).text = "UF:"
+    table.cell(5, 3).text = "__"
+    table.cell(6, 0).text = "Data de saída:"
+    table.cell(6, 1).text = "__/__/____"
+    table.cell(6, 2).text = "Data de retorno:"
+    table.cell(6, 3).text = "__/__/____"
+    table.cell(7, 0).text = "Meio de transporte:"
+    table.cell(7, 1).merge(table.cell(7, 3)).text = "Escolher um item."
+
+    source = _save(document, tmp_path / "four-cell-grid.docx")
+    candidates = detect_docx_field_candidates(source)
+
+    labels = [item.get("label") for item in candidates]
+    for label in (
+        "Nome do servidor",
+        "Matrícula",
+        "E-mail",
+        "Telefone",
+        "Unidade",
+        "Destino",
+        "UF",
+        "Data de saída",
+        "Data de retorno",
+    ):
+        assert labels.count(label) == 1
+
+    by_label = {item.get("label"): item for item in candidates}
+    assert by_label["E-mail"]["source"] == "sample_value"
+    assert by_label["E-mail"]["placeholder"] == "servidor@orgao.gov.br"
+    assert by_label["Telefone"]["type"] == "phone"
+    assert by_label["Unidade"]["placeholder"] == "Diretoria Administrativa"
+    assert by_label["Data de saída"]["type"] == "date"
+    assert by_label["Data de retorno"]["type"] == "date"
+
+    accepted = [item for item in candidates if item.get("selected")]
+    output = tmp_path / "four-cell-grid-prepared.docx"
+    apply_docx_field_candidates(source, output, accepted)
+    fields = smart_fields_from_docx(output, candidate_field_definitions(accepted))
+    fields_by_label = {field.get("label"): field for field in fields}
+
+    assert fields_by_label["Nome do servidor"]["layout_row"] == fields_by_label["Matrícula"]["layout_row"]
+    assert fields_by_label["Nome do servidor"]["layout_column_index"] == 0
+    assert fields_by_label["Matrícula"]["layout_column_index"] == 2
+    assert fields_by_label["E-mail"]["layout_row"] == fields_by_label["Telefone"]["layout_row"]
+    assert fields_by_label["Data de saída"]["layout_row"] == fields_by_label["Data de retorno"]["layout_row"]
+    assert fields_by_label["Data de saída"]["layout_column_index"] == 0
+    assert fields_by_label["Data de retorno"]["layout_column_index"] == 2
+
+
+def test_detects_single_declaration_checkbox_inside_form_row(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=2, cols=4)
+    section = table.cell(0, 0).merge(table.cell(0, 3))
+    section.text = "5. Ciência e autorização"
+    declaration = table.cell(1, 0).merge(table.cell(1, 3))
+    declaration.text = "Declaro que as informações acima são verdadeiras.  ☐ Li e concordo"
+    source = _save(document, tmp_path / "single-declaration-checkbox.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    candidate = next(item for item in candidates if item.get("source") == "checkbox_single")
+
+    assert candidate["type"] == "checkbox"
+    assert "Declaro que as informações acima são verdadeiras" in candidate["label"]
+    assert "Li e concordo" in candidate["label"]
+    assert candidate["selected"] is True
+
+    output = tmp_path / "single-declaration-checkbox-prepared.docx"
+    apply_docx_field_candidates(source, output, [candidate])
+    prepared = Document(str(output))
+    assert "{{checkbox:" in prepared.tables[0].cell(1, 0).text
+    assert "Li e concordo" in prepared.tables[0].cell(1, 0).text
+
+
+def test_inline_placeholders_after_manual_line_breaks_keep_offsets_and_local_labels(tmp_path: Path) -> None:
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run("Placa: ABC1D23")
+    paragraph.add_run().add_break()
+    paragraph.add_run("Data: __/__/____")
+    paragraph.add_run().add_break()
+    paragraph.add_run("Horário: __:__")
+    source = _save(document, tmp_path / "pdf-like-lines.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    selected = [item for item in candidates if item.get("source") == "inline_placeholder"]
+    by_label = {item.get("label"): item for item in selected}
+
+    assert "Data" in by_label
+    assert "Horário" in by_label
+    assert by_label["Data"]["type"] == "date"
+
+    output = tmp_path / "pdf-like-lines-prepared.docx"
+    apply_docx_field_candidates(source, output, selected)
+    prepared_text = "\n".join(paragraph.text for paragraph in Document(output).paragraphs)
+
+    assert "{{date:" in prepared_text
+    assert "{{" in prepared_text and "horario" in prepared_text.casefold()

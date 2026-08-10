@@ -500,3 +500,44 @@ def test_data_table_preserves_original_row_header_title(tmp_path: Path) -> None:
     metadata = infer_docx_layout(path)
     assert metadata["item.conforme"]["layout_row_header_label"] == "Item verificado"
     assert metadata["item.observacao"]["layout_row_header_label"] == "Item verificado"
+
+
+def test_data_table_header_does_not_leak_into_following_numbered_section(tmp_path: Path) -> None:
+    path = tmp_path / "segmented-data-and-form.docx"
+    document = Document()
+    table = document.add_table(rows=8, cols=4)
+
+    section_four = table.cell(0, 0).merge(table.cell(0, 3))
+    section_four.text = "4. Trechos previstos"
+    for column, label in enumerate(("Trecho", "Origem", "Destino", "Data")):
+        table.cell(1, column).text = label
+    table.cell(2, 0).text = "01"
+    table.cell(2, 1).text = "{{trecho1.origem}}"
+    table.cell(2, 2).text = "{{trecho1.destino}}"
+    table.cell(2, 3).text = "{{date:trecho1.data}}"
+    table.cell(3, 0).text = "02"
+    table.cell(3, 1).text = "{{trecho2.origem}}"
+    table.cell(3, 2).text = "{{trecho2.destino}}"
+    table.cell(3, 3).text = "{{date:trecho2.data}}"
+
+    section_five = table.cell(4, 0).merge(table.cell(4, 3))
+    section_five.text = "5. Ciência e autorização"
+    declaration = table.cell(5, 0).merge(table.cell(5, 3))
+    declaration.text = "Declaro que as informações acima são verdadeiras. {{checkbox:declaracao.ciente}} Li e concordo"
+    table.cell(6, 0).text = "Chefia imediata:"
+    table.cell(6, 1).text = "{{chefia.imediata}}"
+    table.cell(6, 2).text = "Decisão:"
+    table.cell(6, 3).text = "{{checkbox:decisao.autorizar}} Autorizar  {{checkbox:decisao.nao}} Não autorizar"
+    note = table.cell(7, 0).merge(table.cell(7, 3))
+    note.text = "Texto fixo: a emissão depende de disponibilidade e autorização."
+    document.save(path)
+
+    metadata = infer_docx_layout(path)
+
+    assert metadata["trecho1.origem"]["layout"] == "table"
+    assert metadata["trecho1.origem"]["layout_column"] == "Origem"
+    assert metadata["chefia.imediata"]["layout"] == "form_grid"
+    assert metadata["chefia.imediata"]["section"].startswith("5.")
+    assert metadata["decisao.autorizar"]["layout"] == "form_grid"
+    assert metadata["decisao.autorizar"]["section"].startswith("5.")
+    assert metadata["declaracao.ciente"]["layout"] == "form_grid"

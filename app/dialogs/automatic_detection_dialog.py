@@ -74,7 +74,7 @@ class AutomaticDetectionDialog(QDialog):
         root.addWidget(title)
 
         description = QLabel(
-            "A detecção automática é assistida e pode interpretar alguns elementos do DOCX "
+            "A detecção automática é assistida e pode interpretar alguns elementos do documento "
             "de forma incorreta ou deixar campos sem identificar. As tags existentes continuam "
             "sendo prioritárias. Apenas as sugestões marcadas serão convertidas em tags numa "
             "cópia de trabalho; sugestões de baixa confiança ficam desmarcadas. Você pode editar "
