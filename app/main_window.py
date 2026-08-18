@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-import tempfile
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -42,12 +40,14 @@ from app.backup_manager import (
 from app.dialogs.backup_contents_dialog import BackupContentsDialog
 from app.dialogs.global_search_dialog import GlobalSearchDialog
 from app.dialogs.profile_manager_dialog import ProfileManagerDialog
-from app.docx_engine import DocumentGenerationError, generate_docx
+from app.docx_engine import DocumentGenerationError
 from app.favorite_store import FavoriteStore
 from app.field_utils import condition_matches, uses_assisted_detection, validate_field
 from app.local_data import LocalDataStore
-from app.pdf_converter import PdfConversionError, available_converter, convert_docx_to_pdf
+from app.pdf_converter import PdfConversionError, available_converter
 from app.profile_mapping import build_profile_payload, resolve_profile_values
+from app.output_planner import OutputPlanner
+from app.services.generation_service import GenerationService
 from app.system_open import SystemOpenError, open_file, open_folder
 from app.runtime_settings import (
     APPLICATION,
@@ -92,6 +92,11 @@ class MainWindow(QMainWindow):
         self.settings = QSettings(ORGANIZATION, APPLICATION)
         self.favorite_store = FavoriteStore(self.settings)
         self.local_store = LocalDataStore(self.data_dir)
+        self.output_planner = OutputPlanner(self.local_store)
+        self.generation_service = GenerationService(
+            self.local_store,
+            self.output_planner,
+        )
         self.repository = TemplateRepository(self.templates_dir)
         self.templates: list[TemplatePackage] = []
         self._active_template_id: str | None = None
@@ -2240,7 +2245,7 @@ class MainWindow(QMainWindow):
             return
 
         values = self.document_form.current_values()
-        filename = self._planned_filename_preview(
+        filename = self.output_planner.filename_preview(
             package,
             values,
         )
@@ -2347,44 +2352,6 @@ class MainWindow(QMainWindow):
                 "" if ready else disabled_tip
             )
 
-    def _planned_filename_preview(
-        self,
-        package: TemplatePackage,
-        values: dict[str, Any],
-    ) -> str:
-        numbering = package.config.get(
-            "numbering",
-            {},
-        )
-        sequence: int | None = None
-        if bool(numbering.get("enabled", False)):
-            key = str(
-                numbering.get(
-                    "key",
-                    package.template_id,
-                )
-            ) or package.template_id
-            sequence = self.local_store.peek_sequence(
-                key
-            )
-        filename = self._render_pattern(
-            package.config.get("output", {}).get(
-                "filename_pattern",
-                package.output_filename,
-            ),
-            package,
-            values,
-            sequence,
-        )
-        filename = self._sanitize_filename(
-            filename
-        )
-        if not filename.casefold().endswith(
-            ".docx"
-        ):
-            filename += ".docx"
-        return filename
-
     def _review_next_issue(self) -> None:
         self._refresh_generation_state()
         if not self._validation_issues:
@@ -2485,15 +2452,15 @@ class MainWindow(QMainWindow):
         if values is None:
             return
 
-        planned_path, _ = self._planned_output(
+        planned = self.output_planner.plan(
             package,
             values,
-            consume_sequence=False,
+            output_root=self._output_root(),
         )
         filename, _ = QFileDialog.getSaveFileName(
             self,
             'Salvar documento DOCX',
-            str(planned_path),
+            str(planned.path),
             "Documento do Word (*.docx)",
         )
         if not filename:
@@ -2506,14 +2473,21 @@ class MainWindow(QMainWindow):
         if output_path is None:
             return
 
-        self._consume_sequence(package)
-
-        result = self._generate_one(
-            package,
-            values,
-            output_path,
-        )
-        if result is None:
+        try:
+            self.generation_service.generate_docx(
+                package,
+                values,
+                output_path,
+                profile_id=self._active_profile_id or "",
+                profile_name=self._active_profile_name,
+            )
+        except DocumentGenerationError as exc:
+            QMessageBox.critical(
+                self,
+                'Falha na geração',
+                str(exc),
+            )
+            self.status_message.setText('Falha na geração')
             return
 
         self._finish_single_generation(
@@ -2532,12 +2506,12 @@ class MainWindow(QMainWindow):
         if values is None:
             return
 
-        planned_docx, _ = self._planned_output(
+        planned = self.output_planner.plan(
             package,
             values,
-            consume_sequence=False,
+            output_root=self._output_root(),
         )
-        planned_pdf = planned_docx.with_suffix(".pdf")
+        planned_pdf = planned.path.with_suffix(".pdf")
 
         filename, _ = QFileDialog.getSaveFileName(
             self,
@@ -2555,34 +2529,21 @@ class MainWindow(QMainWindow):
         if output_path is None:
             return
 
-        self._consume_sequence(package)
-
         try:
-            with tempfile.TemporaryDirectory(
-                prefix="padroniza-pdf-"
-            ) as temporary_folder:
-                temporary_docx = (
-                    Path(temporary_folder)
-                    / f"{output_path.stem}.docx"
-                )
-                generate_docx(
-                    package.source_path,
-                    temporary_docx,
-                    values,
-                )
-                convert_docx_to_pdf(
-                    temporary_docx,
-                    output_path,
-                )
+            self.generation_service.generate_pdf(
+                package,
+                values,
+                output_path,
+                profile_id=self._active_profile_id or "",
+                profile_name=self._active_profile_name,
+            )
         except DocumentGenerationError as exc:
             QMessageBox.critical(
                 self,
                 'Falha na geração',
                 str(exc),
             )
-            self.status_message.setText(
-                'Falha na geração'
-            )
+            self.status_message.setText('Falha na geração')
             return
         except PdfConversionError as exc:
             QMessageBox.critical(
@@ -2590,37 +2551,8 @@ class MainWindow(QMainWindow):
                 'Falha na geração do PDF',
                 str(exc),
             )
-            self.status_message.setText(
-                'Falha na geração do PDF'
-            )
+            self.status_message.setText('Falha na geração do PDF')
             return
-
-        record = {
-            "template_id": package.template_id,
-            "template_name": package.name,
-            "template_version": package.version,
-            "filename": output_path.name,
-            "docx_path": "",
-            "pdf_path": str(output_path),
-            "zip_path": "",
-            "values": values,
-            "pdf_error": "",
-            "created_at": datetime.now()
-            .replace(microsecond=0)
-            .isoformat(),
-            **self._document_history_metadata(values),
-        }
-        document_id = self.local_store.add_recent(record)
-        self.local_store.add_audit(
-            "document_generated",
-            output_path.name,
-            {
-                "document_id": document_id,
-                "template_id": package.template_id,
-                "path": str(output_path),
-                "format": "pdf",
-            },
-        )
 
         self._finish_single_generation(
             package=package,
@@ -2658,198 +2590,6 @@ class MainWindow(QMainWindow):
             duration=6000,
         )
 
-    def _generate_one(
-        self,
-        package: TemplatePackage,
-        values: dict[str, Any],
-        output_path: Path,
-    ) -> dict[str, Any] | None:
-        try:
-            generate_docx(
-                package.source_path,
-                output_path,
-                values,
-            )
-        except DocumentGenerationError as exc:
-            QMessageBox.critical(
-                self,
-                'Falha na geração',
-                str(exc),
-            )
-            self.status_message.setText(
-                'Falha na geração'
-            )
-            return None
-
-        record = {
-            "template_id": package.template_id,
-            "template_name": package.name,
-            "template_version": package.version,
-            "filename": output_path.name,
-            "docx_path": str(output_path),
-            "pdf_path": "",
-            "zip_path": "",
-            "values": values,
-            "pdf_error": "",
-            "created_at": datetime.now()
-            .replace(microsecond=0)
-            .isoformat(),
-            **self._document_history_metadata(values),
-        }
-        document_id = self.local_store.add_recent(
-            record
-        )
-        self.local_store.add_audit(
-            "document_generated",
-            output_path.name,
-            {
-                "document_id": document_id,
-                "template_id": package.template_id,
-                "path": str(output_path),
-            },
-        )
-        return {
-            "document_id": document_id
-        }
-
-    def _document_history_metadata(self, values: dict[str, Any]) -> dict[str, str]:
-        process_number = ""
-        preferred = (
-            "process.number",
-            "process_number",
-            "processo.numero",
-            "processo",
-        )
-        for key in preferred:
-            value = values.get(key)
-            if value not in (None, ""):
-                process_number = str(value)
-                break
-        if not process_number:
-            for key, value in values.items():
-                normalized = str(key).casefold()
-                if "process" in normalized and ("number" in normalized or "numero" in normalized):
-                    process_number = str(value)
-                    break
-        return {
-            "process_number": process_number,
-            "profile_id": self._active_profile_id or "",
-            "profile_name": self._active_profile_name,
-        }
-
-    def _planned_output(
-        self,
-        package: TemplatePackage,
-        values: dict[str, Any],
-        *,
-        consume_sequence: bool,
-        override_root: Path | None = None,
-    ) -> tuple[Path, int | None]:
-        numbering = package.config.get("numbering", {})
-        sequence: int | None = None
-        if bool(numbering.get("enabled", False)):
-            key = str(numbering.get("key", package.template_id)) or package.template_id
-            sequence = (
-                self.local_store.next_sequence(key)
-                if consume_sequence
-                else self.local_store.peek_sequence(key)
-            )
-        filename = self._render_pattern(
-            package.config.get("output", {}).get("filename_pattern", package.output_filename),
-            package,
-            values,
-            sequence,
-        )
-        filename = self._sanitize_filename(filename)
-        if not filename.casefold().endswith(".docx"):
-            filename += ".docx"
-
-        root = Path(override_root or self._output_root())
-        folder_pattern = str(package.config.get("output", {}).get("folder_pattern", "")).strip()
-        if folder_pattern and override_root is None:
-            # Split the pattern before rendering. Field values such as a CNPJ
-            # may contain a slash and must remain inside one sanitized folder.
-            for pattern_segment in re.split(r"[\\/]+", folder_pattern):
-                rendered_segment = self._render_pattern(
-                    pattern_segment, package, values, sequence
-                )
-                cleaned = self._sanitize_segment(rendered_segment)
-                if cleaned and cleaned not in {".", ".."}:
-                    root /= cleaned
-        root.mkdir(parents=True, exist_ok=True)
-        return root / filename, sequence
-
-    def _consume_sequence(self, package: TemplatePackage) -> None:
-        numbering = package.config.get("numbering", {})
-        if bool(numbering.get("enabled", False)):
-            key = str(numbering.get("key", package.template_id)) or package.template_id
-            self.local_store.next_sequence(key)
-
-    def _render_pattern(
-        self,
-        pattern: Any,
-        package: TemplatePackage,
-        values: dict[str, Any],
-        sequence: int | None,
-    ) -> str:
-        result = str(pattern or "")
-        padding = int(package.config.get("numbering", {}).get("padding", 4) or 4)
-        tokens: dict[str, str] = {
-            "template.name": package.name,
-            "template.id": package.template_id,
-            "template.version": package.version,
-            "year": str(date.today().year),
-            "sequence": str(sequence).zfill(padding) if sequence is not None else "",
-        }
-        for field_id, value in values.items():
-            tokens[field_id] = 'Sim' if value is True else 'Não' if value is False else str(value or "")
-        for key, value in tokens.items():
-            result = result.replace(f"{{{{{key}}}}}", value)
-            result = result.replace(f"{{{{date:{key}}}}}", value)
-        return result
-
-    def _resolve_output_conflict(self, path: Path) -> Path | None:
-        path = Path(path)
-        if not path.exists():
-            return path
-        mode = str(self.settings.value("output/conflict", "rename"))
-        if mode == "replace":
-            return path
-        if mode == "timestamp":
-            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            return path.with_name(f"{path.stem}_{stamp}{path.suffix}")
-        if mode == "ask":
-            answer = QMessageBox.question(
-                self,
-                'O arquivo já existe',
-                f"Substituir o arquivo existente?\n\n{path}",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.No,
-            )
-            if answer == QMessageBox.StandardButton.Yes:
-                return path
-            if answer == QMessageBox.StandardButton.Cancel:
-                return None
-        return self._unique_output_path(path)
-
-    @staticmethod
-    def _unique_output_path(path: Path) -> Path:
-        path = Path(path)
-        if not path.exists():
-            return path
-        counter = 2
-        while True:
-            candidate = path.with_name(f"{path.stem}_{counter}{path.suffix}")
-            if not candidate.exists():
-                return candidate
-            counter += 1
-
-    @staticmethod
-    def _sanitize_filename(value: str) -> str:
-        cleaned = re.sub(r'[<>:"/\\|?*]', "-", str(value))
-        cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
-        return cleaned or "generated_document.docx"
-
     def closeEvent(self, event) -> None:
         self.autosave_timer.stop()
         if (
@@ -2861,11 +2601,6 @@ class MainWindow(QMainWindow):
                 self._active_template_id
             )
         super().closeEvent(event)
-
-    @staticmethod
-    def _sanitize_segment(value: str) -> str:
-        cleaned = re.sub(r'[<>:"/\\|?*]', "-", str(value))
-        return re.sub(r"\s+", " ", cleaned).strip(" .")[:120]
 
     @staticmethod
     def _values_for_template(package: TemplatePackage, source_values: dict[str, Any]) -> dict[str, Any]:
