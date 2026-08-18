@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,8 +13,14 @@ from docx.oxml.ns import qn
 from docx.table import Table, _Cell, _Row
 from docx.text.paragraph import Paragraph
 
+from app.field_utils import FIELD_ID_TOKEN_PATTERN
+
 
 PLACEHOLDER_PATTERN = re.compile(r"\{\{([^{}]+)\}\}")
+REPEAT_MARKER_PATTERN = re.compile(
+    rf"\{{\{{\s*repeat:({FIELD_ID_TOKEN_PATTERN})\s*\}}\}}",
+    re.IGNORECASE,
+)
 HEADING_NUMBER_PATTERN = re.compile(r"^\s*\d+(?:\.\d+)*[.)]?\s+")
 EXCLUSIVE_PAIR_WORDS = (
     ("imediat", "parcel"),
@@ -237,6 +244,7 @@ def apply_layout_metadata(
             "layout_order",
             "layout_static_rows",
             "layout_row_static_cells",
+            "layout_presentation",
             "layout_position_locked",
             "group",
             "selection",
@@ -268,6 +276,7 @@ def normalize_form_layout(
     """
 
     result = [dict(source) for source in fields if isinstance(source, dict)]
+    result = _suppress_overlapping_assisted_duplicates(result)
     groups: OrderedDict[tuple[str, str], list[dict[str, Any]]] = OrderedDict()
     for field in result:
         if str(field.get("layout", "auto")).strip().casefold() != "form_grid":
@@ -424,6 +433,107 @@ def _static_cell_describes_field(text: str, field: dict[str, Any]) -> bool:
     )
 
 
+def _suppress_overlapping_assisted_duplicates(
+    fields: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Prefer an explicit/native field over an assisted duplicate in one cell.
+
+    Older model metadata can already contain both sides of a collision before
+    the detector-side ownership rule is installed, e.g.
+    ``auto.descricao_da_demanda`` and the explicit ``descrição.demanda`` tag.
+    Saving such a model should repair the stale assisted interpretation instead
+    of forcing the user to manually hunt it down.
+
+    Only fields in the same form-grid group/row whose occupied columns overlap
+    and whose visible labels are semantically equal are considered.  Different
+    fields that merely share a common label elsewhere remain untouched.
+    """
+
+    if len(fields) < 2:
+        return fields
+
+    def semantic_key(field: dict[str, Any]) -> str:
+        value = str(
+            field.get("label")
+            or field.get("detected_label")
+            or field.get("layout_group_label")
+            or ""
+        ).strip()
+        normalized = unicodedata.normalize("NFKD", value)
+        normalized = "".join(
+            character for character in normalized if not unicodedata.combining(character)
+        ).casefold()
+        normalized = HEADING_NUMBER_PATTERN.sub("", normalized)
+        return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
+
+    def assisted(field: dict[str, Any]) -> bool:
+        source = str(field.get("detection_source") or "").strip().casefold()
+        if source in {"automatic", "assisted", "auto_detection"}:
+            return True
+        field_id = str(field.get("id", "")).strip().casefold()
+        # Compatibility with old generated metadata that pre-dates the
+        # detection_source property.
+        return not source and field_id.startswith("auto.")
+
+    def authority(field: dict[str, Any]) -> int:
+        source = str(field.get("detection_source") or "").strip().casefold()
+        if source in {"native_pdf", "native_word", "word_control"}:
+            return 40
+        if assisted(field):
+            return 10
+        # Explicit tags and manually configured fields normally have no
+        # detection_source and are authoritative by design.
+        return 30
+
+    suppressed: set[int] = set()
+    for left_index, left in enumerate(fields):
+        if left_index in suppressed:
+            continue
+        if str(left.get("layout", "auto")).strip().casefold() != "form_grid":
+            continue
+        left_group = str(left.get("layout_group", "")).strip()
+        left_row = str(left.get("layout_row", "")).strip()
+        left_key = semantic_key(left)
+        if not left_group or not left_row or not left_key:
+            continue
+        left_start = _safe_layout_int(left.get("layout_column_index"), 0)
+        left_span = max(1, _safe_layout_int(left.get("layout_column_span"), 1))
+        left_end = left_start + left_span
+
+        for right_index in range(left_index + 1, len(fields)):
+            if right_index in suppressed:
+                continue
+            right = fields[right_index]
+            if str(right.get("layout", "auto")).strip().casefold() != "form_grid":
+                continue
+            if str(right.get("layout_group", "")).strip() != left_group:
+                continue
+            if str(right.get("layout_row", "")).strip() != left_row:
+                continue
+            if semantic_key(right) != left_key:
+                continue
+
+            right_start = _safe_layout_int(right.get("layout_column_index"), 0)
+            right_span = max(1, _safe_layout_int(right.get("layout_column_span"), 1))
+            right_end = right_start + right_span
+            if not (left_start < right_end and right_start < left_end):
+                continue
+
+            left_authority = authority(left)
+            right_authority = authority(right)
+            if left_authority == right_authority:
+                # Same-authority overlaps are still genuine layout conflicts;
+                # leave them for layout_quality_issues to report.
+                continue
+            if left_authority > right_authority:
+                suppressed.add(right_index)
+            else:
+                suppressed.add(left_index)
+                break
+
+    return [field for index, field in enumerate(fields) if index not in suppressed]
+
+
 def layout_quality_issues(fields: Iterable[dict[str, Any]]) -> list[str]:
     """Return hard layout problems that should block template saving."""
 
@@ -506,6 +616,40 @@ def _safe_layout_int(value: Any, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return int(default)
+
+
+def group_form_grid_static_rows(
+    rows: Iterable[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Group static form-grid cells by their original physical Word row.
+
+    Older automatically-generated metadata did not store ``layout_row`` on
+    static cells. In that case ``layout_order`` is the stable row identity, so
+    this helper also repairs existing models instead of only newly scanned
+    documents.
+    """
+
+    grouped: OrderedDict[str, dict[str, Any]] = OrderedDict()
+    for sequence, raw in enumerate(rows):
+        if not isinstance(raw, dict):
+            continue
+        cell = dict(raw)
+        order = _safe_layout_int(cell.get("layout_order"), sequence)
+        row_key = str(cell.get("layout_row", "")).strip() or f"static_order_{order}"
+        entry = grouped.setdefault(
+            row_key,
+            {"layout_row": row_key, "layout_order": order, "cells": []},
+        )
+        entry["layout_order"] = min(_safe_layout_int(entry.get("layout_order"), order), order)
+        entry["cells"].append(cell)
+
+    result = list(grouped.values())
+    result.sort(key=lambda item: _safe_layout_int(item.get("layout_order"), 0))
+    for item in result:
+        item["cells"].sort(
+            key=lambda cell: _safe_layout_int(cell.get("layout_column_index"), 0)
+        )
+    return result
 
 
 def layout_blocks(fields: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -620,7 +764,11 @@ def _analyze_table(
 ) -> str:
     grid_columns = _table_grid_columns(table)
     rows = _table_rows(table, grid_columns)
-    data_header_index = _find_data_table_header(rows)
+    repeatable_owned_rows = _repeatable_owned_rows(rows, grid_columns)
+    data_header_index = _find_data_table_header(
+        rows,
+        ignored_rows=repeatable_owned_rows,
+    )
     header_by_column = _header_map(rows[data_header_index]) if data_header_index is not None else {}
 
     current_section = inherited_section
@@ -636,6 +784,13 @@ def _analyze_table(
     active_data_headers: dict[int, str] = {}
 
     for row in rows:
+        # A repeatable-table region is already represented by one top-level
+        # field. Its header/model cells must never leak into form-grid/static
+        # metadata, otherwise the UI renders the same physical table twice.
+        if row.index in repeatable_owned_rows:
+            active_data_headers = {}
+            continue
+
         if not row.matches:
             possible_section = _table_section_title(row.text, row.cells, grid_columns)
             if possible_section:
@@ -656,6 +811,7 @@ def _analyze_table(
                     continue
                 static_rows_by_group.setdefault(current_group, []).append(
                     {
+                        "layout_row": f"row_{row.index}",
                         "layout_order": row.index,
                         "layout_column_index": cell.start,
                         "layout_column_span": cell.span,
@@ -744,6 +900,19 @@ def _analyze_table(
                     "layout_order": row.index,
                 }
             )
+
+            # Some institutional Word forms use a genuine spreadsheet-like
+            # table whose header has several columns, followed by a merged
+            # full-width answer row.  The answer may be prefilled prose, but it
+            # still belongs visually to that table.  Mark this presentation
+            # explicitly so the UI keeps borders/column geometry instead of
+            # rendering header cells as unrelated cards above a normal field.
+            if _looks_like_sheet_answer_row(
+                row,
+                static_rows_by_group.get(group, []),
+                grid_columns,
+            ):
+                values["layout_presentation"] = "sheet"
             if match_index == 0 and same_row_static_cells:
                 values["layout_row_static_cells"] = same_row_static_cells
             first_form_field_by_group.setdefault(group, field_id)
@@ -755,6 +924,51 @@ def _analyze_table(
             metadata.setdefault(field_id, {})["layout_static_rows"] = static_rows
 
     return current_section
+
+
+def _looks_like_sheet_answer_row(
+    row: _TableRowInfo,
+    preceding_static_cells: list[dict[str, Any]],
+    grid_columns: int,
+) -> bool:
+    """Return True for a table header followed by a merged editable row.
+
+    Example::
+
+        Item | Quantidade | Unidade | Especificação | Valor
+        [ one merged full-width editable narrative cell            ]
+
+    This is a visual table, not a loose form grid.  Requiring at least three
+    short header cells and one full-width matched cell keeps the rule narrow
+    enough that ordinary two-column forms are unaffected.
+    """
+
+    if grid_columns < 3 or len(row.matches) != 1:
+        return False
+    cell, _field_id, _field_type, _label = row.matches[0]
+    if cell.start != 0 or max(1, cell.span) < grid_columns:
+        return False
+
+    if not preceding_static_cells:
+        return False
+    latest_order = max(
+        (int(item.get("layout_order", -1)) for item in preceding_static_cells),
+        default=-1,
+    )
+    header_cells = [
+        item
+        for item in preceding_static_cells
+        if int(item.get("layout_order", -1)) == latest_order
+        and str(item.get("text", "")).strip()
+    ]
+    if len(header_cells) < 3:
+        return False
+    if any(len(str(item.get("text", "")).strip()) > 120 for item in header_cells):
+        return False
+
+    # A convincing spreadsheet header should occupy multiple physical columns.
+    starts = {int(item.get("layout_column_index", 0)) for item in header_cells}
+    return len(starts) >= 3
 
 
 def _apply_data_table_row(
@@ -904,15 +1118,54 @@ def _row_grid_before(row: _Row) -> int:
         return 0
 
 
-def _find_data_table_header(rows: list[_TableRowInfo]) -> int | None:
+def _repeatable_owned_rows(
+    rows: list[_TableRowInfo],
+    grid_columns: int,
+) -> set[int]:
+    """Return Word rows owned by a ``{{repeat:...}}`` table interpretation.
+
+    The repeat marker lives in the model row. The closest preceding plain row
+    with multiple cells is its visual header and belongs to the same semantic
+    region. A numbered/merged section heading stops the search so unrelated
+    context is never consumed.
+    """
+
+    owned: set[int] = set()
+    for position, row in enumerate(rows):
+        if not REPEAT_MARKER_PATTERN.search(row.text or ""):
+            continue
+        owned.add(row.index)
+        for previous in reversed(rows[:position]):
+            if _table_section_title(previous.text, previous.cells, grid_columns):
+                break
+            nonempty = [
+                cell
+                for cell in previous.plain_cells
+                if _cell_label_without_tags(cell.text)
+            ]
+            if len(nonempty) >= 2:
+                owned.add(previous.index)
+                break
+            if previous.matches:
+                break
+    return owned
+
+
+def _find_data_table_header(
+    rows: list[_TableRowInfo],
+    *,
+    ignored_rows: set[int] | None = None,
+) -> int | None:
     """Find a real tabular header, requiring repeated aligned data rows.
 
     Requiring at least two aligned rows prevents ordinary two-column Word forms
-    from being mistaken for data tables.
+    from being mistaken for data tables. Rows owned by a stronger semantic
+    structure (currently repeatable tables) are excluded from this classifier.
     """
 
+    ignored = set(ignored_rows or set())
     for candidate in rows:
-        if candidate.matches:
+        if candidate.index in ignored or candidate.matches:
             continue
         nonempty = [cell for cell in candidate.plain_cells if _clean_text(cell.text)]
         if len(nonempty) < 2:
@@ -924,6 +1177,8 @@ def _find_data_table_header(rows: list[_TableRowInfo]) -> int | None:
         header_map = {cell.start: label for cell, label in zip(nonempty, labels)}
         aligned_rows = 0
         for later in rows[candidate.index + 1 :]:
+            if later.index in ignored:
+                continue
             if not later.matches:
                 # Stop at a new numbered/merged section title.
                 if _table_section_title(later.text, later.cells, _grid_size_from_cells(later.cells)):

@@ -26,10 +26,8 @@ from PySide6.QtWidgets import (
 )
 
 from app.automatic_field_detector import candidate_source_label
-from app.field_utils import FIELD_TYPE_ORDER, compact_dropdown_options
-
-
-VALID_FIELD_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
+from app.document_understanding import candidate_explanation, confidence_band
+from app.field_utils import FIELD_TYPE_ORDER, VALID_FIELD_ID, compact_dropdown_options
 
 
 class AutomaticDetectionDialog(QDialog):
@@ -74,11 +72,11 @@ class AutomaticDetectionDialog(QDialog):
         root.addWidget(title)
 
         description = QLabel(
-            "A detecção automática é assistida e pode interpretar alguns elementos do documento "
-            "de forma incorreta ou deixar campos sem identificar. As tags existentes continuam "
-            "sendo prioritárias. Apenas as sugestões marcadas serão convertidas em tags numa "
-            "cópia de trabalho; sugestões de baixa confiança ficam desmarcadas. Você pode editar "
-            "o modelo depois, inclusive durante o uso, se encontrar algo que precise de ajuste."
+            "A detecção assistida combina vários sinais do documento — texto, posição relativa, "
+            "linhas/colunas, grupos e consistência com campos vizinhos — sem exigir uma estrutura "
+            "fixa. Ainda assim, documentos feitos livremente podem ser ambíguos: revise as sugestões "
+            "quando necessário. As tags existentes continuam prioritárias, sugestões de baixa "
+            "confiança ficam desmarcadas e o modelo pode ser corrigido depois durante o uso."
         )
         description.setWordWrap(True)
         root.addWidget(description)
@@ -175,9 +173,15 @@ class AutomaticDetectionDialog(QDialog):
                 )
             self.table.setItem(row, 0, use_item)
 
-            confidence = int(round(float(candidate.get("confidence", 0.0)) * 100))
-            confidence_item = QTableWidgetItem(f"{confidence}%")
+            confidence_value = float(candidate.get("confidence", 0.0))
+            confidence = int(round(confidence_value * 100))
+            band = str(candidate.get("confidence_band", "")) or confidence_band(confidence_value)
+            band_label = {"high": "Alta", "medium": "Média", "low": "Baixa"}.get(band, "")
+            confidence_item = QTableWidgetItem(f"{band_label} {confidence}%".strip())
             confidence_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            explanation = candidate_explanation(candidate)
+            if explanation:
+                confidence_item.setToolTip(explanation)
             self.table.setItem(row, 1, confidence_item)
 
             self.table.setItem(
@@ -231,11 +235,19 @@ class AutomaticDetectionDialog(QDialog):
         return self.TYPE_LABELS.get(field_type, field_type)
 
     def _update_summary(self) -> None:
-        high = sum(float(item.get("confidence", 0.0)) >= 0.80 for item in self._candidates)
+        bands = {"high": 0, "medium": 0, "low": 0}
+        for item in self._candidates:
+            band = str(item.get("confidence_band", "")) or confidence_band(float(item.get("confidence", 0.0)))
+            if band in bands:
+                bands[band] += 1
         configurable = sum(bool(item.get("requires_configuration")) for item in self._candidates)
-        text = f"{len(self._candidates)} sugestão(ões), {high} de alta confiança."
+        text = (
+            f"{len(self._candidates)} sugestão(ões): "
+            f"{bands['high']} alta, {bands['medium']} média e {bands['low']} baixa confiança."
+        )
         if configurable:
             text += f" {configurable} precisa(m) de opções ou revisão manual."
+        text += " Passe o mouse sobre a confiança para ver quais sinais sustentam a sugestão."
         self.summary_label.setText(text)
 
     def _selected_row(self) -> int:

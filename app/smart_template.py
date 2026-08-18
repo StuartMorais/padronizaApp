@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
-from app.field_utils import validation_hint
+from app.context_resolver import resolve_field_metadata
+from app.field_utils import VALID_FIELD_ID, validation_hint
 from app.layout_inference import (
     apply_layout_metadata,
     infer_docx_layout,
@@ -14,8 +15,8 @@ from app.layout_inference import (
     normalize_form_layout,
 )
 from app.placeholder_scanner import create_default_fields, scan_docx_fields
+from app.word_control_utils import normalize_control_id
 
-VALID_FIELD_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 PLACEHOLDER_TOKEN = re.compile(r"\{\{([^{}]+)\}\}")
 WORD_TEXT = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t"
 WORD_INSTRUCTION = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}instrText"
@@ -58,6 +59,16 @@ def smart_fields_from_docx(
         infer_docx_layout(Path(docx_path)),
     )
 
+    # Detector V3: every field goes through the same conservative context
+    # resolver. Explicit/manual/native metadata remains authoritative; only
+    # missing or generic metadata receives contextual fallbacks.
+    resolved_fields: list[dict[str, Any]] = []
+    used_ids: set[str] = set()
+    for field in fields:
+        resolved = resolve_field_metadata(field, used_ids=used_ids)
+        resolved_fields.append(resolved)
+    fields = resolved_fields
+
     for field in fields:
         field_id = str(field.get("id", "")).strip()
         lowered = field_id.casefold()
@@ -66,13 +77,32 @@ def smart_fields_from_docx(
         if (
             str(field.get("tag_type", "")).casefold() == "single_choice"
             and str(field.get("layout", "")).casefold() == "choice"
-            and not str(field.get("layout_group_label", "")).strip()
         ):
-            field["layout_group_label"] = (
-                str(field.get("section", "")).strip()
-                or str(field.get("label", "")).strip()
-                or "Escolha uma opção"
+            current_group_label = str(field.get("layout_group_label", "")).strip()
+            section_label = str(field.get("section", "")).strip()
+            field_label = str(field.get("label", "")).strip()
+            native_pdf_choice = (
+                str(field.get("detection_source", "")).strip().casefold() == "native_pdf"
             )
+            # Layout inference often uses the surrounding section as a fallback
+            # group title. For native PDF radio groups that hides the real
+            # printed question and the renderer falls back to the generic
+            # ``Selecione uma opção`` text. Prefer the field's visible PDF
+            # label whenever the inferred title is empty or merely repeats the
+            # section heading.
+            if not current_group_label:
+                field["layout_group_label"] = (
+                    (field_label or section_label)
+                    if native_pdf_choice
+                    else (section_label or field_label)
+                ) or "Escolha uma opção"
+            elif (
+                native_pdf_choice
+                and section_label
+                and current_group_label.casefold() == section_label.casefold()
+                and field_label
+            ):
+                field["layout_group_label"] = field_label
 
         profile_key = suggest_profile_key(field_id)
         if profile_key:
@@ -84,8 +114,16 @@ def smart_fields_from_docx(
         type_source = str(field.get("type_source", "")).strip().casefold()
         if current_type == "text" and type_source != "automatic_detection":
             label = str(field.get("label", "")).strip()
-            suggested_type = suggest_field_type(
-                f"{field_id} {label}"
+            matrix_observation = (
+                str(field.get("layout", "")).strip().casefold() == "table"
+                and bool(str(field.get("layout_row_label", "")).strip())
+                and str(field.get("layout_column", "")).strip().casefold()
+                in {"observacao", "observação", "obs", "observation"}
+            )
+            suggested_type = (
+                "text"
+                if matrix_observation
+                else suggest_field_type(f"{field_id} {label}")
             )
             field["type"] = suggested_type
             if suggested_type != "text":
@@ -374,9 +412,9 @@ def _field_id_from_token(raw: str) -> str:
     text = str(raw).strip()
     lowered = text.casefold()
     if lowered.startswith(("checkbox:", "date:")):
-        return text.split(":", 1)[1].strip()
+        return normalize_control_id(text.split(":", 1)[1].strip())
     if lowered.startswith(("dropdown:", "single_choice:")):
-        return text.split(":", 1)[1].split("|", 1)[0].strip()
+        return normalize_control_id(text.split(":", 1)[1].split("|", 1)[0].strip())
     if lowered.startswith("repeat:"):
-        return text.split(":", 1)[1].strip()
-    return text
+        return normalize_control_id(text.split(":", 1)[1].strip())
+    return normalize_control_id(text)

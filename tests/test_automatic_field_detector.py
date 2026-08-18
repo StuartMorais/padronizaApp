@@ -13,6 +13,7 @@ from app.automatic_field_detector import (
     detect_docx_field_candidates,
 )
 from app.smart_template import smart_fields_from_docx
+from app.docx_engine import generate_docx
 
 
 def _save(document: Document, path: Path) -> Path:
@@ -254,6 +255,100 @@ def test_detects_full_masks_sample_email_phone_and_inline_dropdown(tmp_path: Pat
     fields = smart_fields_from_docx(output, candidate_field_definitions(accepted))
     country = next(field for field in fields if field["label"] == "País")
     assert country["placeholder"] == "Brasil"
+
+
+
+def test_detects_zero_cpf_mask_in_adjacent_cell_as_editable_cpf(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=1, cols=4)
+    table.cell(0, 0).text = "CPF"
+    table.cell(0, 1).text = "000.000.000-00"
+    table.cell(0, 2).text = "Data da solicitação"
+    table.cell(0, 3).text = "__/__/____"
+    source = _save(document, tmp_path / "cpf-zero-mask.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    cpf_candidates = [item for item in candidates if item["label"] == "CPF"]
+
+    assert len(cpf_candidates) == 1
+    cpf = cpf_candidates[0]
+    assert cpf["type"] == "cpf"
+    assert cpf["preview"] == "000.000.000-00"
+    assert cpf["source"] == "inline_placeholder"
+
+    output = tmp_path / "cpf-zero-mask-prepared.docx"
+    apply_docx_field_candidates(source, output, [cpf])
+    text = "\n".join(
+        cell.text
+        for doc_table in Document(str(output)).tables
+        for row in doc_table.rows
+        for cell in row.cells
+    )
+    assert "000.000.000-00" not in text
+    assert "{{" in text
+
+    fields = smart_fields_from_docx(output, candidate_field_definitions([cpf]))
+    cpf_field = next(field for field in fields if field["label"] == "CPF")
+    assert cpf_field["type"] == "cpf"
+
+def test_detects_currency_masks_and_preserves_parenthetical_context(tmp_path: Path) -> None:
+    document = Document()
+    document.add_paragraph(
+        "Valor estimado: R$ XXX.XXX,XX (valor por extenso)"
+    )
+    document.add_paragraph(
+        "Valor contratual: R$ XXX.XXX.XX"
+    )
+    document.add_paragraph(
+        "Custo previsto: R$ 000.000,00"
+    )
+    document.add_paragraph(
+        "Orçamento: R$ ________,__"
+    )
+    source = _save(document, tmp_path / "currency-masks.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    currency = [item for item in candidates if item.get("type") == "currency"]
+
+    assert len(currency) == 4
+    assert {item["label"] for item in currency} == {
+        "Valor estimado",
+        "Valor contratual",
+        "Custo previsto",
+        "Orçamento",
+    }
+    assert {item["preview"] for item in currency} == {
+        "R$ XXX.XXX,XX",
+        "R$ XXX.XXX.XX",
+        "R$ 000.000,00",
+        "R$ ________,__",
+    }
+
+    output = tmp_path / "currency-masks-prepared.docx"
+    apply_docx_field_candidates(source, output, currency)
+    text = "\n".join(paragraph.text for paragraph in Document(str(output)).paragraphs)
+
+    assert "R$ XXX.XXX,XX" not in text
+    assert "R$ XXX.XXX.XX" not in text
+    assert "R$ 000.000,00" not in text
+    assert "R$ ________,__" not in text
+    assert "(valor por extenso)" in text
+
+    fields = smart_fields_from_docx(output, candidate_field_definitions(currency))
+    assert all(field["type"] == "currency" for field in fields)
+
+
+def test_bare_currency_mask_gets_semantic_value_label(tmp_path: Path) -> None:
+    document = Document()
+    document.add_paragraph("R$ XXX.XXX,XX (valor por extenso)")
+    source = _save(document, tmp_path / "bare-currency-mask.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    currency = [item for item in candidates if item.get("type") == "currency"]
+
+    assert len(currency) == 1
+    assert currency[0]["label"] == "Valor"
+    assert currency[0]["preview"] == "R$ XXX.XXX,XX"
 
 
 def test_detects_inline_and_vertical_checkbox_groups_with_correct_semantics(tmp_path: Path) -> None:
@@ -881,3 +976,351 @@ def test_inline_placeholders_after_manual_line_breaks_keep_offsets_and_local_lab
 
     assert "{{date:" in prepared_text
     assert "{{" in prepared_text and "horario" in prepared_text.casefold()
+
+
+def test_colonless_adjacent_examples_become_fields_and_keep_grid_pairs(tmp_path: Path) -> None:
+    document = Document()
+    document.add_paragraph("1. Identificação")
+    table = document.add_table(rows=2, cols=4)
+    table.cell(0, 0).text = "E-mail"
+    table.cell(0, 1).text = "servidor@orgao.gov.br"
+    table.cell(0, 2).text = "Telefone"
+    table.cell(0, 3).text = "(83) 99999-9999"
+    table.cell(1, 0).text = "País"
+    table.cell(1, 1).text = "Brasil"
+    table.cell(1, 2).text = "Endereço completo"
+    table.cell(1, 3).text = ""
+    source = tmp_path / "colonless-pairs.docx"
+    document.save(source)
+
+    candidates = detect_docx_field_candidates(source)
+    by_label = {str(item.get("label", "")): item for item in candidates}
+
+    assert by_label["E-mail"]["placeholder"] == "servidor@orgao.gov.br"
+    assert by_label["Telefone"]["placeholder"] == "(83) 99999-9999"
+    assert by_label["País"]["placeholder"] == "Brasil"
+    assert by_label["E-mail"]["selected"] is True
+    assert by_label["Telefone"]["selected"] is True
+    assert by_label["País"]["selected"] is True
+
+    accepted = [item for item in candidates if item.get("selected")]
+    prepared = tmp_path / "colonless-pairs-prepared.docx"
+    apply_docx_field_candidates(source, prepared, accepted)
+    fields = smart_fields_from_docx(prepared, candidate_field_definitions(accepted))
+    mapped = {str(field.get("label", "")): field for field in fields}
+
+    assert mapped["E-mail"]["layout_column_index"] == 0
+    assert mapped["E-mail"]["layout_column_span"] == 2
+    assert mapped["Telefone"]["layout_column_index"] == 2
+    assert mapped["Telefone"]["layout_column_span"] == 2
+    assert mapped["País"]["layout_column_index"] == 0
+    assert mapped["País"]["layout_column_span"] == 2
+    assert mapped["Endereço completo"]["layout_column_index"] == 2
+    assert mapped["Endereço completo"]["layout_column_span"] == 2
+
+
+def test_repeatable_table_owns_header_and_model_rows_without_duplicate_header_fields(tmp_path: Path) -> None:
+    """Regression: a repeatable table must not also become header/value fields."""
+
+    document = Document()
+    document.add_paragraph("3. Itens / serviços solicitados")
+    table = document.add_table(rows=5, cols=5)
+    for index, header in enumerate(("Nº", "Descrição", "Unidade", "Quantidade", "Valor estimado")):
+        table.cell(0, index).text = header
+    for row_index, number in enumerate(("01", "02", "03", "04"), start=1):
+        table.cell(row_index, 0).text = number
+        table.cell(row_index, 1).text = "________________________"
+        table.cell(row_index, 2).text = "UND"
+        table.cell(row_index, 3).text = "____"
+        table.cell(row_index, 4).text = "R$ ________"
+
+    source = _save(document, tmp_path / "repeatable-owner.docx")
+    candidates = detect_docx_field_candidates(source)
+    repeatable = next(item for item in candidates if item.get("source") == "repeatable_table")
+
+    assert repeatable["region_owner"] == "repeatable_table"
+    assert repeatable["location"]["owned_rows"] == [0, 1, 2, 3, 4]
+    assert len(repeatable["location"]["owned_paragraphs"]) == 25
+    assert repeatable["location"]["paragraphs"] == repeatable["location"]["owned_paragraphs"]
+
+    # The header row is evidence for the table schema, not another form row.
+    forbidden_labels = {"Nº", "Descrição", "Unidade", "Quantidade", "Valor estimado"}
+    assert not any(
+        item is not repeatable and str(item.get("label", "")).strip() in forbidden_labels
+        for item in candidates
+    )
+
+    output = tmp_path / "repeatable-owner-prepared.docx"
+    apply_docx_field_candidates(source, output, [repeatable])
+    fields = smart_fields_from_docx(output, candidate_field_definitions([repeatable]))
+    section_fields = [
+        field
+        for field in fields
+        if str(field.get("section", "")).startswith("3.")
+    ]
+    assert [field["id"] for field in section_fields] == [repeatable["field_id"]]
+    assert section_fields[0]["type"] == "repeatable_table"
+
+
+def test_detects_existing_written_justification_as_prefilled_multiline(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=2, cols=1)
+    table.cell(0, 0).text = "1. Justificativa da necessidade da Contratação:"
+    prose = (
+        "Em atendimento ao art. 4º do Decreto nº 44.639/23, a presente demanda "
+        "visa elaborar o Plano de Contratação Anual, reunindo as informações "
+        "necessárias para o planejamento da contratação."
+    )
+    table.cell(1, 0).text = prose
+    source = _save(document, tmp_path / "prefilled-justification.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    written = [item for item in candidates if item.get("source") == "prefilled_text"]
+
+    assert len(written) == 1
+    candidate = written[0]
+    assert candidate["label"] == "Justificativa da necessidade da Contratação"
+    assert candidate["type"] == "multiline"
+    assert candidate["default_value"] == prose
+    assert candidate["selected"] is True
+
+    output = tmp_path / "prefilled-justification-prepared.docx"
+    apply_docx_field_candidates(source, output, [candidate])
+    fields = smart_fields_from_docx(output, candidate_field_definitions([candidate]))
+
+    assert len(fields) == 1
+    assert fields[0]["type"] == "multiline"
+    assert fields[0]["default_value"] == prose
+    assert fields[0]["full_width"] is True
+
+
+def test_detects_full_width_written_table_response_with_existing_value(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=3, cols=5)
+    title = table.cell(0, 0)
+    title.merge(table.cell(0, 4))
+    title.text = "2. Quantidade a ser contratada, considerada a expectativa de consumo anual"
+
+    for index, value in enumerate(
+        ["Item", "Quantidade", "Unidade de medida", "Especificação/Descrição", "Valor"]
+    ):
+        table.cell(1, index).text = value
+
+    response = table.cell(2, 0)
+    response.merge(table.cell(2, 4))
+    prose = (
+        "Informamos que encontra-se em anexo o demonstrativo do Plano de "
+        "Contratação Anual, contendo todas as informações necessárias para "
+        "suprimento das informações exigidas neste item."
+    )
+    response.text = prose
+    source = _save(document, tmp_path / "prefilled-merged-response.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    written = [item for item in candidates if item.get("source") == "prefilled_text"]
+
+    assert len(written) == 1
+    assert written[0]["label"] == "Quantidade a ser contratada, considerada a expectativa de consumo anual"
+    assert written[0]["default_value"] == prose
+    assert written[0]["type"] == "multiline"
+
+
+def test_prefilled_written_text_does_not_convert_explicit_fixed_note(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=2, cols=1)
+    table.cell(0, 0).text = "3. Justificativa complementar:"
+    table.cell(1, 0).text = (
+        "Texto fixo: este conteúdo é apenas uma orientação institucional e não "
+        "deve ser convertido em campo editável pelo detector automático."
+    )
+    source = _save(document, tmp_path / "fixed-note.docx")
+
+    candidates = detect_docx_field_candidates(source)
+
+    assert all(item.get("source") != "prefilled_text" for item in candidates)
+
+
+def test_spreadsheet_header_creates_editable_rows_and_keeps_merged_note(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=3, cols=5)
+    table.cell(0, 0).merge(table.cell(0, 4))
+    table.cell(0, 0).text = "2. Quantidade a ser contratada, considerada a expectativa de consumo anual"
+    for index, label in enumerate(
+        (
+            "Item",
+            "Quantidade",
+            "Unidade de medida",
+            "Especificação/Descrição (Material/Equipamento/Serviço)",
+            "Valor",
+        )
+    ):
+        table.cell(1, index).text = label
+    table.cell(2, 0).merge(table.cell(2, 4))
+    original = (
+        "Informamos que encontra-se em anexo, o demonstrativo do Plano de Contratação "
+        "Anual PCA 2025, contendo todas as informações necessárias, para suprimento das "
+        "informações exigidas neste item."
+    )
+    table.cell(2, 0).text = original
+    source = _save(document, tmp_path / "sheet-editable.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    repeatable = [item for item in candidates if item.get("source") == "repeatable_table"]
+    prefilled = [item for item in candidates if item.get("source") == "prefilled_text"]
+
+    assert len(repeatable) == 1
+    assert len(prefilled) == 1
+    sheet = repeatable[0]
+    assert sheet["location"]["synthetic_template_row"] is True
+    assert [column["label"] for column in sheet["columns"]] == [
+        "Item",
+        "Quantidade",
+        "Unidade de medida",
+        "Especificação/Descrição (Material/Equipamento/Serviço)",
+        "Valor",
+    ]
+    assert [column["type"] for column in sheet["columns"]] == [
+        "text",
+        "integer",
+        "text",
+        "multiline",
+        "currency",
+    ]
+    assert prefilled[0]["default_value"] == original
+
+    output = tmp_path / "sheet-editable-prepared.docx"
+    apply_docx_field_candidates(source, output, [sheet, prefilled[0]])
+    prepared = Document(output)
+    assert len(prepared.tables[0].rows) == 4
+    model_row_text = " ".join(cell.text for cell in prepared.tables[0].rows[2].cells)
+    assert "{{repeat:" in model_row_text
+    assert ".item}}" in model_row_text
+    assert ".quantidade}}" in model_row_text
+    assert ".unidade_de_medida}}" in model_row_text
+    assert ".valor}}" in model_row_text
+
+    fields = smart_fields_from_docx(
+        output,
+        candidate_field_definitions([sheet, prefilled[0]]),
+    )
+    repeat_field = next(field for field in fields if field["type"] == "repeatable_table")
+    note_field = next(field for field in fields if field["type"] == "multiline")
+    assert [column["type"] for column in repeat_field["columns"]] == [
+        "text",
+        "integer",
+        "text",
+        "multiline",
+        "currency",
+    ]
+    assert note_field["default_value"] == original
+
+    generated = tmp_path / "sheet-editable-generated.docx"
+    generate_docx(
+        output,
+        generated,
+        {
+            repeat_field["id"]: [
+                {
+                    "item": "Notebook",
+                    "quantidade": "2",
+                    "unidade_de_medida": "UN",
+                    "especificacao_descricao_material_equipamento_servico": "Notebook 16 GB",
+                    "valor": "R$ 5.000,00",
+                }
+            ],
+            note_field["id"]: "Texto complementar atualizado.",
+        },
+    )
+    result = Document(generated)
+    assert len(result.tables[0].rows) == 4
+    generated_row = result.tables[0].rows[2]
+    assert [cell.text.strip() for cell in generated_row.cells] == [
+        "Notebook",
+        "2",
+        "UN",
+        "Notebook 16 GB",
+        "R$ 5.000,00",
+    ]
+    assert result.tables[0].rows[3].cells[0].text.strip() == "Texto complementar atualizado."
+
+
+
+def test_repeatable_child_types_do_not_inherit_parent_quantity_keyword(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=2, cols=3)
+    table.cell(0, 0).text = "Item"
+    table.cell(0, 1).text = "Unidade de medida"
+    table.cell(0, 2).text = "Quantidade"
+    parent = "auto.quantidade_a_ser_contratada"
+    table.cell(1, 0).text = f"{{{{repeat:{parent}}}}} {{{{{parent}.item}}}}"
+    table.cell(1, 1).text = f"{{{{{parent}.unidade_de_medida}}}}"
+    table.cell(1, 2).text = f"{{{{{parent}.quantidade}}}}"
+    source = _save(document, tmp_path / "repeat-parent-quantity.docx")
+
+    fields = smart_fields_from_docx(source)
+    repeatable = next(field for field in fields if field["type"] == "repeatable_table")
+    types = {column["id"]: column["type"] for column in repeatable["columns"]}
+
+    assert types["item"] == "text"
+    assert types["unidade_de_medida"] == "text"
+    assert types["quantidade"] == "integer"
+
+
+def test_detects_legacy_single_brace_placeholder_with_adjacent_label(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=2, cols=2)
+    header = table.cell(0, 0).merge(table.cell(0, 1))
+    header.text = "1.1 Identificação da Demanda:"
+    table.cell(1, 0).text = "Descrição da demanda:"
+    table.cell(1, 1).text = "{descrição.demanda}"
+    source = _save(document, tmp_path / "legacy-braces.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    candidate = next(item for item in candidates if item["source"] == "legacy_placeholder")
+
+    assert candidate["label"] == "Descrição da demanda"
+    assert candidate["type"] == "multiline"
+    assert candidate["field_id"] == "auto.descricao.demanda"
+    assert candidate["section"] == "1.1 Identificação da Demanda"
+    assert candidate["selected"] is True
+    assert candidate["legacy_marker"] == "{descrição.demanda}"
+
+    prepared = tmp_path / "legacy-braces-prepared.docx"
+    apply_docx_field_candidates(source, prepared, [candidate])
+    fields = smart_fields_from_docx(prepared, candidate_field_definitions([candidate]))
+
+    assert len(fields) == 1
+    assert fields[0]["id"] == "auto.descricao.demanda"
+    assert fields[0]["label"] == "Descrição da demanda"
+    assert fields[0]["type"] == "multiline"
+
+
+def test_does_not_treat_ordinary_single_brace_prose_as_field(tmp_path: Path) -> None:
+    document = Document()
+    document.add_paragraph("Use chaves {assim} apenas para ilustrar a sintaxe.")
+    source = _save(document, tmp_path / "literal-braces.docx")
+
+    candidates = detect_docx_field_candidates(source)
+
+    assert all(item.get("source") != "legacy_placeholder" for item in candidates)
+
+
+def test_explicit_adjacent_tag_owns_label_cell_and_suppresses_empty_cell_candidate(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).merge(table.cell(0, 1))
+    table.cell(0, 0).text = "1.1 Identificação da Demanda"
+    table.cell(1, 0).text = "Descrição da demanda:"
+    table.cell(1, 1).text = "{{descrição.demanda}}"
+    source = _save(document, tmp_path / "explicit-owns-adjacent-cell.docx")
+
+    candidates = detect_docx_field_candidates(source)
+
+    assert all(
+        item.get("field_id") != "auto.descricao_da_demanda"
+        for item in candidates
+    )
+    assert all(
+        str(item.get("label", "")).casefold() != "descrição da demanda".casefold()
+        for item in candidates
+    )

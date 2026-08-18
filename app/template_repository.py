@@ -1018,6 +1018,7 @@ class TemplateRepository:
             "visible_when",
             "automatic",
             "placeholder",
+            "default_value",
             "full_width",
             "height",
             "validation",
@@ -1042,6 +1043,7 @@ class TemplateRepository:
             "layout_column_index",
             "layout_column_span",
             "layout_grid_columns",
+            "layout_presentation",
             "layout_static_rows",
             "layout_row_static_cells",
             "layout_position_locked",
@@ -1056,6 +1058,14 @@ class TemplateRepository:
             "detection_confidence",
             "choice_group_label",
             "compact_choice",
+            "context_evidence",
+            "context_confidence",
+            "context_resolver_version",
+            "id_source",
+            "auto_tagged",
+            "profile_identity",
+            "context_needs_review",
+            "context_review_reason",
         }
 
         for index, raw_field in enumerate(fields, start=1):

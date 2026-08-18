@@ -541,3 +541,161 @@ def test_data_table_header_does_not_leak_into_following_numbered_section(tmp_pat
     assert metadata["decisao.autorizar"]["layout"] == "form_grid"
     assert metadata["decisao.autorizar"]["section"].startswith("5.")
     assert metadata["declaracao.ciente"]["layout"] == "form_grid"
+
+
+def test_static_form_grid_cells_keep_the_same_physical_row(tmp_path: Path) -> None:
+    path = tmp_path / "static-row-grid.docx"
+    document = Document()
+    document.add_paragraph("1. Identificação")
+    table = document.add_table(rows=2, cols=4)
+    table.cell(0, 0).text = "E-mail"
+    table.cell(0, 1).text = "valor fixo"
+    table.cell(0, 2).text = "Telefone"
+    table.cell(0, 3).text = "outro valor"
+    table.cell(1, 0).text = "Nome"
+    table.cell(1, 1).text = "{{pessoa.nome}}"
+    table.cell(1, 2).text = "Matrícula"
+    table.cell(1, 3).text = "{{pessoa.matricula}}"
+    document.save(path)
+
+    metadata = infer_docx_layout(path)
+    static_rows = metadata["pessoa.nome"]["layout_static_rows"]
+
+    assert len(static_rows) == 4
+    assert {row["layout_row"] for row in static_rows} == {"row_0"}
+    assert {row["layout_order"] for row in static_rows} == {0}
+    assert [row["layout_column_index"] for row in static_rows] == [0, 1, 2, 3]
+
+
+def test_static_row_grouping_repairs_legacy_staircase_metadata() -> None:
+    from app.layout_inference import group_form_grid_static_rows
+
+    legacy_cells = [
+        {"layout_order": 2, "layout_column_index": 0, "text": "E-mail"},
+        {"layout_order": 2, "layout_column_index": 1, "text": "servidor@orgao.gov.br"},
+        {"layout_order": 2, "layout_column_index": 2, "text": "Telefone"},
+        {"layout_order": 2, "layout_column_index": 3, "text": "(83) 99999-9999"},
+    ]
+
+    grouped = group_form_grid_static_rows(legacy_cells)
+    assert len(grouped) == 1
+    assert [cell["layout_column_index"] for cell in grouped[0]["cells"]] == [0, 1, 2, 3]
+
+
+def test_repeatable_table_rows_are_owned_and_excluded_from_form_grid_layout(tmp_path: Path) -> None:
+    path = tmp_path / "repeatable-layout.docx"
+    document = Document()
+    document.add_paragraph("3. Itens / serviços solicitados")
+    table = document.add_table(rows=2, cols=5)
+    for index, header in enumerate(("Nº", "Descrição", "Unidade", "Quantidade", "Valor estimado")):
+        table.cell(0, index).text = header
+    table.cell(1, 0).text = "{{repeat:itens}} {{row.number}}"
+    table.cell(1, 1).text = "{{itens.descricao}}"
+    table.cell(1, 2).text = "{{itens.unidade}}"
+    table.cell(1, 3).text = "{{itens.quantidade}}"
+    table.cell(1, 4).text = "{{itens.valor_estimado}}"
+    document.save(path)
+
+    metadata = infer_docx_layout(path)
+
+    # Child markers belong to the repeatable-table field and must not receive a
+    # competing form-grid/table interpretation from the same physical rows.
+    assert "itens.descricao" not in metadata
+    assert "itens.unidade" not in metadata
+    assert "itens.quantidade" not in metadata
+    assert "itens.valor_estimado" not in metadata
+
+    fields = smart_fields_from_docx(path)
+    assert len(fields) == 1
+    assert fields[0]["id"] == "itens"
+    assert fields[0]["type"] == "repeatable_table"
+
+
+def test_sheet_presentation_metadata_survives_layout_merge_and_block_grouping() -> None:
+    fields = [
+        {
+            "id": "auto.quantidade_contratada",
+            "label": "Quantidade a ser contratada",
+            "type": "multiline",
+            "layout": "auto",
+        }
+    ]
+    inferred = {
+        "auto.quantidade_contratada": {
+            "layout": "form_grid",
+            "layout_group": "doc_table_2_segment_1",
+            "layout_row": "row_2",
+            "layout_column_index": 0,
+            "layout_column_span": 5,
+            "layout_grid_columns": 5,
+            "layout_presentation": "sheet",
+            "layout_static_rows": [
+                {
+                    "layout_row": "row_1",
+                    "layout_order": 1,
+                    "layout_column_index": 0,
+                    "layout_column_span": 1,
+                    "layout_grid_columns": 5,
+                    "text": "Item",
+                },
+                {
+                    "layout_row": "row_1",
+                    "layout_order": 1,
+                    "layout_column_index": 1,
+                    "layout_column_span": 1,
+                    "layout_grid_columns": 5,
+                    "text": "Quantidade",
+                },
+                {
+                    "layout_row": "row_1",
+                    "layout_order": 1,
+                    "layout_column_index": 2,
+                    "layout_column_span": 1,
+                    "layout_grid_columns": 5,
+                    "text": "Unidade",
+                },
+            ],
+        }
+    }
+
+    merged = apply_layout_metadata(fields, inferred)
+    assert merged[0]["layout_presentation"] == "sheet"
+    blocks = layout_blocks(merged)
+    assert len(blocks) == 1
+    assert blocks[0]["type"] == "form_grid"
+    assert blocks[0]["fields"][0]["layout_presentation"] == "sheet"
+
+
+def test_normalize_prefers_explicit_tag_over_stale_assisted_overlap() -> None:
+    from app.layout_inference import layout_quality_issues, normalize_form_layout
+
+    fields = normalize_form_layout(
+        [
+            {
+                "id": "auto.descricao_da_demanda",
+                "label": "Descrição da demanda",
+                "type": "multiline",
+                "detection_source": "automatic",
+                "layout": "form_grid",
+                "layout_group": "doc_table_5_segment_1",
+                "layout_row": "row_1",
+                "layout_grid_columns": 2,
+                "layout_column_index": 0,
+                "layout_column_span": 2,
+            },
+            {
+                "id": "descrição.demanda",
+                "label": "Descrição da demanda",
+                "type": "multiline",
+                "layout": "form_grid",
+                "layout_group": "doc_table_5_segment_1",
+                "layout_row": "row_1",
+                "layout_grid_columns": 2,
+                "layout_column_index": 1,
+                "layout_column_span": 1,
+            },
+        ]
+    )
+
+    assert [field["id"] for field in fields] == ["descrição.demanda"]
+    assert layout_quality_issues(fields) == []

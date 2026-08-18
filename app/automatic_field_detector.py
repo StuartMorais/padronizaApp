@@ -18,6 +18,12 @@ from app.field_utils import compact_dropdown_options
 from app.placeholder_scanner import PLACEHOLDER_PATTERN, scan_docx_fields
 from app.smart_template import suggest_field_type
 from app.word_control_utils import classify_native_control, get_control_identifier
+from app.document_understanding import (
+    annotate_document_records,
+    postprocess_candidates,
+    semantic_label,
+    semantic_section,
+)
 
 
 # The automatic detector is deliberately conservative. Explicit tags and Word
@@ -35,12 +41,40 @@ UNDERSCORE_PLACEHOLDER_PATTERN = re.compile(
 ZERO_PHONE_PLACEHOLDER_PATTERN = re.compile(
     r"(?<!\d)\(\s*0{2}\s*\)\s*0{4,5}\s*-\s*0{4}(?!\d)"
 )
+ZERO_CPF_PLACEHOLDER_PATTERN = re.compile(
+    r"(?<!\d)0{3}\s*\.\s*0{3}\s*\.\s*0{3}\s*-\s*0{2}(?!\d)"
+)
+# Monetary fill masks occur frequently in institutional documents as
+# ``R$ XXX.XXX,XX``, ``R$ XXX.XXX.XX``, ``R$ 000.000,00`` or underline
+# variants. Match the currency prefix together with the visual mask so the
+# generated currency value does not leave a fixed ``R$`` behind and become
+# ``R$ R$ 1.000,00``. Decimal/group punctuation is deliberately tolerant
+# because hand-authored templates are not always consistent.
+CURRENCY_PLACEHOLDER_PATTERN = re.compile(
+    r"(?i)(?<![A-Za-z0-9])R\$\s*"
+    r"(?:"
+    r"[Xx]{2,}(?:\s*[.,]\s*[Xx]{2,3}){0,3}"
+    r"|0{2,}(?:\s*[.,]\s*0{2,3}){0,3}"
+    r"|_{2,}(?:\s*[.,]\s*_{2,3}){0,3}"
+    r")"
+    r"(?![A-Za-z0-9])"
+)
 SAMPLE_EMAIL_PLACEHOLDER_PATTERN = re.compile(
     r"(?i)(?<![A-Za-z0-9._%+\-])"
     r"(?:contato|email|e-mail|exemplo|teste|usuario|usu[aá]rio|user|x{4,})"
     r"@(?:empresa|exemplo|example|dominio|dom[ií]nio|x{4,})"
     r"(?:\.[A-Za-zx]{2,}){1,3}"
     r"(?![A-Za-z0-9._%+\-])"
+)
+# Legacy/custom form documents often use a single-braced token such as
+# ``{descricao.demanda}`` instead of Padroniza's authoritative ``{{...}}``
+# syntax.  Treat these as assisted placeholders only when context strongly
+# supports a field interpretation; ordinary prose using braces must remain
+# static. Unicode word characters are accepted here because Brazilian forms
+# frequently contain accents inside these legacy markers.
+LEGACY_BRACED_PLACEHOLDER_PATTERN = re.compile(
+    r"(?<!\{)\{([^\W\d_][\w.-]{0,95})\}(?!\})",
+    re.UNICODE,
 )
 CHOICE_SEPARATOR_PATTERN = re.compile(r"^\s*OU\s*$", re.IGNORECASE)
 INSTRUCTION_PATTERN = re.compile(
@@ -72,12 +106,15 @@ _SOURCE_LABELS = {
     "long_choice": "Alternativas separadas por OU",
     "repeatable_table": "Tabela com linhas repetíveis",
     "inline_placeholder": "Texto de preenchimento (XXXX ou sublinhado)",
+    "legacy_placeholder": "Marcador legado entre chaves simples",
     "instruction": "Texto instrucional substituível",
     "empty_cell": "Célula vazia ao lado de um rótulo",
     "dropdown_prompt": "Indicação 'Escolher um item'",
     "sample_value": "Valor de exemplo após o rótulo",
     "checkbox_choice": "Opções com caixas de seleção",
     "checkbox_single": "Caixa de seleção independente",
+    "consistency_repair": "Reparo por consistência do formulário",
+    "prefilled_text": "Texto existente possivelmente editável",
 }
 
 
@@ -96,6 +133,7 @@ class _ParagraphRecord:
         "cell_index",
         "cell",
         "table",
+        "understanding",
     )
 
     def __init__(
@@ -119,12 +157,14 @@ class _ParagraphRecord:
         self.cell_index = cell_index
         self.cell = cell
         self.table = table
+        self.understanding = None
 
 
 def detect_docx_field_candidates(
     docx_path: Path,
     *,
     existing_field_ids: Iterable[str] | None = None,
+    existing_fields: Iterable[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Return conservative fill-field suggestions for an untagged DOCX.
 
@@ -139,19 +179,49 @@ def detect_docx_field_candidates(
 
     document = Document(str(path))
     records = _collect_paragraph_records(document)
+    annotate_document_records(records)
     by_ordinal = {record.ordinal: record for record in records}
 
+    existing_field_list = [
+        dict(field)
+        for field in (existing_fields or [])
+        if isinstance(field, dict)
+    ]
     known_ids = {
         str(field_id).strip()
         for field_id in (existing_field_ids or [])
         if str(field_id).strip()
     }
+    known_ids.update(
+        str(field.get("id", "")).strip()
+        for field in existing_field_list
+        if str(field.get("id", "")).strip()
+    )
     try:
+        scanned_existing_fields = [
+            dict(field)
+            for field in scan_docx_fields(path)
+            if isinstance(field, dict)
+            and str(field.get("id", "")).strip()
+        ]
         known_ids.update(
             str(field.get("id", "")).strip()
-            for field in scan_docx_fields(path)
-            if str(field.get("id", "")).strip()
+            for field in scanned_existing_fields
         )
+
+        # Keep the scanner authoritative even when callers only provide IDs or
+        # no existing metadata at all.  Richer editor metadata wins for the
+        # same ID; newly scanned explicit/native fields fill the gaps.
+        existing_ids = {
+            str(field.get("id", "")).strip()
+            for field in existing_field_list
+            if str(field.get("id", "")).strip()
+        }
+        for field in scanned_existing_fields:
+            field_id = str(field.get("id", "")).strip()
+            if field_id not in existing_ids:
+                existing_field_list.append(field)
+                existing_ids.add(field_id)
     except Exception:
         # Automatic detection should still be usable when an unrelated
         # malformed native control exists. The normal scanner will report
@@ -181,6 +251,20 @@ def detect_docx_field_candidates(
         reserved_ordinals,
     )
     for candidate in repeatable_tables:
+        candidates.append(candidate)
+        reserved_ordinals.update(
+            int(value)
+            for value in candidate.get("location", {}).get("paragraphs", [])
+        )
+        known_ids.add(str(candidate.get("field_id", "")))
+
+    editable_sheets = _detect_editable_sheet_tables(
+        document,
+        records,
+        known_ids,
+        reserved_ordinals,
+    )
+    for candidate in editable_sheets:
         candidates.append(candidate)
         reserved_ordinals.update(
             int(value)
@@ -296,6 +380,16 @@ def detect_docx_field_candidates(
             )
             continue
 
+        prefilled_text = _detect_prefilled_written_text(
+            record,
+            records,
+            known_ids,
+        )
+        if prefilled_text is not None:
+            candidates.append(prefilled_text)
+            known_ids.add(str(prefilled_text.get("field_id", "")))
+            continue
+
         adjacent_sample = _detect_adjacent_sample_value(
             record,
             records,
@@ -324,6 +418,25 @@ def detect_docx_field_candidates(
         )
     )
 
+    candidates.extend(
+        _detect_consistency_repair_fields(
+            records,
+            candidates,
+            known_ids,
+        )
+    )
+
+    source_kind = (
+        "pdf_reconstruction"
+        if "convertido de pdf" in str(document.core_properties.subject or "").casefold()
+        else "docx"
+    )
+    candidates = postprocess_candidates(candidates, records, source_kind=source_kind)
+    candidates = _suppress_authoritative_semantic_duplicates(
+        candidates,
+        existing_field_list,
+    )
+
     # Stable order keeps the review screen aligned with the source document.
     candidates.sort(
         key=lambda item: (
@@ -336,6 +449,94 @@ def detect_docx_field_candidates(
         candidate["candidate_id"] = f"candidate_{index:04d}"
     return candidates
 
+
+
+def _suppress_authoritative_semantic_duplicates(
+    candidates: list[dict[str, Any]],
+    existing_fields: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Drop assisted suggestions already owned by authoritative fields.
+
+    Explicit Padroniza tags, native Word/PDF controls and manually configured
+    fields are stronger than assisted detection.  This matters especially for
+    a Word form laid out as ``Rótulo | {{campo}}``: the empty-cell detector can
+    otherwise create ``auto.rotulo`` from the label cell even though the
+    adjacent tagged cell already owns the same semantic field.
+
+    Suppression remains conservative.  We primarily match label + section.
+    When an authoritative field has no section metadata yet (common while a
+    DOCX is first being scanned), label-only ownership is allowed only for a
+    unique, non-generic label.
+    """
+
+    authoritative: set[tuple[str, str]] = set()
+    authoritative_label_counts: dict[str, int] = {}
+    sectionless_labels: set[str] = set()
+    generic_label_keys = {
+        "campo", "data", "nome", "tipo", "valor", "item", "quantidade",
+        "descricao", "observacao", "responsavel", "matricula", "situacao",
+    }
+
+    for field in existing_fields:
+        field_id = str(field.get("id", "")).strip()
+        source = str(field.get("detection_source") or "").strip().casefold()
+
+        # Existing assisted fields must not suppress a newer interpretation of
+        # the document.  Everything else is authoritative here: explicit tags
+        # usually have no detection_source, while native controls identify
+        # themselves explicitly.
+        is_assisted = source in {"automatic", "assisted", "auto_detection"}
+        if not is_assisted and not source and field_id.casefold().startswith("auto."):
+            # Defensive compatibility with very old auto-detected models that
+            # did not persist detection_source.
+            is_assisted = True
+        if is_assisted:
+            continue
+
+        label_key = _slug(str(field.get("label", "")))
+        if not label_key:
+            continue
+        section_key = _slug(str(field.get("section", "")))
+        authoritative.add((label_key, section_key))
+        authoritative_label_counts[label_key] = authoritative_label_counts.get(label_key, 0) + 1
+        if not section_key:
+            sectionless_labels.add(label_key)
+
+    if not authoritative:
+        return candidates
+
+    unique_sectionless_labels = {
+        label_key
+        for label_key in sectionless_labels
+        if authoritative_label_counts.get(label_key, 0) == 1
+        and label_key not in generic_label_keys
+        and len(label_key) >= 6
+    }
+
+    result: list[dict[str, Any]] = []
+    for candidate in candidates:
+        label_keys = {
+            key
+            for key in (
+                _slug(str(candidate.get("label", ""))),
+                _slug(str(candidate.get("semantic_label_suggestion", ""))),
+            )
+            if key
+        }
+        section_key = _slug(str(candidate.get("section", "")))
+
+        duplicate = any((label_key, section_key) in authoritative for label_key in label_keys)
+
+        # Native/explicit fields can be discovered before section inference has
+        # run.  A unique descriptive label is still strong enough to own the
+        # semantic field across that short metadata gap.
+        if not duplicate and label_keys:
+            duplicate = any(label_key in unique_sectionless_labels for label_key in label_keys)
+
+        if duplicate:
+            continue
+        result.append(candidate)
+    return result
 
 def apply_docx_field_candidates(
     source_docx: Path,
@@ -463,6 +664,9 @@ def candidate_field_definitions(
                     "type_source": "automatic_detection",
                     "detection_source": "automatic",
                     "detection_confidence": float(candidate.get("confidence", 0.0)),
+                    "detection_confidence_band": str(candidate.get("confidence_band", "")),
+                    "detection_evidence": deepcopy(candidate.get("evidence", []) or []),
+                    "detector_version": int(candidate.get("detector_version", 1) or 1),
                     "full_width": True,
                 }
             )
@@ -477,6 +681,9 @@ def candidate_field_definitions(
                 field.setdefault("type_source", "automatic_detection")
                 field["detection_source"] = "automatic"
                 field["detection_confidence"] = float(candidate.get("confidence", 0.0))
+                field["detection_confidence_band"] = str(candidate.get("confidence_band", ""))
+                field["detection_evidence"] = deepcopy(candidate.get("evidence", []) or [])
+                field["detector_version"] = int(candidate.get("detector_version", 1) or 1)
                 fields.append(field)
             continue
 
@@ -492,6 +699,9 @@ def candidate_field_definitions(
             "type_source": "automatic_detection",
             "detection_source": "automatic",
             "detection_confidence": float(candidate.get("confidence", 0.0)),
+            "detection_confidence_band": str(candidate.get("confidence_band", "")),
+            "detection_evidence": deepcopy(candidate.get("evidence", []) or []),
+            "detector_version": int(candidate.get("detector_version", 1) or 1),
         }
         options = compact_dropdown_options(candidate.get("options", []))
         if options:
@@ -499,6 +709,8 @@ def candidate_field_definitions(
         placeholder = str(candidate.get("placeholder", "")).strip()
         if placeholder:
             field["placeholder"] = placeholder
+        if "default_value" in candidate:
+            field["default_value"] = deepcopy(candidate.get("default_value"))
         if str(candidate.get("layout", "")) == "choice":
             group = str(candidate.get("layout_group", f"auto_choice_{field_id}"))
             field.update(
@@ -545,6 +757,7 @@ def _candidate(
     layout: str = "",
     layout_group: str = "",
     placeholder: str = "",
+    default_value: Any | None = None,
 ) -> dict[str, Any]:
     confidence = max(0.0, min(float(confidence), 1.0))
     if default_selected is None:
@@ -569,6 +782,8 @@ def _candidate(
         result["layout_group"] = layout_group
     if str(placeholder).strip():
         result["placeholder"] = str(placeholder).strip()
+    if default_value is not None:
+        result["default_value"] = deepcopy(default_value)
     return result
 
 
@@ -867,10 +1082,25 @@ def _detect_repeatable_tables(
                 }
             )
 
-        row_ordinals = sorted(
+        # Region ownership: once this physical table segment is classified as a
+        # repeatable table, its header and model rows belong to that high-level
+        # interpretation.  Lower-level detectors must not reinterpret header
+        # cells such as ``Unidade | Quantidade`` as ordinary label/value fields.
+        #
+        # Keep the ownership information explicit in the candidate as a second
+        # safety layer: post-processing can suppress overlapping interpretations
+        # even when a future detector runs before the reservation pass.
+        header_row = 0
+        owned_rows = [header_row, *data_rows]
+        data_ordinals = sorted(
             record.ordinal
             for record in table_records
             if record.row_index in data_rows
+        )
+        owned_ordinals = sorted(
+            record.ordinal
+            for record in table_records
+            if record.row_index in owned_rows
         )
         result.append(
             _candidate(
@@ -884,16 +1114,198 @@ def _detect_repeatable_tables(
                 location={
                     "kind": "repeatable_table",
                     "document_table_index": top_level_index[table_key],
+                    "table_index": first_record.table_index,
+                    "header_row": header_row,
                     "template_row": data_rows[0],
                     "data_rows": data_rows,
-                    "paragraphs": row_ordinals,
+                    "owned_rows": owned_rows,
+                    "data_paragraphs": data_ordinals,
+                    "owned_paragraphs": owned_ordinals,
+                    # ``paragraphs`` is the generic reservation contract used
+                    # by the rest of the detector. Include the complete owned
+                    # region, not only the rows that will receive tags.
+                    "paragraphs": owned_ordinals,
                 },
             )
         )
+        result[-1]["region_owner"] = "repeatable_table"
         result[-1]["columns"] = columns
         if section_title:
             result[-1]["section"] = section_title.rstrip(":").strip()
         result[-1]["selected"] = True
+
+    return result
+
+
+
+
+def _detect_editable_sheet_tables(
+    document: _Document,
+    records: list[_ParagraphRecord],
+    known_ids: set[str],
+    reserved_ordinals: set[int],
+) -> list[dict[str, Any]]:
+    """Detect a spreadsheet header that has no editable data row yet.
+
+    A common institutional Word pattern is a multi-column header followed by a
+    merged narrative row, for example::
+
+        Item | Quantidade | Unidade | Especificação | Valor
+        [ merged explanatory / prefilled paragraph                  ]
+
+    The header describes a real worksheet even though the source document does
+    not provide numbered model rows.  Earlier detector versions preserved the
+    visual header but offered no editable cells.  This detector creates a
+    repeatable-table interpretation with a *synthetic* model row inserted
+    between the header and the merged note when the approved suggestions are
+    applied.  All header columns are editable; the merged note remains available
+    to the normal prefilled-text detector as a separate full-width field.
+
+    The rule is intentionally narrow: at least three short header cells are
+    required and the immediately following row must be one merged/full-width
+    cell containing either substantial prose or an empty/fill area.  This keeps
+    ordinary label/value form grids out of the spreadsheet path.
+    """
+
+    top_level_index = {
+        id(table._tbl): index
+        for index, table in enumerate(document.tables)
+    }
+    by_table: dict[int, list[_ParagraphRecord]] = defaultdict(list)
+    table_refs: dict[int, Table] = {}
+    for record in records:
+        if record.story != "body" or record.table is None or record.table_index is None:
+            continue
+        table_key = id(record.table._tbl)
+        if table_key not in top_level_index:
+            continue
+        by_table[table_key].append(record)
+        table_refs[table_key] = record.table
+
+    result: list[dict[str, Any]] = []
+    for table_key, table_records in by_table.items():
+        table = table_refs[table_key]
+        if len(table.rows) < 2:
+            continue
+
+        for header_row_index in range(0, len(table.rows) - 1):
+            header_cells = _unique_row_cells(table.rows[header_row_index])
+            if len(header_cells) < 3:
+                continue
+            headers = [_clean_label(cell.text) for cell in header_cells]
+            if sum(_is_reasonable_label(value, maximum=100) for value in headers) < 3:
+                continue
+            if any(len(value) > 120 for value in headers if value):
+                continue
+
+            next_row_index = header_row_index + 1
+            next_cells = _unique_row_cells(table.rows[next_row_index])
+            if len(next_cells) != 1:
+                continue
+            merged_text = _normalize_space(next_cells[0].text)
+            if merged_text:
+                # Short merged rows are often totals, signatures, or section
+                # separators.  Long prose (or a visual fill area) is the sheet
+                # + merged-note pattern we want.
+                if len(merged_text) < 55 and not _looks_like_fill_area_text(merged_text):
+                    continue
+
+            header_records = [
+                record
+                for record in table_records
+                if record.row_index == header_row_index
+            ]
+            if not header_records:
+                continue
+            if any(
+                record.ordinal in reserved_ordinals
+                or _contains_authoritative_marker(record.paragraph)
+                for record in header_records
+            ):
+                continue
+
+            first_record = min(header_records, key=lambda item: item.ordinal)
+            section_title = _nearest_section_title(
+                first_record,
+                records,
+                preserve_number=True,
+            )
+            label = _clean_label(section_title) if section_title else "Itens da planilha"
+            field_id = _unique_field_id(_make_field_id(label), known_ids)
+
+            used_column_ids: set[str] = set()
+            columns: list[dict[str, Any]] = []
+            for column_index, header in enumerate(headers):
+                display = header or f"Coluna {column_index + 1}"
+                column_id = _slug(display) or f"coluna_{column_index + 1}"
+                base_column_id = column_id
+                suffix = 2
+                while column_id in used_column_ids:
+                    column_id = f"{base_column_id}_{suffix}"
+                    suffix += 1
+                used_column_ids.add(column_id)
+
+                header_key = _slug(display)
+                if header_key in {"item", "codigo", "código"}:
+                    # ``Item`` in user-authored spreadsheets is not assumed to
+                    # be an automatic row number; the user can edit it.
+                    column_type = "text"
+                elif any(token in header_key for token in ("descricao", "especificacao", "detalhamento")):
+                    column_type = "multiline"
+                elif header_key in {"valor", "preco", "preço", "custo", "montante"} or header_key.endswith("_valor"):
+                    column_type = "currency"
+                else:
+                    column_type = _repeatable_column_type(display, [])
+
+                columns.append(
+                    {
+                        "id": column_id,
+                        "label": display,
+                        "type": column_type,
+                        "required": False,
+                        "column_index": column_index,
+                    }
+                )
+
+            if len(columns) < 3:
+                continue
+
+            owned_ordinals = sorted(record.ordinal for record in header_records)
+            candidate = _candidate(
+                field_id=field_id,
+                label=label,
+                field_type="repeatable_table",
+                confidence=0.93,
+                source="repeatable_table",
+                preview=" | ".join(headers) + " — planilha editável detectada",
+                location={
+                    "kind": "repeatable_table",
+                    "document_table_index": top_level_index[table_key],
+                    "table_index": first_record.table_index,
+                    "header_row": header_row_index,
+                    # No source model row exists. _apply_repeatable_table will
+                    # create one immediately before the merged narrative row.
+                    "template_row": -1,
+                    "synthetic_template_row": True,
+                    "insert_before_row": next_row_index,
+                    "data_rows": [],
+                    "owned_rows": [header_row_index],
+                    "owned_paragraphs": owned_ordinals,
+                    "paragraphs": owned_ordinals,
+                },
+            )
+            candidate["region_owner"] = "repeatable_table"
+            candidate["sheet_generated_model_row"] = True
+            candidate["columns"] = columns
+            candidate["minimum_rows"] = 1
+            candidate["numbering_padding"] = 2
+            candidate["selected"] = True
+            if section_title:
+                candidate["section"] = section_title.rstrip(":").strip()
+            result.append(candidate)
+            # A single Word table should have one primary sheet header for this
+            # pattern.  Stop after the first convincing match.
+            break
 
     return result
 
@@ -1765,10 +2177,13 @@ def _detect_inline_placeholders(
     if not text or PLACEHOLDER_PATTERN.search(text):
         return []
 
-    matches = list(X_PLACEHOLDER_PATTERN.finditer(text))
+    matches = list(CURRENCY_PLACEHOLDER_PATTERN.finditer(text))
+    matches.extend(X_PLACEHOLDER_PATTERN.finditer(text))
     matches.extend(UNDERSCORE_PLACEHOLDER_PATTERN.finditer(text))
     matches.extend(ZERO_PHONE_PLACEHOLDER_PATTERN.finditer(text))
+    matches.extend(ZERO_CPF_PLACEHOLDER_PATTERN.finditer(text))
     matches.extend(SAMPLE_EMAIL_PLACEHOLDER_PATTERN.finditer(text))
+    matches.extend(LEGACY_BRACED_PLACEHOLDER_PATTERN.finditer(text))
     matches.sort(key=lambda match: (match.start(), -(match.end() - match.start())))
     # Some patterns intentionally overlap (for example an xxxxx@example style
     # e-mail also matches the generic X placeholder). Keep only the widest
@@ -1788,6 +2203,7 @@ def _detect_inline_placeholders(
     result: list[dict[str, Any]] = []
     previous_end = 0
     for match in matches:
+        is_legacy_braced = LEGACY_BRACED_PLACEHOLDER_PATTERN.fullmatch(match.group(0)) is not None
         local_context = text[previous_end : match.start()]
         # PDF-to-DOCX reconstruction frequently groups several visual PDF
         # lines into one Word paragraph separated by manual line breaks.
@@ -1801,19 +2217,47 @@ def _detect_inline_placeholders(
             label = _local_label(local_context)
         if not label:
             label = _context_label_for_record(record, records)
-        field_id = _unique_field_id(
-            _make_field_id(label or f"campo_{record.ordinal + 1}"),
-            known_ids,
-        )
+
+        if is_legacy_braced:
+            inner_token = str(match.group(1) or "").strip()
+            # A single-braced token is only safe to claim automatically when
+            # it has a strong field signal: a local/adjacent label, an inline
+            # label ending in ':', or an identifier-like dotted/underscored
+            # token.  This deliberately ignores prose such as
+            # ``Use chaves {assim} no exemplo``.
+            has_inline_colon = bool(re.search(r"[:：]\s*$", local_context))
+            token_is_structured = any(separator in inner_token for separator in (".", "_", "-"))
+            is_isolated_table_value = (
+                record.table is not None
+                and _normalize_space(text) == _normalize_space(match.group(0))
+                and bool(label)
+            )
+            if not (label and (has_inline_colon or is_isolated_table_value)) and not token_is_structured:
+                previous_end = match.end()
+                continue
+
+        if not label and CURRENCY_PLACEHOLDER_PATTERN.fullmatch(match.group(0)):
+            # A bare monetary mask is semantically stronger than an anonymous
+            # ``Campo XX`` suggestion. Parenthetical text such as
+            # ``(valor por extenso)`` remains untouched as contextual text.
+            label = "Valor"
+        if is_legacy_braced:
+            inner_token = str(match.group(1) or "").strip()
+            field_id_seed = _legacy_placeholder_field_id(inner_token)
+            field_id = _unique_field_id(field_id_seed, known_ids)
+        else:
+            field_id = _unique_field_id(
+                _make_field_id(label or f"campo_{record.ordinal + 1}"),
+                known_ids,
+            )
         known_ids.add(field_id)
         field_type = _detected_placeholder_type(label or field_id, match.group(0))
-        result.append(
-            _candidate(
+        candidate = _candidate(
                 field_id=field_id,
                 label=label or _humanize_id(field_id),
                 field_type=field_type,
-                confidence=0.91 if label else 0.74,
-                source="inline_placeholder",
+                confidence=(0.98 if label else 0.82) if is_legacy_braced else (0.91 if label else 0.74),
+                source="legacy_placeholder" if is_legacy_braced else "inline_placeholder",
                 preview=match.group(0),
                 location={
                     "kind": "text_span",
@@ -1823,7 +2267,10 @@ def _detect_inline_placeholders(
                     "original": match.group(0),
                 },
             )
-        )
+        if is_legacy_braced:
+            candidate["legacy_marker"] = match.group(0)
+            candidate["legacy_marker_id"] = str(match.group(1) or "").strip()
+        result.append(candidate)
         previous_end = match.end()
     return result
 
@@ -1913,6 +2360,8 @@ def _detect_labeled_sample_value(
         or X_PLACEHOLDER_PATTERN.search(value)
         or UNDERSCORE_PLACEHOLDER_PATTERN.search(value)
         or ZERO_PHONE_PLACEHOLDER_PATTERN.search(value)
+        or ZERO_CPF_PLACEHOLDER_PATTERN.search(value)
+        or CURRENCY_PLACEHOLDER_PATTERN.search(value)
         or SAMPLE_EMAIL_PLACEHOLDER_PATTERN.search(value)
     ):
         return None
@@ -1975,6 +2424,127 @@ def _detect_labeled_instruction(
     )
 
 
+_PREFILLED_TEXT_SECTION_PATTERN = re.compile(
+    r"\b(?:justificativa|fundamenta[cç][aã]o|descri[cç][aã]o|detalhamento|"
+    r"necessidade|motiva[cç][aã]o|objeto|especifica[cç][aã]o|observa[cç][aã]o|"
+    r"provid[eê]ncia|parecer|an[aá]lise|considera[cç][oõ]es|informa[cç][oõ]es)\b",
+    re.IGNORECASE,
+)
+_PREFILLED_TEXT_STATIC_PREFIX_PATTERN = re.compile(
+    r"^\s*(?:texto\s+fixo|nota|aten[cç][aã]o|aviso|instru[cç][aã]o|"
+    r"orienta[cç][aã]o|observa[cç][aã]o\s+fixa|rodap[eé])\s*[:\-]",
+    re.IGNORECASE,
+)
+
+
+def _detect_prefilled_written_text(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    known_ids: set[str],
+) -> dict[str, Any] | None:
+    """Detect existing prose that likely represents an editable answer.
+
+    Some institutional templates are distributed *already filled* with a
+    previous/requester-authored justification instead of a visual blank.  A
+    placeholder-only detector necessarily treats that prose as fixed text.
+    Detector V2.9 recognizes the strongest structural versions of this pattern
+    and converts the prose into a multiline field whose initial value is the
+    original text.
+
+    The rule is intentionally conservative.  Long prose is not enough on its
+    own: it must live under a numbered response-like section or inside a
+    full-width/merged table response row.  Explicitly fixed notes and ordinary
+    headers remain static.
+    """
+
+    raw_text = str(record.text or "")
+    text = _normalize_space(raw_text)
+    if (
+        len(text) < 45
+        or len(text) > 2200
+        or record.story != "body"
+        or _contains_authoritative_marker(record.paragraph)
+        or _looks_like_section_label(text)
+        or _PREFILLED_TEXT_STATIC_PREFIX_PATTERN.match(text)
+        or CHECKBOX_TOKEN_PATTERN.search(text)
+        or GENERIC_DROPDOWN_PATTERN.fullmatch(text)
+        or _is_pure_fill_area_text(text)
+    ):
+        return None
+
+    # A paragraph made mostly of a short heading followed by punctuation is
+    # not a written response, even when Word wrapped it visually.
+    if len(text.split()) < 7 or sum(ch.isalpha() for ch in text) < 24:
+        return None
+
+    section = _clean_label(semantic_section(record))
+    section_is_response = bool(section and _PREFILLED_TEXT_SECTION_PATTERN.search(section))
+
+    # A full-width/merged table row is another common way users store a written
+    # answer below a heading or below a table header.  Determine this from
+    # unique XML cells rather than the apparent ``row.cells`` count because
+    # python-docx repeats references for merged cells.
+    full_width_response_row = False
+    table_context_label = ""
+    if record.table is not None and record.row_index is not None and record.cell is not None:
+        try:
+            row = record.table.rows[int(record.row_index)]
+            unique_cells = _unique_row_cells(row)
+            current_key = id(record.cell._tc)
+            if len(unique_cells) == 1 and id(unique_cells[0]._tc) == current_key:
+                # Require meaningful structure above the prose: either a
+                # numbered section already in scope or a preceding header row
+                # with at least two short cells. This prevents random one-cell
+                # narrative tables from becoming editable by accident.
+                has_header_row = False
+                for previous_index in range(int(record.row_index) - 1, -1, -1):
+                    previous_cells = _unique_row_cells(record.table.rows[previous_index])
+                    values = [_normalize_space(cell.text) for cell in previous_cells]
+                    values = [value for value in values if value]
+                    if not values:
+                        continue
+                    if len(values) >= 2 and all(len(value) <= 90 for value in values):
+                        has_header_row = True
+                        break
+                    if len(values) == 1 and _looks_like_section_label(values[0]):
+                        table_context_label = _clean_label(values[0])
+                        break
+                full_width_response_row = bool(section or has_header_row or table_context_label)
+        except (IndexError, AttributeError, TypeError, ValueError):
+            full_width_response_row = False
+
+    if not section_is_response and not full_width_response_row:
+        return None
+
+    label = section or table_context_label or _context_label_for_record(record, records)
+    label = _clean_label(label)
+    if not _is_reasonable_label(label, maximum=180):
+        label = "Texto editável"
+
+    # Full-width narrative rows are a little more ambiguous than explicit
+    # Justificativa/Descrição sections, so keep their confidence lower.  Both
+    # remain reviewable in the assisted-detection screen.
+    confidence = 0.90 if section_is_response else 0.82
+    field_id = _unique_field_id(_make_field_id(label), known_ids)
+    return _candidate(
+        field_id=field_id,
+        label=label,
+        field_type="multiline",
+        confidence=confidence,
+        source="prefilled_text",
+        preview=text,
+        location={
+            "kind": "paragraph",
+            "paragraph": record.ordinal,
+            "table_index": record.table_index,
+            "row_index": record.row_index,
+            "cell_index": record.cell_index,
+            "prefilled_text": True,
+        },
+        default_value=raw_text.strip(),
+    )
+
+
 def _detect_adjacent_sample_value(
     record: _ParagraphRecord,
     records: list[_ParagraphRecord],
@@ -1993,7 +2563,7 @@ def _detect_adjacent_sample_value(
 
     text = _normalize_space(record.text)
     if (
-        not text.endswith(":")
+        not text
         or record.cell is None
         or record.table is None
         or record.row_index is None
@@ -2002,6 +2572,12 @@ def _detect_adjacent_sample_value(
     ):
         return None
 
+    # Do not require a trailing colon here. Real Word forms frequently use
+    # alternating cells such as ``E-mail | exemplo@orgao.gov.br | Telefone |
+    # (83) 99999-9999``. The physical adjacency is the delimiter. Keeping the
+    # semantic whitelist below prevents ordinary institutional prose from
+    # being converted merely because it sits next to another cell.
+    explicit_label = text.endswith((":", "："))
     label = _clean_label(text)
     if not _is_reasonable_label(label, maximum=100):
         return None
@@ -2064,7 +2640,7 @@ def _detect_adjacent_sample_value(
         field_id=field_id,
         label=label,
         field_type=suggest_field_type(label),
-        confidence=0.88,
+        confidence=0.88 if explicit_label else 0.85,
         source="sample_value",
         preview=value,
         location={
@@ -2210,6 +2786,121 @@ def _detect_empty_cells(
     return result
 
 
+def _detect_consistency_repair_fields(
+    records: list[_ParagraphRecord],
+    candidates: list[dict[str, Any]],
+    known_ids: set[str],
+) -> list[dict[str, Any]]:
+    """Suggest a missing sibling field when the surrounding table is consistent.
+
+    This is intentionally a *repair* pass rather than another primary heuristic.
+    It only fires when at least two peer rows already establish that the same
+    visual column is editable. This helps arbitrary user-made matrices where one
+    row uses a slightly different blank representation without requiring a fixed
+    document template.
+    """
+
+    by_ordinal = {record.ordinal: record for record in records}
+    occupied_cells: set[tuple[int, int, int]] = set()
+    column_rows: dict[tuple[int, int], set[int]] = defaultdict(set)
+    repeatable_tables: set[int] = set()
+
+    for candidate in candidates:
+        location = candidate.get("location", {}) or {}
+        if str(candidate.get("source", "")) == "repeatable_table":
+            try:
+                repeatable_tables.add(int(location.get("table_index", -1)))
+            except (TypeError, ValueError):
+                pass
+        ordinals: list[int] = []
+        if "paragraph" in location:
+            try:
+                ordinals.append(int(location.get("paragraph", -1)))
+            except (TypeError, ValueError):
+                pass
+        for value in location.get("paragraphs", []) or []:
+            try:
+                ordinals.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        for ordinal in ordinals:
+            record = by_ordinal.get(ordinal)
+            if (
+                record is None
+                or record.table_index is None
+                or record.row_index is None
+                or record.cell_index is None
+            ):
+                continue
+            key = (int(record.table_index), int(record.row_index), int(record.cell_index))
+            occupied_cells.add(key)
+            column_rows[(key[0], key[2])].add(key[1])
+
+    established_columns = {
+        key for key, rows in column_rows.items()
+        if len(rows) >= 2 and key[0] not in repeatable_tables
+    }
+    if not established_columns:
+        return []
+
+    by_cell: dict[tuple[int, int, int], list[_ParagraphRecord]] = defaultdict(list)
+    for record in records:
+        if (
+            record.table_index is None
+            or record.row_index is None
+            or record.cell_index is None
+        ):
+            continue
+        by_cell[(int(record.table_index), int(record.row_index), int(record.cell_index))].append(record)
+
+    result: list[dict[str, Any]] = []
+    for (table_index, row_index, cell_index), cell_records in by_cell.items():
+        if (table_index, cell_index) not in established_columns:
+            continue
+        if (table_index, row_index, cell_index) in occupied_cells:
+            continue
+        if any(_contains_authoritative_marker(record.paragraph) for record in cell_records):
+            continue
+
+        texts = [record.text or "" for record in cell_records]
+        combined = _normalize_space(" ".join(texts))
+        if combined and not all(_is_pure_fill_area_text(text) for text in texts):
+            continue
+
+        target = next((record for record in cell_records if record.paragraph is not None), None)
+        if target is None:
+            continue
+        label, label_source, label_confidence = semantic_label(target)
+        if not label or label_confidence < 0.74 or label_source == "section_fallback":
+            continue
+
+        field_id = _unique_field_id(_make_field_id(label), known_ids)
+        known_ids.add(field_id)
+        preview = combined or "área vazia"
+        field_type = _detected_placeholder_type(label, combined)
+        result.append(
+            _candidate(
+                field_id=field_id,
+                label=label,
+                field_type=field_type,
+                confidence=0.68,
+                source="consistency_repair",
+                preview=preview,
+                location={
+                    "kind": "empty_cell" if not combined else "paragraph",
+                    "paragraph": target.ordinal,
+                    "repair_basis": "peer_column",
+                    "table_index": table_index,
+                    "row_index": row_index,
+                    "cell_index": cell_index,
+                },
+                default_selected=False,
+            )
+        )
+
+    return result
+
+
 def _unique_row_cells(row) -> list[_Cell]:
     result: list[_Cell] = []
     seen: set[int] = set()
@@ -2239,11 +2930,13 @@ def _is_pure_fill_area_text(value: str) -> bool:
         return True
     if ZERO_PHONE_PLACEHOLDER_PATTERN.fullmatch(text):
         return True
+    if ZERO_CPF_PLACEHOLDER_PATTERN.fullmatch(text):
+        return True
+    if CURRENCY_PLACEHOLDER_PATTERN.fullmatch(text):
+        return True
     if SAMPLE_EMAIL_PLACEHOLDER_PATTERN.fullmatch(text):
         return True
     if GENERIC_DROPDOWN_PATTERN.fullmatch(text):
-        return True
-    if re.fullmatch(r"R\$\s*_{2,}(?:\s*[.,]\s*_{2,})*", text, re.IGNORECASE):
         return True
     if CHECKBOX_TOKEN_PATTERN.match(text) is not None:
         return True
@@ -2259,6 +2952,8 @@ def _looks_like_fill_area_text(value: str) -> bool:
         or X_PLACEHOLDER_PATTERN.search(text)
         or UNDERSCORE_PLACEHOLDER_PATTERN.search(text)
         or ZERO_PHONE_PLACEHOLDER_PATTERN.search(text)
+        or ZERO_CPF_PLACEHOLDER_PATTERN.search(text)
+        or CURRENCY_PLACEHOLDER_PATTERN.search(text)
         or SAMPLE_EMAIL_PLACEHOLDER_PATTERN.search(text)
         or GENERIC_DROPDOWN_PATTERN.search(text)
         or CHECKBOX_TOKEN_PATTERN.search(text)
@@ -2271,6 +2966,9 @@ def _nearest_section_title(
     *,
     preserve_number: bool = False,
 ) -> str:
+    understood = semantic_section(record)
+    if understood:
+        return understood.rstrip(":").strip() if preserve_number else _clean_label(understood)
     for previous in reversed(records[: record.ordinal]):
         value = _normalize_space(previous.text)
         if not value:
@@ -2291,6 +2989,10 @@ def _repeatable_column_type(header: str, values: list[str]) -> str:
             return "date"
         if ZERO_PHONE_PLACEHOLDER_PATTERN.fullmatch(compact):
             return "phone"
+        if ZERO_CPF_PLACEHOLDER_PATTERN.fullmatch(compact):
+            return "cpf"
+        if CURRENCY_PLACEHOLDER_PATTERN.fullmatch(compact):
+            return "currency"
         if SAMPLE_EMAIL_PLACEHOLDER_PATTERN.fullmatch(compact):
             return "email"
     return suggest_field_type(header)
@@ -2315,6 +3017,10 @@ def _detected_placeholder_type(label: str, preview: str) -> str:
         return "date"
     if ZERO_PHONE_PLACEHOLDER_PATTERN.fullmatch(compact):
         return "phone"
+    if ZERO_CPF_PLACEHOLDER_PATTERN.fullmatch(compact):
+        return "cpf"
+    if CURRENCY_PLACEHOLDER_PATTERN.fullmatch(compact):
+        return "currency"
     if SAMPLE_EMAIL_PLACEHOLDER_PATTERN.fullmatch(compact):
         return "email"
     return suggest_field_type(label)
@@ -2389,6 +3095,10 @@ def _context_label_for_record(
     record: _ParagraphRecord,
     records: list[_ParagraphRecord],
 ) -> str:
+    understood_label, understood_source, understood_confidence = semantic_label(record)
+    if understood_label and understood_confidence >= 0.72 and understood_source != "section_fallback":
+        return _clean_label(understood_label)
+
     text = record.text or ""
     if ":" in text:
         before = text.split(":", 1)[0]
@@ -2555,14 +3265,24 @@ def _apply_repeatable_table(
         data_rows = sorted(
             {int(value) for value in location.get("data_rows", []) or []}
         )
+        insert_before_row = int(location.get("insert_before_row", -1))
     except (TypeError, ValueError):
         raise AutomaticDetectionError("Tabela repetível detectada com posição inválida.")
 
     if table_index < 0 or table_index >= len(document.tables):
         raise AutomaticDetectionError("A tabela repetível detectada não foi encontrada no DOCX.")
     table = document.tables[table_index]
-    if template_row_index < 0 or template_row_index >= len(table.rows):
+    synthetic_template = bool(location.get("synthetic_template_row", False))
+    if not synthetic_template and (
+        template_row_index < 0 or template_row_index >= len(table.rows)
+    ):
         raise AutomaticDetectionError("A linha modelo da tabela repetível não foi encontrada.")
+    if synthetic_template and (
+        insert_before_row < 0 or insert_before_row >= len(table.rows)
+    ):
+        raise AutomaticDetectionError(
+            "A posição da nova linha editável da planilha não foi encontrada."
+        )
 
     field_id = str(candidate.get("field_id", "")).strip()
     columns = [
@@ -2573,7 +3293,17 @@ def _apply_repeatable_table(
     if not field_id or len(columns) < 2:
         raise AutomaticDetectionError("A tabela repetível detectada está incompleta.")
 
-    row = table.rows[template_row_index]
+    if synthetic_template:
+        # ``python-docx`` can append a correctly sized row using the table grid.
+        # Move that XML row immediately before the merged narrative/note row so
+        # the original document keeps its visual order: header -> editable rows
+        # -> note.  Using a fresh row avoids copying header shading/bold styles.
+        row = table.add_row()
+        target_row = table.rows[insert_before_row]
+        target_row._tr.addprevious(row._tr)
+    else:
+        row = table.rows[template_row_index]
+
     cells = _unique_row_cells(row)
     repeat_marker_written = False
     for column in columns:
@@ -2624,11 +3354,13 @@ def _apply_repeatable_table(
         paragraph.insert_paragraph_before(f"{{{{repeat:{field_id}}}}}")
 
     # Keep only the first detected data row as the Word model row. The DOCX
-    # engine duplicates it according to the rows entered by the client.
-    for row_index in sorted(data_rows, reverse=True):
-        if row_index == template_row_index or row_index >= len(table.rows):
-            continue
-        table._tbl.remove(table.rows[row_index]._tr)
+    # engine duplicates it according to the rows entered by the client. A
+    # synthetic sheet has no source data rows to remove.
+    if not synthetic_template:
+        for row_index in sorted(data_rows, reverse=True):
+            if row_index == template_row_index or row_index >= len(table.rows):
+                continue
+            table._tbl.remove(table.rows[row_index]._tr)
 
 
 def _replace_cell_with_text(cell: _Cell, text: str) -> None:
@@ -3016,6 +3748,24 @@ def _instruction_label(text: str) -> str:
     if len(cleaned) > 76:
         cleaned = cleaned[:73].rstrip(" ,;:-") + "…"
     return cleaned[:1].upper() + cleaned[1:] if cleaned else "Campo a preencher"
+
+
+def _legacy_placeholder_field_id(token: str) -> str:
+    """Return a stable valid assisted ID for a legacy ``{token}`` marker."""
+
+    normalized = unicodedata.normalize("NFKD", str(token or ""))
+    normalized = "".join(
+        character
+        for character in normalized
+        if not unicodedata.combining(character)
+    ).casefold()
+    normalized = re.sub(r"[^a-z0-9_.-]+", "_", normalized)
+    normalized = re.sub(r"_+", "_", normalized).strip("._-")
+    if not normalized:
+        normalized = "campo"
+    if not normalized[0].isalpha():
+        normalized = "campo_" + normalized
+    return f"auto.{normalized[:72]}"
 
 
 def _make_field_id(label: str) -> str:

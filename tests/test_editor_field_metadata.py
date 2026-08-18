@@ -76,3 +76,69 @@ def test_repository_keeps_detection_metadata_when_normalizing(tmp_path):
     assert fields[0]["detection_confidence"] == 0.91
     assert fields[0]["choice_group_label"] == "Pergunta local?"
     assert fields[0]["example"] == "Exemplo"
+
+
+def test_prefilled_default_value_survives_editor_and_repository_normalization(tmp_path):
+    from app.template_repository import TemplateRepository
+
+    original = {
+        "id": "auto.justificativa",
+        "label": "Justificativa",
+        "type": "multiline",
+        "default_value": "Texto já existente no documento.",
+        "detection_source": "automatic",
+    }
+    kept = preserved_editor_field_metadata(original)
+    assert kept["default_value"] == "Texto já existente no documento."
+
+    repository = TemplateRepository(tmp_path / "templates")
+    fields = repository._normalize_fields([original], strict=True)
+    assert fields[0]["default_value"] == "Texto já existente no documento."
+
+
+def test_context_autotagged_word_control_is_treated_as_assisted_detection() -> None:
+    from app.field_utils import is_assisted_detection_field
+
+    assert is_assisted_detection_field(
+        {
+            "id": "prioridade",
+            "type": "dropdown",
+            "auto_tagged": True,
+            "id_source": "context_resolver",
+        }
+    ) is True
+
+
+def test_context_resolver_metadata_survives_editor_and_repository(tmp_path) -> None:
+    from app.template_repository import TemplateRepository
+
+    original = {
+        "id": "prioridade",
+        "label": "Prioridade",
+        "type": "dropdown",
+        "options": ["Normal", "Alta"],
+        "auto_tagged": True,
+        "id_source": "context_resolver",
+        "profile_identity": "dados_da_demanda.prioridade:dropdown",
+        "context_resolver_version": 3,
+        "context_confidence": 0.98,
+        "context_evidence": {
+            "label": {
+                "value": "Prioridade",
+                "source": "same_paragraph_before",
+                "confidence": 0.99,
+            }
+        },
+    }
+
+    kept = preserved_editor_field_metadata(original)
+    assert kept["auto_tagged"] is True
+    assert kept["id_source"] == "context_resolver"
+    assert kept["profile_identity"] == "dados_da_demanda.prioridade:dropdown"
+    assert kept["context_resolver_version"] == 3
+
+    repository = TemplateRepository(tmp_path / "templates")
+    normalized = repository._normalize_fields([original], strict=True)[0]
+    assert normalized["auto_tagged"] is True
+    assert normalized["profile_identity"] == "dados_da_demanda.prioridade:dropdown"
+    assert normalized["context_evidence"]["label"]["source"] == "same_paragraph_before"

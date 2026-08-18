@@ -9,11 +9,12 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-from app.field_utils import dropdown_option_values
+from app.field_utils import FIELD_ID_TOKEN_PATTERN, dropdown_option_values
 from app.word_control_utils import (
     classify_native_control,
     get_control_identifier,
     iter_unique_story_roots,
+    normalize_control_id,
     read_dropdown_options,
 )
 
@@ -22,7 +23,7 @@ PLACEHOLDER_PATTERN = re.compile(
     r"\{\{([^{}]+)\}\}"
 )
 REPEAT_MARKER_PATTERN = re.compile(
-    r"\{\{\s*repeat:([A-Za-z][A-Za-z0-9_.-]*)\s*\}\}",
+    rf"\{{\{{\s*repeat:({FIELD_ID_TOKEN_PATTERN})\s*\}}\}}",
     re.IGNORECASE,
 )
 REPLACEMENT_TOKEN_PATTERN = re.compile(
@@ -137,7 +138,7 @@ def _expand_repeatable_rows(
             REPEAT_MARKER_PATTERN.finditer(row_text)
         )
         table_ids = {
-            match.group(1).strip()
+            normalize_control_id(match.group(1).strip())
             for match in repeat_matches
         }
         if len(table_ids) != 1:
@@ -616,7 +617,7 @@ def _replace_placeholder(
         return ""
 
     if raw_value.lower().startswith("checkbox:"):
-        field_id = raw_value.split(":", 1)[1].strip()
+        field_id = normalize_control_id(raw_value.split(":", 1)[1].strip())
 
         if field_id not in values:
             return match.group(0)
@@ -628,7 +629,7 @@ def _replace_placeholder(
         )
 
     if raw_value.lower().startswith("date:"):
-        field_id = raw_value.split(":", 1)[1].strip()
+        field_id = normalize_control_id(raw_value.split(":", 1)[1].strip())
 
         if field_id not in values:
             return match.group(0)
@@ -643,7 +644,7 @@ def _replace_placeholder(
             for part in definition.split("|")
         ]
 
-        field_id = parts[0] if parts else ""
+        field_id = normalize_control_id(parts[0]) if parts else ""
 
         options = dropdown_option_values(parts[1:])
 
@@ -656,7 +657,7 @@ def _replace_placeholder(
 
         return selected_value
 
-    field_id = raw_value
+    field_id = normalize_control_id(raw_value)
 
     if field_id not in values:
         return match.group(0)

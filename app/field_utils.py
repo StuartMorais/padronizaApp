@@ -7,6 +7,14 @@ from typing import Any
 
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
+# Field identifiers are user-facing metadata and may legitimately contain
+# accented letters in Portuguese (for example ``descrição.demanda``).  Python
+# regular expressions are Unicode-aware by default, so ``\w`` accepts letters
+# and digits from Unicode while the first-character guard excludes digits and
+# underscore. Dots and hyphens remain supported for hierarchical IDs.
+FIELD_ID_TOKEN_PATTERN = r"[^\W\d_][\w.-]*"
+VALID_FIELD_ID = re.compile(rf"^{FIELD_ID_TOKEN_PATTERN}$", re.UNICODE)
+
 
 FIELD_TYPE_ALIASES = {
     "string": "text",
@@ -68,6 +76,10 @@ def is_assisted_detection_field(field: dict[str, Any] | None) -> bool:
         return False
     if str(field.get("detection_source", "")).strip().casefold() == "automatic":
         return True
+    if bool(field.get("auto_tagged", False)):
+        return True
+    if str(field.get("id_source", "")).strip().casefold() == "context_resolver":
+        return True
     return str(field.get("id", "")).strip().casefold().startswith("auto.")
 
 
@@ -83,6 +95,7 @@ EDITOR_PRESERVED_METADATA_KEYS = (
     "layout_static_rows",
     "layout_row_static_cells",
     "layout_row_header_label",
+    "layout_presentation",
     "layout_position_locked",
     "label_source",
     "section_source",
@@ -90,12 +103,21 @@ EDITOR_PRESERVED_METADATA_KEYS = (
     "validation_hint",
     "format_hint",
     "placeholder",
+    "default_value",
     "example",
     "detection_source",
     "detection_confidence",
     "choice_group_label",
     "compact_choice",
     "choice_required",
+    "context_evidence",
+    "context_confidence",
+    "context_resolver_version",
+    "id_source",
+    "auto_tagged",
+    "profile_identity",
+    "context_needs_review",
+    "context_review_reason",
 )
 
 

@@ -1278,6 +1278,30 @@ QLabel#formDocumentGridStaticLabel {
     background: transparent;
     border: none;
 }
+QFrame#formDocumentSheet {
+    background: transparent;
+    border: none;
+}
+QFrame#formDocumentSheetStatic,
+QFrame#formDocumentSheetCell {
+    background-color: #ffffff;
+    border: 1px solid #b8c3ce;
+    border-radius: 0px;
+}
+QFrame#formDocumentSheetStatic {
+    padding: 0px;
+}
+QLabel#formDocumentSheetHeaderLabel {
+    color: #263542;
+    background: transparent;
+    border: none;
+    font-weight: 700;
+}
+QFrame#formDocumentSheetCell QFrame#fieldCard {
+    background: transparent;
+    border: none;
+}
+
 QLabel#formDocumentGridStaticValue {
     color: #536575;
     background: transparent;

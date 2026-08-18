@@ -33,7 +33,7 @@ from app.field_utils import (
     validate_field,
     validation_hint,
 )
-from app.layout_inference import layout_blocks
+from app.layout_inference import group_form_grid_static_rows, layout_blocks
 from app.widgets.context_help import HelpIconButton
 from app.widgets.exclusive_choice import ChoiceOptionCheckBox, ExclusiveChoiceWidget
 from app.widgets.readable_checkbox import ReadableCheckBox
@@ -180,8 +180,23 @@ class DocumentForm(QWidget):
         required_note.setWordWrap(True)
         self.content_layout.addWidget(required_note)
         self.content_layout.addStretch()
-        self._refresh_visibility()
-        self._update_progress()
+
+        # Some assisted-detection fields represent text that already exists in
+        # the source document (for example a previously written justification).
+        # These are real starting values, not placeholders: show the source text
+        # inside the editor so the user can keep or edit it before generation.
+        default_values = {
+            str(field.get("id", "")).strip(): field.get("default_value")
+            for field in self.fields
+            if str(field.get("id", "")).strip()
+            and "default_value" in field
+            and field.get("default_value") is not None
+        }
+        if default_values:
+            self.set_values(default_values, emit_signal=False)
+        else:
+            self._refresh_visibility()
+            self._update_progress()
 
     def _create_progress_card(self) -> None:
         card = QFrame()
@@ -486,6 +501,14 @@ class DocumentForm(QWidget):
             + [1]
         )
         grid_columns = max(1, min(grid_columns, 12))
+        sheet_mode = any(
+            str(field.get("layout_presentation", "")).strip().casefold() == "sheet"
+            for field in fields
+        )
+        if sheet_mode:
+            grid_frame.setObjectName("formDocumentSheet")
+            grid.setHorizontalSpacing(0)
+            grid.setVerticalSpacing(0)
         for column in range(grid_columns):
             grid.setColumnStretch(column, 1)
 
@@ -503,15 +526,20 @@ class DocumentForm(QWidget):
                 row_static_cells.setdefault(row_key, []).append(cell)
 
         items: list[tuple[int, int, str, Any]] = []
-        for sequence, row in enumerate(block_definition.get("static_rows", []) or []):
-            if not isinstance(row, dict):
-                continue
+        # Static cells from one physical Word row must stay on one visual row.
+        # Older metadata stored each static cell independently, which made a
+        # four-cell row render as a diagonal staircase. Group by explicit
+        # ``layout_row`` when available and fall back to ``layout_order`` so
+        # existing automatically-created models are repaired too.
+        for static_row in group_form_grid_static_rows(
+            block_definition.get("static_rows", []) or []
+        ):
             items.append(
                 (
-                    self._safe_int(row.get("layout_order"), sequence),
+                    self._safe_int(static_row.get("layout_order"), 0),
                     0,
-                    "static",
-                    row,
+                    "static_row",
+                    list(static_row.get("cells", []) or []),
                 )
             )
         for sequence, (row_key, row_fields) in enumerate(field_rows.items()):
@@ -525,22 +553,29 @@ class DocumentForm(QWidget):
         visual_row = 0
         added = 0
         for _order, _kind_order, item_type, payload in items:
-            if item_type == "static":
-                text = str(payload.get("text", "")).strip()
-                if not text:
-                    continue
-                start = self._safe_int(payload.get("layout_column_index"), 0)
-                span = self._safe_int(payload.get("layout_column_span"), grid_columns)
-                start = max(0, min(start, grid_columns - 1))
-                span = max(1, min(span, grid_columns - start))
-                grid.addWidget(
-                    self._create_form_grid_static(text),
-                    visual_row,
-                    start,
-                    1,
-                    span,
-                )
-                visual_row += 1
+            if item_type == "static_row":
+                row_added = False
+                for static_cell in sorted(
+                    payload,
+                    key=lambda item: self._safe_int(item.get("layout_column_index"), 0),
+                ):
+                    text = str(static_cell.get("text", "")).strip()
+                    if not text:
+                        continue
+                    start = self._safe_int(static_cell.get("layout_column_index"), 0)
+                    span = self._safe_int(static_cell.get("layout_column_span"), grid_columns)
+                    start = max(0, min(start, grid_columns - 1))
+                    span = max(1, min(span, grid_columns - start))
+                    grid.addWidget(
+                        self._create_form_grid_static(text, sheet=sheet_mode),
+                        visual_row,
+                        start,
+                        1,
+                        span,
+                    )
+                    row_added = True
+                if row_added:
+                    visual_row += 1
                 continue
 
             row_key, row_payload = payload
@@ -596,10 +631,12 @@ class DocumentForm(QWidget):
                     continue
 
                 cell_container = QFrame()
-                cell_container.setObjectName("formDocumentGridCell")
+                cell_container.setObjectName(
+                    "formDocumentSheetCell" if sheet_mode else "formDocumentGridCell"
+                )
                 cell_layout = QVBoxLayout(cell_container)
                 cell_layout.setContentsMargins(0, 0, 0, 0)
-                cell_layout.setSpacing(8)
+                cell_layout.setSpacing(0 if sheet_mode else 8)
                 cell_added = 0
 
                 for field in cell_fields:
@@ -616,6 +653,7 @@ class DocumentForm(QWidget):
                         widget,
                         field_type,
                         field,
+                        suppress_label=sheet_mode,
                     )
                     self.field_containers[field_id] = card
                     cell_layout.addWidget(card)
@@ -735,9 +773,11 @@ class DocumentForm(QWidget):
         return cell, added
 
     @staticmethod
-    def _create_form_grid_static(text: str) -> QFrame:
+    def _create_form_grid_static(text: str, *, sheet: bool = False) -> QFrame:
         frame = QFrame()
-        frame.setObjectName("formDocumentGridStatic")
+        frame.setObjectName(
+            "formDocumentSheetStatic" if sheet else "formDocumentGridStatic"
+        )
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(11, 8, 11, 8)
         layout.setSpacing(2)
@@ -757,7 +797,9 @@ class DocumentForm(QWidget):
             layout.addWidget(label)
 
         value = QLabel(value_text)
-        value.setObjectName("formDocumentGridStaticValue")
+        value.setObjectName(
+            "formDocumentSheetHeaderLabel" if sheet else "formDocumentGridStaticValue"
+        )
         value.setWordWrap(True)
         value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(value)
@@ -1392,7 +1434,10 @@ class DocumentForm(QWidget):
             checkbox.setText(label)
             return checkbox
         if field_type == "dropdown":
-            if force_choice or str(field.get("layout", "")).casefold() == "choice":
+            single_choice = str(field.get("selection", "")).casefold() in {
+                "single", "exclusive", "radio"
+            }
+            if force_choice or single_choice or str(field.get("layout", "")).casefold() == "choice":
                 return ExclusiveChoiceWidget(
                     field.get("options", []),
                     required=bool(field.get("required", False) or field.get("choice_required", False)),
@@ -1421,6 +1466,8 @@ class DocumentForm(QWidget):
         widget: QWidget,
         field_type: str,
         field: dict[str, Any],
+        *,
+        suppress_label: bool = False,
     ) -> QFrame:
         card = QFrame()
         card.setObjectName("fieldCard")
@@ -1431,19 +1478,30 @@ class DocumentForm(QWidget):
         help_title = str(field.get("help_title", label.rstrip(" *"))).strip() or label.rstrip(" *")
 
         if field_type != "checkbox":
-            label_row = QHBoxLayout()
-            label_row.setContentsMargins(0, 0, 0, 0)
-            label_row.setSpacing(6)
-            label_widget = QLabel(label)
-            label_widget.setObjectName("fieldLabel")
-            label_widget.setWordWrap(True)
-            label_row.addWidget(label_widget, 1)
-            if help_text:
-                label_row.addWidget(HelpIconButton(help_title, f"<p>{escape(help_text)}</p>"))
             correction = self._create_correction_button(field_id, field)
-            if correction is not None:
-                label_row.addWidget(correction)
-            layout.addLayout(label_row)
+            if not suppress_label:
+                label_row = QHBoxLayout()
+                label_row.setContentsMargins(0, 0, 0, 0)
+                label_row.setSpacing(6)
+                label_widget = QLabel(label)
+                label_widget.setObjectName("fieldLabel")
+                label_widget.setWordWrap(True)
+                label_row.addWidget(label_widget, 1)
+                if help_text:
+                    label_row.addWidget(HelpIconButton(help_title, f"<p>{escape(help_text)}</p>"))
+                if correction is not None:
+                    label_row.addWidget(correction)
+                layout.addLayout(label_row)
+            elif help_text or correction is not None:
+                control_row = QHBoxLayout()
+                control_row.setContentsMargins(0, 0, 0, 0)
+                control_row.setSpacing(6)
+                control_row.addStretch(1)
+                if help_text:
+                    control_row.addWidget(HelpIconButton(help_title, f"<p>{escape(help_text)}</p>"))
+                if correction is not None:
+                    control_row.addWidget(correction)
+                layout.addLayout(control_row)
             layout.addWidget(widget)
         else:
             checkbox_row = QHBoxLayout()

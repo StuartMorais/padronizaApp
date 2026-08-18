@@ -7,7 +7,9 @@ from typing import Any, Callable
 from docx import Document
 from docx.oxml.ns import qn
 
+from app.context_resolver import build_word_control_context_map, _element_path, usable_dropdown_options
 from app.field_utils import (
+    FIELD_ID_TOKEN_PATTERN,
     compact_dropdown_options,
     normalize_repeatable_columns,
 )
@@ -22,7 +24,7 @@ from app.word_control_utils import (
 
 PLACEHOLDER_PATTERN = re.compile(r"\{\{([^{}]+)\}\}")
 REPEAT_MARKER_PATTERN = re.compile(
-    r"\{\{\s*repeat:([A-Za-z][A-Za-z0-9_.-]*)\s*\}\}",
+    rf"\{{\{{\s*repeat:({FIELD_ID_TOKEN_PATTERN})\s*\}}\}}",
     re.IGNORECASE,
 )
 ROW_NUMBER_IDS = {
@@ -64,6 +66,7 @@ def scan_docx_fields(docx_path: Path) -> list[dict[str, Any]]:
     _validate_docx_path(docx_path)
 
     document = Document(str(docx_path))
+    control_context_map = build_word_control_context_map(document)
 
     ordered_fields: list[dict[str, Any]] = []
     field_indexes: dict[str, int] = {}
@@ -77,7 +80,16 @@ def scan_docx_fields(docx_path: Path) -> list[dict[str, Any]]:
         metadata: dict[str, Any] | None = None,
     ) -> None:
         field_id = normalize_control_id(field_id)
-        label = _clean_context_label(label)
+        metadata = dict(metadata or {})
+        native_choice_label = (
+            field_type == "checkbox"
+            and str(metadata.get("detection_source", "")).strip().casefold().startswith("native_word")
+        )
+        label = (
+            _clean_native_choice_label(label)
+            if native_choice_label
+            else _clean_context_label(label)
+        )
 
         if not field_id:
             return
@@ -94,7 +106,6 @@ def scan_docx_fields(docx_path: Path) -> list[dict[str, Any]]:
             field_type = context_type
 
         cleaned_options = _clean_options(options or [])
-        metadata = dict(metadata or {})
         existing_index = field_indexes.get(field_id)
 
         if existing_index is not None:
@@ -140,6 +151,19 @@ def scan_docx_fields(docx_path: Path) -> list[dict[str, Any]]:
                 "selection",
                 "choice_required",
                 "tag_type",
+                "label_source",
+                "section",
+                "section_source",
+                "type_source",
+                "detection_source",
+                "context_evidence",
+                "context_confidence",
+                "context_resolver_version",
+                "id_source",
+                "auto_tagged",
+                "profile_identity",
+                "context_needs_review",
+                "context_review_reason",
             ):
                 value = metadata.get(key)
                 if value in (None, "", False):
@@ -195,6 +219,19 @@ def scan_docx_fields(docx_path: Path) -> list[dict[str, Any]]:
             "selection",
             "choice_required",
             "tag_type",
+            "label_source",
+            "section",
+            "section_source",
+            "type_source",
+            "detection_source",
+            "context_evidence",
+            "context_confidence",
+            "context_resolver_version",
+            "id_source",
+            "auto_tagged",
+            "profile_identity",
+            "context_needs_review",
+            "context_review_reason",
         ):
             value = metadata.get(key)
             if value not in (None, "", False):
@@ -214,21 +251,11 @@ def scan_docx_fields(docx_path: Path) -> list[dict[str, Any]]:
             root,
             add_field,
             untagged_controls,
+            control_context_map,
         )
 
-    if untagged_controls:
-        details = "\n".join(
-            f"- {item}"
-            for item in untagged_controls
-        )
-
-        raise ValueError(
-            "Um ou mais controles do Word não possuem um identificador utilizável.\n\n"
-            "Para um controle moderno, selecione-o no Word, abra "
-            "Desenvolvedor > Propriedades e informe uma Marca exclusiva.\n"
-            "Para uma caixa de seleção antiga, defina o nome do indicador/campo.\n\n"
-            f"{details}"
-        )
+    # Detector V3 resolves unnamed Word controls from nearby context instead
+    # of treating missing Developer metadata as a fatal model error.
 
     return ordered_fields
 
@@ -271,11 +298,13 @@ def _scan_content_control(
     add_field: Callable[..., None],
     untagged_controls: list[str],
     scan_nested_content: Callable[[Any], None],
+    control_context_map: dict[str, dict[str, Any]],
 ) -> None:
     if _scan_native_control(
         control_element,
         add_field,
         untagged_controls,
+        control_context_map,
     ):
         return
 
@@ -288,6 +317,7 @@ def _scan_xml_container(
     element,
     add_field: Callable[..., None],
     untagged_controls: list[str],
+    control_context_map: dict[str, dict[str, Any]],
 ) -> None:
     """
     Walk WordprocessingML in document order.
@@ -302,6 +332,7 @@ def _scan_xml_container(
                 child,
                 add_field,
                 untagged_controls,
+                control_context_map,
             )
             continue
 
@@ -310,6 +341,7 @@ def _scan_xml_container(
                 child,
                 add_field,
                 untagged_controls,
+                control_context_map,
             )
             continue
 
@@ -318,6 +350,7 @@ def _scan_xml_container(
                 child,
                 add_field,
                 untagged_controls,
+                control_context_map,
             )
             continue
 
@@ -327,8 +360,9 @@ def _scan_xml_container(
                 add_field,
                 untagged_controls,
                 lambda content: _scan_xml_container(
-                    content, add_field, untagged_controls
+                    content, add_field, untagged_controls, control_context_map
                 ),
+                control_context_map,
             )
             continue
 
@@ -336,6 +370,7 @@ def _scan_xml_container(
             child,
             add_field,
             untagged_controls,
+            control_context_map,
         )
 
 
@@ -343,6 +378,7 @@ def _scan_table_element(
     table_element,
     add_field: Callable[..., None],
     untagged_controls: list[str],
+    control_context_map: dict[str, dict[str, Any]],
 ) -> None:
     """Scan a Word table while preserving row context.
 
@@ -379,6 +415,7 @@ def _scan_table_element(
             row,
             add_field,
             untagged_controls,
+            control_context_map,
         )
         previous_rows.append(row)
 
@@ -485,9 +522,23 @@ def _scan_repeatable_row(
                 or create_label(column_id)
             )
             column_type = str(parsed.get("type", "text"))
-            if column_type == "text":
+            explicit_type_prefix = lowered.startswith(
+                (
+                    "date:",
+                    "checkbox:",
+                    "dropdown:",
+                    "single_choice:",
+                )
+            )
+            if not explicit_type_prefix:
+                # A normal repeatable marker such as ``{{table.item}}`` gets a
+                # preliminary type from the complete marker ID.  Re-infer it
+                # from the child column itself so words in the parent table ID
+                # (for example ``quantidade_a_ser_contratada``) cannot turn
+                # Item, Unidade or Valor into integers. Explicit prefixes keep
+                # their declared type.
                 column_type = guess_field_type(
-                    marker_id,
+                    column_id,
                     resolved_label,
                 )
             column: dict[str, Any] = {
@@ -603,6 +654,7 @@ def _scan_table_row_element(
     row_element,
     add_field: Callable[..., None],
     untagged_controls: list[str],
+    control_context_map: dict[str, dict[str, Any]],
 ) -> None:
     """Scan a table row and use the previous cell as a field label.
 
@@ -649,6 +701,7 @@ def _scan_table_row_element(
             cell,
             add_field,
             untagged_controls,
+            control_context_map,
         )
 
 
@@ -666,6 +719,7 @@ def _scan_paragraph_element(
     paragraph_element,
     add_field: Callable[..., None],
     untagged_controls: list[str],
+    control_context_map: dict[str, dict[str, Any]],
 ) -> None:
     """
     Scan one paragraph, including placeholders split across several runs.
@@ -709,6 +763,7 @@ def _scan_paragraph_element(
                     child,
                     add_field,
                     untagged_controls,
+                    control_context_map,
                 )
                 continue
 
@@ -719,6 +774,7 @@ def _scan_paragraph_element(
                     add_field,
                     untagged_controls,
                     walk,
+                    control_context_map,
                 )
                 continue
 
@@ -730,15 +786,23 @@ def _scan_paragraph_element(
                 if legacy_result is not None:
                     inspect_buffer()
 
-                    if legacy_result:
+                    hint = dict(control_context_map.get(id(child), {}) or {})
+                    field_id = legacy_result or str(hint.get("id", "")).strip()
+                    if field_id:
                         add_field(
-                            legacy_result,
+                            field_id,
                             "checkbox",
                             None,
+                            str(hint.get("label", "") or ""),
+                            {
+                                key: value
+                                for key, value in hint.items()
+                                if key not in {"id", "type", "label", "options"}
+                            },
                         )
                     else:
                         untagged_controls.append(
-                            "Caixa de seleção antiga do Word sem identificação"
+                            "Caixa de seleção antiga do Word sem identificação resolvível"
                         )
 
                     continue
@@ -804,10 +868,21 @@ def _clean_context_label(value: Any) -> str:
         return ""
     return label
 
+def _clean_native_choice_label(value: Any) -> str:
+    label = re.sub(r"\s+", " ", str(value or "")).strip()
+    label = label.strip(" :：–—-\t\r\n")
+    if not label or len(label) > 140:
+        return ""
+    if "{{" in label or "}}" in label:
+        return ""
+    return label
+
+
 def _scan_native_control(
     sdt_element,
     add_field: Callable[..., None],
     untagged_controls: list[str],
+    control_context_map: dict[str, dict[str, Any]],
 ) -> bool:
     """
     Scan a modern Word content control.
@@ -827,39 +902,36 @@ def _scan_native_control(
     if control_type is None:
         return False
 
-    field_id = get_control_identifier(sdt_element)
-    control_labels = {
-        "checkbox": "caixa de seleção",
-        "date": "seletor de data",
-        "dropdown": "lista suspensa",
+    hint = dict(control_context_map.get(_element_path(sdt_element), {}) or {})
+    field_id = get_control_identifier(sdt_element) or str(hint.get("id", "")).strip()
+    label = str(hint.get("label", "") or "").strip()
+    metadata = {
+        key: value
+        for key, value in hint.items()
+        if key not in {"id", "type", "label", "options"}
     }
 
     if not field_id:
-        untagged_controls.append(
-            "Controle do Word sem identificação: "
-            + control_labels[control_type]
-        )
+        # The context map normally guarantees a stable fallback ID. Keep this
+        # branch only as a defensive compatibility fallback.
+        untagged_controls.append("Controle do Word sem identificação resolvível")
         return True
 
     if control_type == "checkbox":
-        add_field(field_id, "checkbox", None)
+        add_field(field_id, "checkbox", None, label, metadata)
         return True
 
     if control_type == "date":
-        add_field(field_id, "date", None)
+        add_field(field_id, "date", None, label, metadata)
         return True
 
-    options = read_dropdown_options(
-        control_element
-    )
-
+    hinted_options = list(hint.get("options", []) or [])
+    options = hinted_options or usable_dropdown_options(read_dropdown_options(control_element))
     if not options:
-        raise ValueError(
-            f"A lista suspensa nativa '{field_id}' não contém "
-            "opções configuradas."
-        )
+        metadata["context_needs_review"] = True
+        metadata["context_review_reason"] = "Lista suspensa nativa sem opções configuradas."
 
-    add_field(field_id, "dropdown", options)
+    add_field(field_id, "dropdown", options, label, metadata)
     return True
 
 
@@ -1101,6 +1173,18 @@ def create_default_fields(
                     "selection",
                     "choice_required",
                     "tag_type",
+                    "section",
+                    "section_source",
+                    "type_source",
+                    "detection_source",
+                    "context_evidence",
+                    "context_confidence",
+                    "context_resolver_version",
+                    "id_source",
+                    "auto_tagged",
+                    "profile_identity",
+                    "context_needs_review",
+                    "context_review_reason",
                 )
                 if key in scanned and scanned[key] not in (None, "", False)
             }

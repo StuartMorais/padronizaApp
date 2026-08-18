@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Iterator
 from typing import Any
 
@@ -33,7 +34,7 @@ def iter_unique_story_roots(document: Any) -> Iterator[Any]:
 
 
 def normalize_control_id(value: str) -> str:
-    normalized = str(value).strip()
+    normalized = unicodedata.normalize("NFC", str(value).strip())
     lowered = normalized.casefold()
     for prefix in ("checkbox:", "date:"):
         if lowered.startswith(prefix):

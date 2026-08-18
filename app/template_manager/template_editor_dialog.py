@@ -916,23 +916,78 @@ class TemplateEditorDialog(QDialog):
                 card.set_expanded(expanded)
 
     def _edit_field_from_card(self, field_id: str) -> None:
+        """Reveal and select exactly one field in the Campos editor.
+
+        This method is used both by the section cards and by the inline
+        ``Corrigir`` action in the generation form.  The latter opens this
+        dialog before it is visible, so the actual focus is also reinforced
+        on the next event-loop turn after the dialog geometry exists.
+        """
+
         target = str(field_id).strip()
         if not target:
             return
+
+        # A stale filter must never hide the field the user explicitly asked
+        # to correct.  Clearing it also makes neighbouring context available
+        # when they need to compare similar fields.
+        if self.field_search_input.text():
+            self.field_search_input.clear()
+        self.fields_tabs.setCurrentIndex(0)
+
         for row in range(self.fields_table.rowCount()):
-            item = self.fields_table.item(row, 0)
-            if item is not None and item.text().strip() == target:
-                self.fields_tabs.setCurrentIndex(0)
-                self.fields_table.clearSelection()
-                self.fields_table.selectRow(row)
-                self.fields_table.setCurrentCell(row, 0)
-                self.fields_table.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
-                return
+            id_item = self.fields_table.item(row, 0)
+            if id_item is None or id_item.text().strip() != target:
+                continue
+
+            label_item = self.fields_table.item(row, 1)
+            focus_column = 1 if label_item is not None else 0
+
+            self.fields_table.clearSelection()
+            self.fields_table.selectRow(row)
+            self.fields_table.setCurrentCell(row, focus_column)
+            self.fields_table.scrollToItem(
+                id_item,
+                QAbstractItemView.ScrollHint.PositionAtCenter,
+            )
+            self.fields_table.setFocus(Qt.FocusReason.OtherFocusReason)
+
+            # The table lives inside the editor's outer scroll area.  Merely
+            # scrolling the QTableWidget was not enough: the dialog could open
+            # at its top and leave the selected row completely off-screen.
+            # Reveal both levels now and once more after Qt has laid out the
+            # newly shown modal dialog.
+            self._reveal_field_editor_row(row)
+            QTimer.singleShot(
+                0,
+                lambda selected_row=row: self._reveal_field_editor_row(selected_row),
+            )
+            return
+
+    def _reveal_field_editor_row(self, row: int) -> None:
+        if row < 0 or row >= self.fields_table.rowCount():
+            return
+        id_item = self.fields_table.item(row, 0)
+        if id_item is None:
+            return
+        self.fields_tabs.setCurrentIndex(0)
+        self.editor_scroll.ensureWidgetVisible(self.fields_tabs, 24, 70)
+        self.fields_table.scrollToItem(
+            id_item,
+            QAbstractItemView.ScrollHint.PositionAtCenter,
+        )
 
     def focus_field(self, field_id: str) -> None:
-        """Open the Campos tab and focus one field by its stable ID."""
+        """Deep-link ``Corrigir`` to the exact field row after the dialog opens."""
 
-        self._edit_field_from_card(field_id)
+        target = str(field_id).strip()
+        if not target:
+            return
+        # ``MainWindow`` calls focus_field() immediately before dialog.exec().
+        # Deferring the operation guarantees that the outer scroll area already
+        # has a real viewport/geometry, so the clicked field is actually visible
+        # instead of only being selected somewhere below the fold.
+        QTimer.singleShot(0, lambda key=target: self._edit_field_from_card(key))
 
     def _move_section(self, section_name: str, direction: int) -> None:
         fields = self._collect_fields(validate=False)
@@ -1205,13 +1260,16 @@ class TemplateEditorDialog(QDialog):
             )
             return
 
-        if prepared.converted_from_pdf:
+        if prepared.docx_path != prepared.original_path:
             self._automatic_work_files.add(prepared.docx_path)
 
         self.selected_input_file = prepared.original_path
         self.selected_input_was_pdf = prepared.converted_from_pdf
         self.selected_docx = prepared.docx_path
-        self._source_field_hints = [dict(field) for field in prepared.native_pdf_field_hints]
+        self._source_field_hints = [
+            *[dict(field) for field in prepared.native_pdf_field_hints],
+            *[dict(field) for field in prepared.native_word_field_hints],
+        ]
         self.docx_was_replaced = True
 
         if self.template_id is None and not self.name_input.text().strip():
@@ -1238,6 +1296,14 @@ class TemplateEditorDialog(QDialog):
                 self,
                 'PDF preparado para análise',
                 details,
+                duration=7000,
+            )
+
+        elif prepared.prepared_work_copy and prepared.warnings:
+            show_toast(
+                self,
+                'Controles do Word preparados automaticamente',
+                ' '.join(prepared.warnings[:2]),
                 duration=7000,
             )
 
@@ -1488,6 +1554,7 @@ class TemplateEditorDialog(QDialog):
             candidates = detect_docx_field_candidates(
                 self.selected_docx,
                 existing_field_ids=existing_ids,
+                existing_fields=existing,
             )
         except Exception as exc:
             QMessageBox.critical(

@@ -47,6 +47,7 @@ from app.favorite_store import FavoriteStore
 from app.field_utils import condition_matches, uses_assisted_detection, validate_field
 from app.local_data import LocalDataStore
 from app.pdf_converter import PdfConversionError, available_converter, convert_docx_to_pdf
+from app.profile_mapping import build_profile_payload, resolve_profile_values
 from app.system_open import SystemOpenError, open_file, open_folder
 from app.runtime_settings import (
     APPLICATION,
@@ -690,9 +691,10 @@ class MainWindow(QMainWindow):
             (
                 '<p>Perfis guardam dados reutilizados com frequência, como '
                 'informações da empresa, representante e contato.</p>'
-                '<p><b>Aplicar perfil</b> restaura todos os campos compatíveis pelo ID '
-                'e usa a chave de perfil como alternativa entre modelos diferentes. '
-                'Revise os dados antes de gerar.</p>'
+                '<p><b>Aplicar perfil</b> restaura campos compatíveis pelo ID e pela '
+                'chave de perfil. Para campos nativos ou detectados automaticamente, '
+                'também compara de forma conservadora o rótulo, tipo e seção do campo. '
+                'Correspondências ambíguas são ignoradas. Revise os dados antes de gerar.</p>'
             ),
         )
         profile_row.addWidget(
@@ -2867,15 +2869,16 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _values_for_template(package: TemplatePackage, source_values: dict[str, Any]) -> dict[str, Any]:
+        # Reuse the same stable identity resolver used by "Aplicar perfil" so
+        # history/batch cross-template reuse behaves consistently for tagged,
+        # native and automatically detected fields.
+        matched = resolve_profile_values(package.fields, source_values)
         result: dict[str, Any] = {}
         for field in package.fields:
             field_id = str(field.get("id", ""))
             field_type = str(field.get("type", "text"))
-            profile_key = str(field.get("profile_key", "")).strip()
-            if field_id in source_values:
-                result[field_id] = source_values[field_id]
-            elif profile_key and profile_key in source_values:
-                result[field_id] = source_values[profile_key]
+            if field_id in matched:
+                result[field_id] = matched[field_id]
             elif field_type == "checkbox":
                 result[field_id] = False
             elif field_type == "date":
@@ -3029,11 +3032,10 @@ class MainWindow(QMainWindow):
             None,
         )
         if source_package is not None:
-            for field in source_package.fields:
-                field_id = str(field.get("id", ""))
-                profile_key = str(field.get("profile_key", "")).strip()
-                if profile_key and field_id in source_values:
-                    source_values[profile_key] = source_values[field_id]
+            # Attach V2 identity metadata before reusing a historical record in
+            # another template. This gives non-tagged native/automatic fields
+            # the same portability as saved profiles.
+            source_values = build_profile_payload(source_package.fields, source_values)
 
         self.template_combo.setCurrentIndex(index)
         target_package = self._selected_template()

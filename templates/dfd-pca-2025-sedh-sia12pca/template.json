@@ -1,0 +1,295 @@
+{
+  "template": {
+    "id": "dfd-pca-2025-sedh-sia12pca",
+    "name": "Dfd   Pca 2025   Sedh   Sia12Pca",
+    "description": "",
+    "category": "",
+    "version": "1.0",
+    "source_file": "template.docx",
+    "adapter": "docx"
+  },
+  "fields": [
+    {
+      "id": "auto.justificativa_da_necessidade_da_contratacao",
+      "label": "Justificativa da necessidade da Contratação",
+      "type": "multiline",
+      "required": true,
+      "layout_order": 1,
+      "type_source": "automatic_detection",
+      "detection_source": "automatic",
+      "section_source": "document_context",
+      "default_value": "Em atendimento ao art. 4º do Decreto nº  44.639/23,  a presente demanda visa elaborar o Plano de Contratação Anual – PCA 2025, no qual se apresenta as contratações que este órgão pretende realizar no exercício de 2026, de forma harmônica com o Plano Plurianual - PPA,  Lei de Diretrizes Orçamentárias- LDO  e a Lei Orçamentária Anual - LOA.",
+      "layout_column_index": 0,
+      "full_width": true,
+      "layout_column_span": 1,
+      "layout_group_label": "1. Justificativa da necessidade da Contratação",
+      "layout_grid_columns": 1,
+      "label_source": "automatic_detection",
+      "section": "1. Justificativa da necessidade da Contratação",
+      "layout_group": "doc_table_2_segment_1",
+      "layout_row": "row_1",
+      "detection_confidence": 0.87,
+      "layout": "form_grid"
+    },
+    {
+      "id": "auto.quantidade_a_ser_contratada_considerada_a_expectativa_de_consumo_anual",
+      "label": "Quantidade a ser contratada, considerada a expectativa de consumo anual",
+      "type": "repeatable_table",
+      "required": true,
+      "columns": [
+        {
+          "id": "item",
+          "label": "Item",
+          "type": "text",
+          "required": false,
+          "marker": "auto.quantidade_a_ser_contratada_considerada_a_expectativa_de_consumo_anual.item"
+        },
+        {
+          "id": "quantidade",
+          "label": "Quantidade",
+          "type": "integer",
+          "required": false,
+          "marker": "auto.quantidade_a_ser_contratada_considerada_a_expectativa_de_consumo_anual.quantidade"
+        },
+        {
+          "id": "unidade_de_medida",
+          "label": "Unidade de medida",
+          "type": "text",
+          "required": false,
+          "marker": "auto.quantidade_a_ser_contratada_considerada_a_expectativa_de_consumo_anual.unidade_de_medida"
+        },
+        {
+          "id": "especificacao_descricao_material_equipamento_servico",
+          "label": "Especificação/Descrição (Material /Equipamento/Serviço)",
+          "type": "multiline",
+          "required": false,
+          "marker": "auto.quantidade_a_ser_contratada_considerada_a_expectativa_de_consumo_anual.especificacao_descricao_material_equipamento_servico"
+        },
+        {
+          "id": "valor",
+          "label": "Valor",
+          "type": "currency",
+          "required": false,
+          "marker": "auto.quantidade_a_ser_contratada_considerada_a_expectativa_de_consumo_anual.valor"
+        }
+      ],
+      "minimum_rows": 1,
+      "numbering_padding": 2,
+      "type_source": "automatic_detection",
+      "detection_source": "automatic",
+      "full_width": true,
+      "label_source": "automatic_detection",
+      "section": "2. Quantidade a ser contratada, considerada a expectativa de consumo anual",
+      "detection_confidence": 1.0,
+      "layout": "full_width",
+      "validation_hint": "Adicione pelo menos 1 item(ns). É possível colar linhas copiadas do Excel."
+    },
+    {
+      "id": "auto.quantidade_a_ser_contratada_considerada_a_expectativa_de_consumo_anual_2",
+      "label": "Quantidade a ser contratada, considerada a expectativa de consumo anual",
+      "type": "multiline",
+      "required": true,
+      "layout_order": 2,
+      "type_source": "automatic_detection",
+      "detection_source": "automatic",
+      "section_source": "document_context",
+      "default_value": "Informamos que encontra-se em anexo, o demonstrativo do Plano de Contratação Anual PCA 2025, contendo todas as informações necessárias, para suprimento das informações exigidas neste item.",
+      "layout_column_index": 0,
+      "full_width": true,
+      "layout_column_span": 5,
+      "layout_group_label": "2. Quantidade a ser contratada, considerada a expectativa de consumo anual",
+      "layout_grid_columns": 5,
+      "label_source": "automatic_detection",
+      "section": "2. Quantidade a ser contratada, considerada a expectativa de consumo anual",
+      "layout_group": "doc_table_4_segment_0",
+      "layout_row": "row_2",
+      "detection_confidence": 0.87,
+      "layout": "form_grid"
+    },
+    {
+      "id": "auto.estimativa_preliminar_do_valor_da_contratacao_por_meio_de_procedimento_d",
+      "label": "Estimativa preliminar do valor da contratação, por meio de procedimento de pesquisas de preços",
+      "type": "currency",
+      "required": true,
+      "layout_order": 1,
+      "type_source": "automatic_detection",
+      "detection_source": "automatic",
+      "section_source": "document_context",
+      "layout_column_index": 0,
+      "full_width": true,
+      "layout_column_span": 1,
+      "layout_group_label": "3. Estimativa preliminar do valor da contratação, por meio de procedimento de pesquisas de preços",
+      "layout_grid_columns": 1,
+      "label_source": "automatic_detection",
+      "section": "3. Estimativa preliminar do valor da contratação, por meio de procedimento de pesquisas de preços",
+      "layout_group": "doc_table_5_segment_1",
+      "layout_row": "row_1",
+      "detection_confidence": 0.88,
+      "layout": "form_grid",
+      "validation_hint": "Digite os centavos normalmente. Exemplo: R$ 1.250,00"
+    },
+    {
+      "id": "auto.indicacao_de_vinculacao_ou_dependencia_com_o_objeto_de_outro_documento_d",
+      "label": "indicação de vinculação ou dependência com o objeto de outro documento de formalização de demanda",
+      "type": "multiline",
+      "required": true,
+      "layout_order": 1,
+      "type_source": "automatic_detection",
+      "detection_source": "automatic",
+      "section_source": "document_context",
+      "default_value": "A verificação de possíveis vinculações ou dependências com objetos de outros Documentos de Formalização de Demanda – DFD,  será realizada conforme o andamento das contratações previstas no Plano de Contratação Anual para 2026. Caso sejam identificadas tais vinculações ou dependências, as devidas considerações serão feitas para garantir a coerência e a integração dos processos de contratação.",
+      "layout_column_index": 0,
+      "full_width": true,
+      "layout_column_span": 1,
+      "layout_group_label": "6. indicação de vinculação ou dependência com o objeto de outro documento de formalização de demanda",
+      "layout_grid_columns": 1,
+      "label_source": "automatic_detection",
+      "section": "6. indicação de vinculação ou dependência com o objeto de outro documento de formalização de demanda",
+      "layout_group": "doc_table_8_segment_1",
+      "layout_row": "row_1",
+      "detection_confidence": 0.87,
+      "layout": "form_grid"
+    },
+    {
+      "id": "auto.areas_requisitante",
+      "label": "Áreas Requisitante",
+      "type": "text",
+      "required": true,
+      "layout_order": 1,
+      "type_source": "automatic_detection",
+      "detection_source": "automatic",
+      "section_source": "document_context",
+      "layout_column_index": 0,
+      "full_width": true,
+      "layout_column_span": 2,
+      "layout_group_label": "7. Area requisitante e técnica com a identificação do responsável e a data.",
+      "layout_grid_columns": 2,
+      "label_source": "automatic_detection",
+      "section": "7. Area requisitante e técnica com a identificação do responsável e a data.",
+      "layout_group": "doc_table_9_segment_1",
+      "layout_row": "row_1",
+      "detection_confidence": 1.0,
+      "layout": "form_grid"
+    },
+    {
+      "id": "auto.area_requisitante_e_tecnica_com_a_identificacao_do_responsavel_e_a_data",
+      "label": "Area requisitante e técnica com a identificação do responsável e a data.",
+      "type": "date",
+      "required": true,
+      "layout_order": 2,
+      "type_source": "identifier",
+      "detection_source": "automatic",
+      "section_source": "document_context",
+      "automatic": true,
+      "default_value": "João Pessoa, (data da assinatura eletrônica via PBdoc)",
+      "layout_column_index": 0,
+      "full_width": true,
+      "layout_column_span": 2,
+      "layout_group_label": "7. Area requisitante e técnica com a identificação do responsável e a data.",
+      "layout_grid_columns": 2,
+      "label_source": "automatic_detection",
+      "section": "7. Area requisitante e técnica com a identificação do responsável e a data.",
+      "layout_group": "doc_table_9_segment_1",
+      "layout_row": "row_2",
+      "detection_confidence": 0.94,
+      "layout": "form_grid",
+      "validation_hint": "Formato exibido: dia/mês/ano."
+    },
+    {
+      "id": "auto.area_requisitante_e_tecnica_com_a_identificacao_do_responsavel_e_a_data_2",
+      "label": "Area requisitante e técnica com a identificação do responsável e a data.",
+      "type": "date",
+      "required": true,
+      "layout_order": 3,
+      "type_source": "identifier",
+      "detection_source": "automatic",
+      "section_source": "document_context",
+      "automatic": true,
+      "default_value": "O(s) responsável(s) pela demanda,  ficará à disposição para dirimir eventuais dúvidas sobre esta requisição, bem como para acompanhar todo procedimento de instrução da elaboração do PCA, fornecendo todas as informações técnicas necessárias junto ao órgão.",
+      "layout_column_index": 0,
+      "full_width": true,
+      "layout_column_span": 2,
+      "layout_group_label": "7. Area requisitante e técnica com a identificação do responsável e a data.",
+      "layout_grid_columns": 2,
+      "label_source": "automatic_detection",
+      "section": "7. Area requisitante e técnica com a identificação do responsável e a data.",
+      "layout_group": "doc_table_9_segment_1",
+      "layout_row": "row_3",
+      "detection_confidence": 0.87,
+      "layout": "form_grid",
+      "validation_hint": "Formato exibido: dia/mês/ano."
+    },
+    {
+      "id": "auto.anuencia_do_ordenador_de_despesas_2",
+      "label": "Anuência do Ordenador de Despesas",
+      "type": "multiline",
+      "required": true,
+      "layout_order": 1,
+      "type_source": "automatic_detection",
+      "detection_source": "automatic",
+      "section_source": "document_context",
+      "default_value": "AUTORIZO os prosseguimentos observado à legislação em vigor",
+      "layout_column_index": 0,
+      "full_width": true,
+      "layout_column_span": 1,
+      "layout_group_label": "8. Anuência do Ordenador de Despesas",
+      "layout_grid_columns": 1,
+      "label_source": "automatic_detection",
+      "section": "8. Anuência do Ordenador de Despesas",
+      "layout_group": "doc_table_10_segment_1",
+      "layout_row": "row_1",
+      "detection_confidence": 0.94,
+      "layout": "form_grid"
+    }
+  ],
+  "sections": [
+    {
+      "title": "1. Justificativa da necessidade da Contratação",
+      "fields": [
+        "auto.justificativa_da_necessidade_da_contratacao"
+      ]
+    },
+    {
+      "title": "2. Quantidade a ser contratada, considerada a expectativa de consumo anual",
+      "fields": [
+        "auto.quantidade_a_ser_contratada_considerada_a_expectativa_de_consumo_anual",
+        "auto.quantidade_a_ser_contratada_considerada_a_expectativa_de_consumo_anual_2"
+      ]
+    },
+    {
+      "title": "3. Estimativa preliminar do valor da contratação, por meio de procedimento de pesquisas de preços",
+      "fields": [
+        "auto.estimativa_preliminar_do_valor_da_contratacao_por_meio_de_procedimento_d"
+      ]
+    },
+    {
+      "title": "6. indicação de vinculação ou dependência com o objeto de outro documento de formalização de demanda",
+      "fields": [
+        "auto.indicacao_de_vinculacao_ou_dependencia_com_o_objeto_de_outro_documento_d"
+      ]
+    },
+    {
+      "title": "7. Area requisitante e técnica com a identificação do responsável e a data.",
+      "fields": [
+        "auto.areas_requisitante",
+        "auto.area_requisitante_e_tecnica_com_a_identificacao_do_responsavel_e_a_data",
+        "auto.area_requisitante_e_tecnica_com_a_identificacao_do_responsavel_e_a_data_2"
+      ]
+    },
+    {
+      "title": "8. Anuência do Ordenador de Despesas",
+      "fields": [
+        "auto.anuencia_do_ordenador_de_despesas_2"
+      ]
+    }
+  ],
+  "output": {
+    "filename_pattern": "{{template.name}}.docx",
+    "folder_pattern": ""
+  },
+  "numbering": {
+    "enabled": false,
+    "key": "dfd-pca-2025-sedh-sia12pca",
+    "padding": 4
+  }
+}
