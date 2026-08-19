@@ -2,28 +2,30 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import QLibraryInfo, QLocale, QSettings, QTranslator
+from PySide6.QtCore import QLibraryInfo, QLocale, QSettings, QTimer, QTranslator
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from app.app_icon import (
+from app.ui.icon import (
     configure_windows_app_id,
     load_application_icon,
 )
 
-from app.app_paths import (
+from app.core.paths import (
     StorageInitializationError,
     initialize_persistent_storage,
     resolve_application_paths,
 )
-from app.main_window import MainWindow
-from app.runtime_settings import (
+from app.ui.main_window import MainWindow
+from app.core.settings import (
     APPLICATION,
     ORGANIZATION,
     configure_settings_storage,
     migrate_legacy_settings,
 )
-from app.theme_manager import ThemeManager
+from app.ui.theme import ThemeManager
+from app.core.schema import SchemaVersionError, migrate_qsettings
+from app.core.application_logging import configure_application_logging, install_exception_logging
 
 
 def main() -> int:
@@ -47,6 +49,8 @@ def main() -> int:
         )
         return 1
 
+    configure_application_logging(paths.storage_root)
+    install_exception_logging()
     configure_settings_storage(paths.storage_root)
     migrate_legacy_settings(paths.storage_root)
 
@@ -84,6 +88,15 @@ def main() -> int:
     app.setStyle("Fusion")
 
     settings = QSettings(ORGANIZATION, APPLICATION)
+    try:
+        migrate_qsettings(settings)
+    except SchemaVersionError as exc:
+        QMessageBox.critical(
+            None,
+            "Dados de uma versão mais nova",
+            str(exc) + "\n\nAtualize o Padroniza para abrir esses dados com segurança.",
+        )
+        return 1
     base_size = int(
         settings.value(
             "accessibility/font_size",
@@ -107,17 +120,30 @@ def main() -> int:
         theme_manager.current_theme()
     )
 
-    window = MainWindow(
-        project_root=paths.storage_root,
-        theme_manager=theme_manager,
-        default_output_dir=paths.default_output_root,
-        managed_storage=paths.frozen,
-    )
+    try:
+        window = MainWindow(
+            project_root=paths.storage_root,
+            theme_manager=theme_manager,
+            default_output_dir=paths.default_output_root,
+            managed_storage=paths.frozen,
+        )
+    except SchemaVersionError as exc:
+        QMessageBox.critical(
+            None,
+            "Dados de uma versão mais nova",
+            str(exc) + "\n\nNenhum dado foi alterado. Atualize o Padroniza para continuar.",
+        )
+        return 1
 
     if not app_icon.isNull():
         window.setWindowIcon(app_icon)
 
     window.show()
+
+    # CI/startup smoke mode exercises the real window construction, theme,
+    # storage and template discovery paths without waiting for user input.
+    if "--smoke-test" in sys.argv:
+        QTimer.singleShot(350, app.quit)
 
     return app.exec()
 

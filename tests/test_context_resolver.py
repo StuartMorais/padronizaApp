@@ -1,4 +1,4 @@
-from app.context_resolver import resolve_field_metadata
+from app.document.understanding.context_resolver import resolve_field_metadata
 
 
 def test_context_resolver_fills_missing_id_type_and_profile_identity() -> None:

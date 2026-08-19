@@ -7,7 +7,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import RGBColor
 
-from app.docx_engine import (
+from app.document.docx.generator import (
     DocumentGenerationError,
     generate_docx,
 )

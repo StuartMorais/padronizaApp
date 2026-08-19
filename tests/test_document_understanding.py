@@ -2,12 +2,10 @@ from pathlib import Path
 
 from docx import Document
 
-from app.automatic_field_detector import (
-    _collect_paragraph_records,
-    candidate_field_definitions,
-    detect_docx_field_candidates,
-)
-from app.document_understanding import (
+from app.document.detection.candidates import candidate_field_definitions
+from app.document.detection.detector import detect_docx_field_candidates
+from app.document.detection.records import _collect_paragraph_records
+from app.document.understanding.semantic import (
     annotate_document_records,
     postprocess_candidates,
     semantic_label,
@@ -37,7 +35,7 @@ def test_relationship_model_prefers_adjacent_label_in_alternating_form_grid(tmp_
     assert confidence >= 0.95
 
 
-def test_v2_downgrades_anonymous_field_and_explains_confidence() -> None:
+def test_v3_downgrades_anonymous_field_and_explains_confidence() -> None:
     candidate = {
         "field_id": "auto.campo_39",
         "label": "Campo 39",
@@ -52,15 +50,17 @@ def test_v2_downgrades_anonymous_field_and_explains_confidence() -> None:
     processed = postprocess_candidates([candidate], [], source_kind="docx")
     assert len(processed) == 1
     result = processed[0]
-    assert result["detector_version"] == 2
+    assert result["detector_version"] == 3
     assert result["confidence_band"] == "low"
     assert result["selected"] is False
+    assert result["review_priority"] == "required"
+    assert result["needs_review"] is True
     assert any(item["code"] == "poor_label" for item in result["evidence"])
 
 
-def test_detected_fields_keep_v2_evidence_metadata(tmp_path: Path) -> None:
+def test_detected_fields_keep_v3_evidence_metadata(tmp_path: Path) -> None:
     document = Document()
-    paragraph = document.add_paragraph("Telefone: (00) 00000-0000")
+    document.add_paragraph("Telefone: (00) 00000-0000")
     path = tmp_path / "phone.docx"
     document.save(path)
 
@@ -68,14 +68,15 @@ def test_detected_fields_keep_v2_evidence_metadata(tmp_path: Path) -> None:
     phone = next(item for item in candidates if item.get("type") == "phone")
     fields = candidate_field_definitions([phone])
 
-    assert fields[0]["detector_version"] == 2
+    assert fields[0]["detector_version"] == 3
     assert fields[0]["detection_confidence_band"] in {"high", "medium", "low"}
     assert isinstance(fields[0]["detection_evidence"], list)
     assert fields[0]["detection_evidence"]
+    assert fields[0]["detection_review_priority"] in {"ready", "recommended", "required"}
 
 
 def test_consistency_repair_can_suggest_missing_peer_column_field(tmp_path: Path) -> None:
-    from app.automatic_field_detector import _detect_consistency_repair_fields
+    from app.document.detection.text_fields import _detect_consistency_repair_fields
 
     document = Document()
     table = document.add_table(rows=4, cols=2)

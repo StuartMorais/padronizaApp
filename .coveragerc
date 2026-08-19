@@ -1,0 +1,11 @@
+[run]
+relative_files = True
+
+[report]
+show_missing = True
+precision = 1
+fail_under = 75
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    if __name__ == .__main__.:

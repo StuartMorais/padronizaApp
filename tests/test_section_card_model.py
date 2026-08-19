@@ -1,4 +1,4 @@
-from app.section_card_model import (
+from app.domain.section_card_model import (
     build_section_card_models,
     rename_section_fields,
     reorder_section_fields,

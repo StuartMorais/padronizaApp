@@ -385,8 +385,8 @@ $commonArguments = @(
 
 $dataDirectories = @(
     @{
-        Source = "app\styles"
-        Target = "app\styles"
+        Source = "app\ui\styles"
+        Target = "app\ui\styles"
     },
     @{
         Source = "templates"
@@ -399,6 +399,10 @@ $dataDirectories = @(
     @{
         Source = "assets"
         Target = "assets"
+    }
+    @{
+        Source = "docs"
+        Target = "docs"
     }
 )
 

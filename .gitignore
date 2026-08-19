@@ -12,10 +12,19 @@ data/*
 !data/.gitkeep
 output/*
 !output/.gitkeep
-backups/
+backups/*
+!backups/.gitkeep
 
 # Windows build outputs
 build/
 dist/
 release/
 *.spec
+
+# Quality reports
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.pyright/
+.ruff_cache/

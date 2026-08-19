@@ -4,9 +4,9 @@ from pathlib import Path
 
 from docx import Document
 
-from app.docx_engine import generate_docx
-from app.placeholder_scanner import scan_docx_fields
-from app.smart_template import scan_docx_health, smart_fields_from_docx
+from app.document.docx.generator import generate_docx
+from app.document.docx.scanner import scan_docx_fields
+from app.document.understanding.smart_template import scan_docx_health, smart_fields_from_docx
 
 
 class UnicodeFieldIdTests(unittest.TestCase):

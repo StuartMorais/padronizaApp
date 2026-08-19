@@ -7,8 +7,8 @@ import pytest
 pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QApplication
 
-from app.template_manager.template_editor_dialog import TemplateEditorDialog
-from app.template_repository import TemplateRepository
+from app.ui.template_manager.template_editor_dialog import TemplateEditorDialog
+from app.repositories.templates import TemplateRepository
 
 
 def _app():

@@ -1,4 +1,4 @@
-from app.profile_mapping import build_profile_payload, resolve_profile_values
+from app.domain.profile_mapping import build_profile_payload, resolve_profile_values
 
 
 def test_profile_payload_keeps_all_fields_even_when_profile_keys_exist() -> None:

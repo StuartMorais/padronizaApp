@@ -39,9 +39,11 @@ if exist "assets\padroniza.ico" (
         --contents-directory . ^
         --name Padroniza ^
         --icon "assets\padroniza.ico" ^
-        --add-data "app/styles:app/styles" ^
+        --add-data "app/ui/styles:app/ui/styles" ^
         --add-data "templates:templates" ^
         --add-data "examples:examples" ^
+        --add-data "assets:assets" ^
+        --add-data "docs:docs" ^
         main.py
 ) else (
     ".venv\Scripts\python.exe" -m PyInstaller ^
@@ -51,9 +53,11 @@ if exist "assets\padroniza.ico" (
         --onedir ^
         --contents-directory . ^
         --name Padroniza ^
-        --add-data "app/styles:app/styles" ^
+        --add-data "app/ui/styles:app/ui/styles" ^
         --add-data "templates:templates" ^
         --add-data "examples:examples" ^
+        --add-data "assets:assets" ^
+        --add-data "docs:docs" ^
         main.py
 )
 if errorlevel 1 goto :error

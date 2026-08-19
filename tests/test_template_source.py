@@ -3,7 +3,7 @@ from pathlib import Path
 import fitz
 from docx import Document
 
-from app.template_source import (
+from app.document.source import (
     TemplateSourceError,
     prepare_template_source,
 )
@@ -54,7 +54,7 @@ def test_template_source_rejects_other_extensions(tmp_path: Path) -> None:
 
 def test_pdf_acroForm_fields_become_regular_template_tags(tmp_path: Path) -> None:
     from reportlab.pdfgen import canvas
-    from app.smart_template import smart_fields_from_docx
+    from app.document.understanding.smart_template import smart_fields_from_docx
 
     source = tmp_path / 'formulario.pdf'
     pdf = canvas.Canvas(str(source))
@@ -83,7 +83,8 @@ def test_pdf_acroForm_fields_become_regular_template_tags(tmp_path: Path) -> Non
 
 
 def test_reconstructed_pdf_candidates_can_be_applied_when_lines_share_one_paragraph(tmp_path: Path) -> None:
-    from app.automatic_field_detector import apply_docx_field_candidates, detect_docx_field_candidates
+    from app.document.detection.application import apply_docx_field_candidates
+    from app.document.detection.detector import detect_docx_field_candidates
 
     source = tmp_path / 'inspecao.pdf'
     pdf = fitz.open()
@@ -111,7 +112,7 @@ def test_reconstructed_pdf_candidates_can_be_applied_when_lines_share_one_paragr
 def test_native_pdf_fields_keep_visible_labels_and_editable_dates(tmp_path: Path) -> None:
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import A4
-    from app.smart_template import smart_fields_from_docx
+    from app.document.understanding.smart_template import smart_fields_from_docx
 
     source = tmp_path / 'auditorio.pdf'
     pdf = canvas.Canvas(str(source), pagesize=A4)
@@ -165,8 +166,8 @@ def test_native_pdf_fields_keep_visible_labels_and_editable_dates(tmp_path: Path
 def test_native_pdf_radio_group_keeps_option_boundaries_and_question_label(tmp_path: Path) -> None:
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import A4
-    from app.smart_template import smart_fields_from_docx
-    from app.automatic_field_detector import detect_docx_field_candidates
+    from app.document.understanding.smart_template import smart_fields_from_docx
+    from app.document.detection.detector import detect_docx_field_candidates
 
     source = tmp_path / 'radio-prioridade.pdf'
     pdf = canvas.Canvas(str(source), pagesize=A4)
@@ -225,8 +226,8 @@ def test_native_pdf_radio_group_keeps_option_boundaries_and_question_label(tmp_p
 def test_native_pdf_questionnaire_matrix_keeps_row_labels_and_observation_columns(tmp_path: Path) -> None:
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import A4
-    from app.smart_template import smart_fields_from_docx
-    from app.layout_inference import layout_blocks
+    from app.document.understanding.smart_template import smart_fields_from_docx
+    from app.document.understanding.layout import layout_blocks
 
     source = tmp_path / 'matrix-native.pdf'
     pdf = canvas.Canvas(str(source), pagesize=A4)
@@ -394,9 +395,9 @@ def _append_unnamed_checkbox(paragraph) -> None:
 
 def test_docx_unnamed_word_controls_are_auto_tagged_from_context(tmp_path: Path) -> None:
     from docx.oxml.ns import qn
-    from app.docx_engine import generate_docx
-    from app.placeholder_scanner import scan_docx_fields
-    from app.smart_template import smart_fields_from_docx
+    from app.document.docx.generator import generate_docx
+    from app.document.docx.scanner import scan_docx_fields
+    from app.document.understanding.smart_template import smart_fields_from_docx
 
     source = tmp_path / 'controles-sem-tag.docx'
     document = Document()
@@ -472,7 +473,7 @@ def test_docx_unnamed_word_controls_are_auto_tagged_from_context(tmp_path: Path)
 
 
 def test_unnamed_word_control_without_label_gets_safe_fallback_instead_of_error(tmp_path: Path) -> None:
-    from app.placeholder_scanner import scan_docx_fields
+    from app.document.docx.scanner import scan_docx_fields
 
     source = tmp_path / 'controle-isolado.docx'
     document = Document()
@@ -525,7 +526,7 @@ def test_context_resolver_keeps_multiple_block_controls_and_groups_neighboring_c
     every control must keep its own structural context even when Word returns
     fresh wrappers during traversal.
     """
-    from app.placeholder_scanner import scan_docx_fields
+    from app.document.docx.scanner import scan_docx_fields
 
     source = tmp_path / 'dfd-like-controls.docx'
     document = Document()

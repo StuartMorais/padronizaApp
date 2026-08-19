@@ -1094,5 +1094,6 @@
     "enabled": false,
     "key": "dfd-registro-de-preco-sedh-sia14srp",
     "padding": 4
-  }
+  },
+  "schema_version": 1
 }

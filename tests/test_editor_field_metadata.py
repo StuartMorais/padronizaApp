@@ -1,4 +1,4 @@
-from app.field_utils import preserved_editor_field_metadata
+from app.domain.field_metadata import preserved_editor_field_metadata
 
 
 def test_preserves_embedded_choice_question_separately_from_section_layout_label():
@@ -37,7 +37,7 @@ def test_preserved_metadata_is_deep_copied():
 
 
 def test_assisted_detection_template_flag_uses_saved_field_metadata():
-    from app.field_utils import uses_assisted_detection
+    from app.domain.field_metadata import uses_assisted_detection
 
     assert uses_assisted_detection([
         {"id": "manual", "type": "text"},
@@ -54,7 +54,7 @@ def test_assisted_detection_template_flag_uses_saved_field_metadata():
 
 
 def test_repository_keeps_detection_metadata_when_normalizing(tmp_path):
-    from app.template_repository import TemplateRepository
+    from app.repositories.templates import TemplateRepository
 
     repository = TemplateRepository(tmp_path / "templates")
     fields = repository._normalize_fields(
@@ -79,7 +79,7 @@ def test_repository_keeps_detection_metadata_when_normalizing(tmp_path):
 
 
 def test_prefilled_default_value_survives_editor_and_repository_normalization(tmp_path):
-    from app.template_repository import TemplateRepository
+    from app.repositories.templates import TemplateRepository
 
     original = {
         "id": "auto.justificativa",
@@ -97,7 +97,7 @@ def test_prefilled_default_value_survives_editor_and_repository_normalization(tm
 
 
 def test_context_autotagged_word_control_is_treated_as_assisted_detection() -> None:
-    from app.field_utils import is_assisted_detection_field
+    from app.domain.field_metadata import is_assisted_detection_field
 
     assert is_assisted_detection_field(
         {
@@ -110,7 +110,7 @@ def test_context_autotagged_word_control_is_treated_as_assisted_detection() -> N
 
 
 def test_context_resolver_metadata_survives_editor_and_repository(tmp_path) -> None:
-    from app.template_repository import TemplateRepository
+    from app.repositories.templates import TemplateRepository
 
     original = {
         "id": "prioridade",

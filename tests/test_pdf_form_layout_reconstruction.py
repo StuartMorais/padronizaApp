@@ -2,13 +2,11 @@ from pathlib import Path
 
 import fitz
 
-from app.automatic_field_detector import (
-    apply_docx_field_candidates,
-    candidate_field_definitions,
-    detect_docx_field_candidates,
-)
-from app.smart_template import smart_fields_from_docx
-from app.template_source import prepare_template_source
+from app.document.detection.application import apply_docx_field_candidates
+from app.document.detection.candidates import candidate_field_definitions
+from app.document.detection.detector import detect_docx_field_candidates
+from app.document.understanding.smart_template import smart_fields_from_docx
+from app.document.source import prepare_template_source
 
 
 def _build_vehicle_inspection_pdf(path: Path) -> None:

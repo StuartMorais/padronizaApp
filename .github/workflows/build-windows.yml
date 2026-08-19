@@ -31,6 +31,14 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
+      - name: Instalar dependências de teste
+        shell: pwsh
+        run: pip install -r requirements-dev.txt
+
+      - name: Executar quality gate antes da compilação
+        shell: pwsh
+        run: ./tools/run_quality_gate.ps1
+
       - name: Compilar o Padroniza
         id: build
         shell: pwsh

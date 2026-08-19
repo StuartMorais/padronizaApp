@@ -2,8 +2,8 @@ from pathlib import Path
 
 from docx import Document
 
-from app.layout_inference import apply_layout_metadata, infer_docx_layout, layout_blocks
-from app.smart_template import smart_fields_from_docx
+from app.document.understanding.layout import apply_layout_metadata, infer_docx_layout, layout_blocks
+from app.document.understanding.smart_template import smart_fields_from_docx
 
 
 def _build_structured_template(path: Path) -> None:
@@ -133,7 +133,7 @@ def test_single_choice_tag_creates_one_checkbox_style_choice_field(tmp_path: Pat
 
 
 def test_template_repository_preserves_single_choice_layout(tmp_path: Path) -> None:
-    from app.template_repository import TemplateRepository
+    from app.repositories.templates import TemplateRepository
 
     repository = TemplateRepository(tmp_path / "templates")
     normalized = repository._normalize_fields(
@@ -273,7 +273,7 @@ def test_old_automatic_table_layout_is_migrated_to_form_grid() -> None:
 
 
 def test_template_repository_preserves_form_grid_metadata(tmp_path: Path) -> None:
-    from app.template_repository import TemplateRepository
+    from app.repositories.templates import TemplateRepository
 
     repository = TemplateRepository(tmp_path / "templates")
     static_rows = [
@@ -363,7 +363,7 @@ def test_same_row_static_content_preserves_partial_field_position(tmp_path: Path
 
 
 def test_exact_partial_position_can_be_locked() -> None:
-    from app.layout_inference import normalize_form_layout
+    from app.document.understanding.layout import normalize_form_layout
 
     fields = normalize_form_layout(
         [
@@ -387,7 +387,7 @@ def test_exact_partial_position_can_be_locked() -> None:
 
 
 def test_layout_quality_rejects_overlapping_form_grid_cells() -> None:
-    from app.layout_inference import layout_quality_issues
+    from app.document.understanding.layout import layout_quality_issues
 
     issues = layout_quality_issues(
         [
@@ -416,7 +416,7 @@ def test_layout_quality_rejects_overlapping_form_grid_cells() -> None:
 
 
 def test_normalize_absorbs_adjacent_label_cell_into_field() -> None:
-    from app.layout_inference import normalize_form_layout
+    from app.document.understanding.layout import normalize_form_layout
 
     fields = normalize_form_layout(
         [
@@ -451,7 +451,7 @@ def test_normalize_absorbs_adjacent_label_cell_into_field() -> None:
 
 
 def test_normalize_removes_stale_dropdown_prompt_overlap() -> None:
-    from app.layout_inference import layout_quality_issues, normalize_form_layout
+    from app.document.understanding.layout import layout_quality_issues, normalize_form_layout
 
     fields = normalize_form_layout(
         [
@@ -568,7 +568,7 @@ def test_static_form_grid_cells_keep_the_same_physical_row(tmp_path: Path) -> No
 
 
 def test_static_row_grouping_repairs_legacy_staircase_metadata() -> None:
-    from app.layout_inference import group_form_grid_static_rows
+    from app.document.understanding.layout import group_form_grid_static_rows
 
     legacy_cells = [
         {"layout_order": 2, "layout_column_index": 0, "text": "E-mail"},
@@ -667,7 +667,7 @@ def test_sheet_presentation_metadata_survives_layout_merge_and_block_grouping() 
 
 
 def test_normalize_prefers_explicit_tag_over_stale_assisted_overlap() -> None:
-    from app.layout_inference import layout_quality_issues, normalize_form_layout
+    from app.document.understanding.layout import layout_quality_issues, normalize_form_layout
 
     fields = normalize_form_layout(
         [

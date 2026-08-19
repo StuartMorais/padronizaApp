@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.local_data import LocalDataStore
-from app.output_planner import OutputPlanner
-from app.template_loader import TemplatePackage
+from app.repositories.local_data import LocalDataStore
+from app.services.output_planner import OutputPlanner
+from app.services.templates import TemplatePackage
 
 
 def _package(tmp_path: Path, *, numbering: bool = True) -> TemplatePackage:

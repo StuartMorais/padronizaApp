@@ -221,13 +221,15 @@
       "label_source": "identifier"
     },
     {
-      "id": "default_or_text:detalhamento.contratacao|Não há necessidade de detalhamento mais amplo, uma vez que o objeto está claramente definido nos quantitativos e especificação do item 3 acima.",
-      "label": "Default Or Text:Detalhamento Contratacao|Não Há Necessidade De Detalhamento Mais Amplo, Uma Vez Que O Objeto Está Claramente Definido Nos Quantitativos E Especificação Do Item 3 Acima",
+      "id": "detalhamento.contratacao",
+      "label": "Detalhamento da contratação",
       "type": "multiline",
       "required": true,
-      "type_source": "identifier",
+      "type_source": "tag",
       "section": "Dados do documento",
-      "label_source": "identifier"
+      "label_source": "document_context",
+      "tag_type": "default_or_text",
+      "default_value": "Não há necessidade de detalhamento mais amplo, uma vez que o objeto está claramente definido nos quantitativos e especificação do item 3 acima."
     },
     {
       "id": "finalidade.objeto",
@@ -1027,7 +1029,7 @@
       "title": "Dados do documento",
       "fields": [
         "itens",
-        "default_or_text:detalhamento.contratacao|Não há necessidade de detalhamento mais amplo, uma vez que o objeto está claramente definido nos quantitativos e especificação do item 3 acima."
+        "detalhamento.contratacao"
       ]
     },
     {
@@ -1132,5 +1134,6 @@
     "enabled": false,
     "key": "dfd-diversos-sedh-sia11div",
     "padding": 4
-  }
+  },
+  "schema_version": 1
 }

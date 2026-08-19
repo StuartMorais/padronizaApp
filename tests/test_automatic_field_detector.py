@@ -7,13 +7,11 @@ from docx.shared import RGBColor
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-from app.automatic_field_detector import (
-    apply_docx_field_candidates,
-    candidate_field_definitions,
-    detect_docx_field_candidates,
-)
-from app.smart_template import smart_fields_from_docx
-from app.docx_engine import generate_docx
+from app.document.detection.application import apply_docx_field_candidates
+from app.document.detection.candidates import candidate_field_definitions
+from app.document.detection.detector import detect_docx_field_candidates
+from app.document.understanding.smart_template import smart_fields_from_docx
+from app.document.docx.generator import generate_docx
 
 
 def _save(document: Document, path: Path) -> Path:
@@ -653,7 +651,7 @@ def test_detects_checkbox_alternatives_split_across_table_cells(tmp_path: Path) 
 
 def test_detects_vertical_checkbox_markers_in_separate_cell_with_adjacent_option_text(tmp_path: Path) -> None:
     document = Document()
-    intro = document.add_paragraph(
+    document.add_paragraph(
         "Em cumprimento às diretrizes estabelecidas por este órgão, declaro que foi realizada "
         "a verificação de existência de unidades do(s) produto(s) em estoque, apresentando "
         "a seguinte ocorrência:"

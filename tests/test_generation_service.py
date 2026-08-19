@@ -1,19 +1,22 @@
 from __future__ import annotations
 
 from pathlib import Path
+import zipfile
 
 import pytest
+from docx import Document
 
-from app.docx_engine import DocumentGenerationError
-from app.local_data import LocalDataStore
-from app.output_planner import OutputPlanner
-from app.services.generation_service import GenerationService
-from app.template_loader import TemplatePackage
+from app.document.docx.generator import DocumentGenerationError
+from app.document.conversion.pdf import PdfConversionError
+from app.repositories.local_data import LocalDataStore
+from app.services.output_planner import OutputPlanner
+from app.services.generation import GenerationService
+from app.services.templates import TemplatePackage
 
 
 def _package(tmp_path: Path) -> TemplatePackage:
     source = tmp_path / "source.docx"
-    source.write_bytes(b"placeholder")
+    Document().save(source)
     return TemplatePackage(
         template_id="test-template",
         name="Modelo Teste",
@@ -34,6 +37,13 @@ def _package(tmp_path: Path) -> TemplatePackage:
     )
 
 
+
+def _write_minimal_docx(path: Path) -> None:
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types/>")
+        archive.writestr("word/document.xml", "<document/>")
+
+
 def test_failed_docx_generation_does_not_consume_sequence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -47,7 +57,7 @@ def test_failed_docx_generation_does_not_consume_sequence(
         raise DocumentGenerationError("boom")
 
     monkeypatch.setattr(
-        "app.services.generation_service.generate_docx",
+        "app.services.generation.generate_docx",
         fail_generation,
     )
 
@@ -69,10 +79,10 @@ def test_successful_docx_generation_consumes_sequence_and_records_history(
     output_path = tmp_path / "0001.docx"
 
     def fake_generation(template_path, destination, values):
-        Path(destination).write_bytes(b"generated")
+        _write_minimal_docx(Path(destination))
 
     monkeypatch.setattr(
-        "app.services.generation_service.generate_docx",
+        "app.services.generation.generate_docx",
         fake_generation,
     )
 
@@ -97,25 +107,24 @@ def test_failed_pdf_conversion_does_not_consume_sequence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.pdf_converter import PdfConversionError
-
     store = LocalDataStore(tmp_path / "data")
     planner = OutputPlanner(store)
     service = GenerationService(store, planner)
     package = _package(tmp_path)
 
     def fake_generation(template_path, destination, values):
-        Path(destination).write_bytes(b"generated")
+        _write_minimal_docx(Path(destination))
 
-    def fail_conversion(source, destination):
+    def fail_conversion(source, destination, **_kwargs):
         raise PdfConversionError("conversion failed")
 
     monkeypatch.setattr(
-        "app.services.generation_service.generate_docx",
+        "app.services.generation.generate_docx",
         fake_generation,
     )
     monkeypatch.setattr(
-        "app.services.generation_service.convert_docx_to_pdf",
+        service.converter,
+        "docx_to_pdf",
         fail_conversion,
     )
 
@@ -124,3 +133,48 @@ def test_failed_pdf_conversion_does_not_consume_sequence(
 
     assert store.peek_sequence("documents") == 1
     assert store.list_recent() == []
+
+
+def test_docx_generation_does_not_replace_existing_file_when_staging_fails(tmp_path, monkeypatch):
+    from app.services import generation as generation_module
+
+    package = _package(tmp_path)
+    output = tmp_path / "existing.docx"
+    output.write_bytes(b"ORIGINAL")
+    store = LocalDataStore(tmp_path / "data-transaction")
+    service = GenerationService(store)
+
+    def fail_generate(*_args, **_kwargs):
+        raise DocumentGenerationError("boom")
+
+    monkeypatch.setattr(generation_module, "generate_docx", fail_generate)
+    with pytest.raises(DocumentGenerationError):
+        service.generate_docx(package, {"company.name": "X"}, output)
+
+    assert output.read_bytes() == b"ORIGINAL"
+
+
+def test_pdf_generation_does_not_replace_existing_file_when_conversion_fails(tmp_path, monkeypatch):
+    from app.services import generation as generation_module
+
+    package = _package(tmp_path)
+    output = tmp_path / "existing.pdf"
+    output.write_bytes(b"%PDF-ORIGINAL")
+    store = LocalDataStore(tmp_path / "data-pdf-transaction")
+
+    class FailingConverter:
+        def available_backend(self):
+            return "fake"
+        def docx_to_pdf(self, *_args, **_kwargs):
+            raise PdfConversionError("boom")
+
+    service = GenerationService(store, converter=FailingConverter())
+    monkeypatch.setattr(
+        generation_module,
+        "generate_docx",
+        lambda _source, destination, _values: _write_minimal_docx(Path(destination)),
+    )
+    with pytest.raises(PdfConversionError):
+        service.generate_pdf(package, {"company.name": "X"}, output)
+
+    assert output.read_bytes() == b"%PDF-ORIGINAL"

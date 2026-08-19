@@ -1,0 +1,17 @@
+target-version = "py312"
+line-length = 110
+extend-exclude = [
+    ".venv",
+    "build",
+    "dist",
+    "release",
+]
+
+[lint]
+# Start with correctness rules rather than enforcing a wholesale style rewrite.
+# F catches undefined names, unused imports/locals, duplicate definitions and
+# other Pyflakes-level bugs; E9 catches parser/runtime syntax failures.
+select = ["E9", "F"]
+
+[lint.per-file-ignores]
+"app/**/__init__.py" = ["F401"]

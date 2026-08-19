@@ -1,0 +1,42 @@
+name: Qualidade do Padroniza
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  quality-windows:
+    name: Testes, tipos e interface no Windows
+    runs-on: windows-2022
+    timeout-minutes: 35
+
+    steps:
+      - name: Baixar o código do repositório
+        uses: actions/checkout@v6
+
+      - name: Preparar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Instalar dependências de desenvolvimento
+        shell: pwsh
+        run: pip install -r requirements-dev.txt
+
+      - name: Executar quality gate completo
+        shell: pwsh
+        run: ./tools/run_quality_gate.ps1
+
+      - name: Publicar relatório de cobertura
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: padroniza-coverage
+          path: coverage.xml
+          if-no-files-found: ignore
+          retention-days: 14
