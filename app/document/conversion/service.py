@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Iterator
+import tempfile
 import threading
 
 from app.document.conversion.backends import (
@@ -9,6 +11,7 @@ from app.document.conversion.backends import (
     DocxToPdfBackend,
     default_docx_pdf_backends,
 )
+from app.document.word_package import WORD_INPUT_SUFFIXES, WordPackageError, normalize_word_input
 from app.document.conversion.pdf import (
     ConversionCancelledError,
     ConverterCapabilities,
@@ -43,7 +46,7 @@ class DocumentConverter:
         for backend in self._backends:
             if backend.is_available():
                 return backend.name
-        return "Nenhum conversor DOCX → PDF disponível"
+        return "Nenhum conversor Word → PDF disponível"
 
 
     def last_backend(self) -> str:
@@ -55,7 +58,8 @@ class DocumentConverter:
             docx_to_pdf=any(backend.is_available() for backend in self._backends),
             pdf_to_docx=integrated.pdf_to_docx,
             description=(
-                "DOCX → PDF: seleção automática Microsoft Word → LibreOffice → conversor integrado. "
+                "DOCX/DOCM → PDF: seleção automática Microsoft Word → LibreOffice → conversor integrado; "
+                "DOCM é normalizado sem macros antes da conversão. "
                 "PDF → DOCX: conversor integrado com PyMuPDF."
             ),
         )
@@ -76,38 +80,46 @@ class DocumentConverter:
 
         if cancel_check is not None and cancel_check():
             raise ConversionCancelledError("Conversão cancelada pelo usuário.")
+        if not source_path.exists() or not source_path.is_file():
+            raise PdfConversionError(f"O arquivo do Word não existe: {source_path}")
+        if source_path.suffix.casefold() not in WORD_INPUT_SUFFIXES:
+            raise PdfConversionError("O arquivo de entrada deve usar a extensão .docx ou .docm.")
 
-        for backend in self._backends:
-            if not backend.is_available():
-                continue
-            try:
-                if cancel_check is None:
-                    # Compatibility with custom/legacy backends that implement
-                    # the original three-argument protocol.
-                    result = backend.convert(source_path, destination_path, warning_list)
-                else:
-                    result = backend.convert(
-                        source_path,
-                        destination_path,
-                        warning_list,
-                        cancel_check=cancel_check,
-                    )
-                self._state.last_backend = backend.name
-                return result
-            except ConversionCancelledError:
-                raise
-            except PdfConversionError as exc:
-                failures.append(f"{backend.name}: {exc}")
-                warning_list.append(
-                    f"Falha no backend {backend.name}; o Padroniza tentou o próximo conversor disponível."
-                )
+        try:
+            with _prepared_word_source(source_path, warning_list) as conversion_source:
+                for backend in self._backends:
+                    if not backend.is_available():
+                        continue
+                    try:
+                        if cancel_check is None:
+                            # Compatibility with custom/legacy backends that implement
+                            # the original three-argument protocol.
+                            result = backend.convert(conversion_source, destination_path, warning_list)
+                        else:
+                            result = backend.convert(
+                                conversion_source,
+                                destination_path,
+                                warning_list,
+                                cancel_check=cancel_check,
+                            )
+                        self._state.last_backend = backend.name
+                        return result
+                    except ConversionCancelledError:
+                        raise
+                    except PdfConversionError as exc:
+                        failures.append(f"{backend.name}: {exc}")
+                        warning_list.append(
+                            f"Falha no backend {backend.name}; o Padroniza tentou o próximo conversor disponível."
+                        )
+        except WordPackageError as exc:
+            raise PdfConversionError(str(exc)) from exc
 
         if failures:
             raise PdfConversionError(
-                "Nenhum backend conseguiu converter o DOCX para PDF.\n\n" + "\n".join(failures)
+                "Nenhum backend conseguiu converter o documento do Word para PDF.\n\n" + "\n".join(failures)
             )
         raise PdfConversionError(
-            "Nenhum conversor DOCX → PDF está disponível. Instale o Microsoft Word, "
+            "Nenhum conversor Word → PDF está disponível. Instale o Microsoft Word, "
             "LibreOffice ou as dependências do conversor integrado."
         )
 
@@ -125,6 +137,22 @@ class DocumentConverter:
             warnings=warnings,
             cancel_check=cancel_check,
         )
+
+
+@contextmanager
+def _prepared_word_source(source: Path, warnings: list[str]) -> Iterator[Path]:
+    if source.suffix.casefold() == ".docx":
+        yield source
+        return
+
+    with tempfile.TemporaryDirectory(prefix="padroniza-docm-") as temporary:
+        destination = Path(temporary) / f"{source.stem}.docx"
+        normalized = normalize_word_input(source, destination)
+        if normalized.macros_removed:
+            warnings.append(
+                "O DOCM foi convertido para uma cópia DOCX segura; macros VBA não foram executadas nem preservadas."
+            )
+        yield normalized.path
 
 
 DEFAULT_CONVERTER = DocumentConverter()

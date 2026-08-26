@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -186,6 +188,114 @@ class LocalDataStore:
 
     def clear_recent(self) -> None:
         self._recent.write([])
+
+    def commit_generated_document(
+        self,
+        record: dict[str, Any],
+        *,
+        audit_action: str,
+        audit_description: str,
+        audit_details: dict[str, Any],
+        sequence_key: str | None = None,
+        sequence_year: int | None = None,
+        expected_sequence: int | None = None,
+    ) -> str:
+        """Commit history, audit and numbering as one rollback-capable unit.
+
+        Generation publishes an artifact only together with these metadata
+        changes.  Staging all JSON payloads first prevents a late history/audit
+        write from consuming numbering while leaving the stores inconsistent.
+        """
+
+        recent = self.list_recent()
+        document_id = str(record.get("id", "")).strip()
+        if not document_id:
+            document_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        saved = deepcopy(record)
+        saved["id"] = document_id
+        saved.setdefault("created_at", now_iso())
+        recent = [item for item in recent if str(item.get("id", "")) != document_id]
+        recent.insert(0, saved)
+        recent = recent[: self.MAX_RECENT]
+
+        audit = self._audit.read()
+        if not isinstance(audit, list):
+            audit = []
+        audit.insert(
+            0,
+            {
+                "timestamp": now_iso(),
+                "action": str(audit_action),
+                "description": str(audit_description),
+                "details": deepcopy(audit_details),
+            },
+        )
+        audit = audit[: self.MAX_AUDIT]
+
+        changes: list[tuple[JsonFileStore, Any]] = [
+            (self._recent, recent),
+            (self._audit, audit),
+        ]
+        if sequence_key:
+            year = int(sequence_year or datetime.now().year)
+            resolved_key = f"{str(sequence_key).strip()}:{year}"
+            sequences = self._sequences.read()
+            if not isinstance(sequences, dict):
+                sequences = {}
+            current = int(sequences.get(resolved_key, 0) or 0)
+            next_value = current + 1
+            if expected_sequence is not None and next_value != int(expected_sequence):
+                raise RuntimeError(
+                    "A numeração mudou enquanto o documento era gerado. "
+                    "Gere novamente para evitar número duplicado."
+                )
+            sequences[resolved_key] = next_value
+            changes.append((self._sequences, sequences))
+
+        self._write_stores_transactionally(changes)
+        return document_id
+
+    def _write_stores_transactionally(
+        self,
+        changes: list[tuple[JsonFileStore, Any]],
+    ) -> None:
+        """Stage and publish several local JSON stores with rollback."""
+
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix=".padroniza-data-transaction-",
+            dir=str(self.data_dir),
+        ) as temporary:
+            stage_root = Path(temporary)
+            prepared: list[tuple[Path, Path]] = []
+            for index, (store, value) in enumerate(changes):
+                staged = stage_root / f"staged-{index}-{store.path.name}"
+                atomic_write_json(staged, encode_store(store.kind, value))
+                prepared.append((staged, store.path))
+
+            activated: list[tuple[Path, Path | None]] = []
+            try:
+                for index, (staged, destination) in enumerate(prepared):
+                    previous = stage_root / f"previous-{index}-{destination.name}"
+                    had_previous = destination.exists()
+                    if had_previous:
+                        os.replace(destination, previous)
+                    try:
+                        os.replace(staged, destination)
+                    except Exception:
+                        if had_previous and previous.exists() and not destination.exists():
+                            os.replace(previous, destination)
+                        raise
+                    activated.append((destination, previous if had_previous else None))
+            except Exception:
+                for destination, previous in reversed(activated):
+                    try:
+                        destination.unlink(missing_ok=True)
+                        if previous is not None and previous.exists():
+                            os.replace(previous, destination)
+                    except OSError:
+                        pass
+                raise
 
     # Drafts -------------------------------------------------------------------
     def save_draft(self, template_id: str, values: dict[str, Any]) -> None:

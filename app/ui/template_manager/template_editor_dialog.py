@@ -10,7 +10,6 @@ from uuid import uuid4
 
 from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal
 from PySide6.QtGui import (
-    QAction,
     QKeySequence,
     QShortcut,
 )
@@ -30,7 +29,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QMenu,
     QPlainTextEdit,
     QProgressDialog,
     QPushButton,
@@ -54,7 +52,6 @@ from app.document.docx.generator import generate_docx
 from app.document.docx.repair import repair_repeatable_table_markers
 from app.document.docx.scanner import clear_docx_scan_cache
 from app.document.detection.candidates import candidate_field_definitions
-from app.document.detection.detector import detect_docx_with_report
 from app.document.detection.models import AutomaticDetectionCancelled
 from app.repositories.field_library import FieldLibraryStore
 from app.core.atomic_output import publish_staged_output, staged_output
@@ -79,6 +76,7 @@ from app.document.source import (
     prepare_template_source,
 )
 from app.repositories.templates import TemplateRepository
+from app.services.template_scanning import TemplateScanResult, locate_template_fields
 from app.ui.widgets.clickable_drop_zone import ClickableDropZone
 from app.ui.widgets.context_help import HelpIconButton, HelpLabel
 from app.ui.widgets.toast import show_toast
@@ -107,7 +105,7 @@ class _TemplateFileDropZone(ClickableDropZone):
             QSizePolicy.Policy.Fixed,
         )
         self.setToolTip(
-            'Arraste um arquivo DOCX ou PDF para cá ou clique para selecioná-lo.'
+            'Arraste um arquivo DOCX, DOCM ou PDF para cá ou clique para selecioná-lo.'
         )
 
         layout = QVBoxLayout(self)
@@ -175,8 +173,8 @@ class _TemplateFileDropZone(ClickableDropZone):
 
 
 
-class _AutomaticDetectionWorker(QObject):
-    """Run assisted DOCX detection off the GUI thread with cooperative cancel."""
+class _FieldLocalizationWorker(QObject):
+    """Run the complete field-localization pipeline off the GUI thread."""
 
     result_ready = Signal(object)
     failed = Signal(object)
@@ -186,13 +184,15 @@ class _AutomaticDetectionWorker(QObject):
     def __init__(
         self,
         source: Path,
-        existing_ids: set[str],
         existing_fields: list[dict[str, Any]],
+        source_field_hints: list[dict[str, Any]],
     ) -> None:
         super().__init__()
         self.source = Path(source)
-        self.existing_ids = set(existing_ids)
         self.existing_fields = [deepcopy(field) for field in existing_fields]
+        self.source_field_hints = [
+            deepcopy(field) for field in source_field_hints
+        ]
         self._cancel_event = Event()
 
     def request_cancel(self) -> None:
@@ -200,10 +200,10 @@ class _AutomaticDetectionWorker(QObject):
 
     def run(self) -> None:
         try:
-            candidates, report = detect_docx_with_report(
+            result = locate_template_fields(
                 self.source,
-                existing_field_ids=self.existing_ids,
                 existing_fields=self.existing_fields,
+                source_field_hints=self.source_field_hints,
                 cancel_check=self._cancel_event.is_set,
             )
         except AutomaticDetectionCancelled:
@@ -211,11 +211,11 @@ class _AutomaticDetectionWorker(QObject):
         except Exception as exc:
             self.failed.emit(exc)
         else:
-            # Send all data needed by the GUI as one queued payload. Connecting
-            # directly to a QObject method keeps UI work on the main thread; a
-            # lambda connected to a worker-thread signal could otherwise run in
-            # the emitter thread.
-            self.result_ready.emit((candidates, deepcopy(self.existing_fields), report.as_dict()))
+            # The service result contains authoritative fields, additional
+            # review candidates and the structural report. UI work remains on
+            # the main thread because this signal is connected directly to a
+            # QObject method rather than a worker-thread lambda.
+            self.result_ready.emit(result)
         finally:
             self.finished.emit()
 
@@ -271,7 +271,7 @@ class TemplateEditorDialog(QDialog):
         self._automatic_work_files: set[Path] = set()
         self._source_field_hints: list[dict[str, Any]] = []
         self._detection_thread: QThread | None = None
-        self._detection_worker: _AutomaticDetectionWorker | None = None
+        self._detection_worker: _FieldLocalizationWorker | None = None
         self._detection_progress: QProgressDialog | None = None
 
         self.change_timer = QTimer(self)
@@ -324,50 +324,22 @@ class TemplateEditorDialog(QDialog):
         self.browse_button = (
             self.docx_drop_zone.browse_button
         )
-        self.docx_tools_button = QPushButton(
-            'Ferramentas do arquivo'
+        # One normal user action locates every supported field kind. The
+        # scanner remains multi-stage internally; the UI no longer asks users
+        # to understand the distinction between tagged/native and untagged
+        # detection modes.
+        self.locate_fields_button = QPushButton('Localizar campos')
+        self.locate_fields_button.setObjectName('primaryButton')
+        self.locate_fields_button.setToolTip(
+            'Analisa tags, controles do Word/PDF, tabelas, opções e áreas sem tags em uma única etapa.'
         )
-        self.docx_tools_menu = QMenu(self)
+        self.locate_fields_button.clicked.connect(self._scan_fields)
 
-        self.scan_action = QAction(
-            'Localizar campos',
-            self,
+        self.diagnostics_button = QPushButton('Diagnóstico')
+        self.diagnostics_button.setToolTip(
+            'Verifica conflitos, marcadores inválidos e problemas estruturais do modelo.'
         )
-        self.scan_action.triggered.connect(
-            self._scan_fields
-        )
-        self.docx_tools_menu.addAction(
-            self.scan_action
-        )
-
-        self.automatic_detection_action = QAction(
-            'Detectar campos sem tags...',
-            self,
-        )
-        self.automatic_detection_action.setToolTip(
-            'Sugere áreas preenchíveis em DOCX ou PDF e converte somente as aprovadas em campos do modelo.'
-        )
-        self.automatic_detection_action.triggered.connect(
-            self._detect_fields_without_tags
-        )
-        self.docx_tools_menu.addAction(
-            self.automatic_detection_action
-        )
-
-        self.diagnostics_action = QAction(
-            'Executar diagnóstico',
-            self,
-        )
-        self.diagnostics_action.triggered.connect(
-            self._show_diagnostics
-        )
-        self.docx_tools_menu.addAction(
-            self.diagnostics_action
-        )
-
-        self.docx_tools_button.setMenu(
-            self.docx_tools_menu
-        )
+        self.diagnostics_button.clicked.connect(self._show_diagnostics)
 
         self.filename_builder_button = QPushButton(
             'Montar nome do arquivo...'
@@ -763,7 +735,10 @@ class TemplateEditorDialog(QDialog):
             1,
         )
         selected_row.addWidget(
-            self.docx_tools_button
+            self.locate_fields_button
+        )
+        selected_row.addWidget(
+            self.diagnostics_button
         )
         docx_layout.addLayout(
             selected_row
@@ -1559,7 +1534,7 @@ class TemplateEditorDialog(QDialog):
             self,
             'Selecionar arquivo de modelo',
             '',
-            'Arquivos de modelo (*.docx *.pdf);;Documentos do Word (*.docx);;Documentos PDF (*.pdf)',
+            'Arquivos de modelo (*.docx *.docm *.pdf);;Documentos do Word (*.docx *.docm);;Documentos PDF (*.pdf)',
         )
 
         if filename:
@@ -1623,6 +1598,16 @@ class TemplateEditorDialog(QDialog):
                 duration=7000,
             )
 
+        elif prepared.converted_from_docm:
+            show_toast(
+                self,
+                'DOCM preparado com segurança',
+                ' '.join(prepared.warnings[:2]) or (
+                    'O documento macro-habilitado foi convertido para uma cópia DOCX de trabalho.'
+                ),
+                duration=7000,
+            )
+
         elif prepared.prepared_work_copy and prepared.warnings:
             show_toast(
                 self,
@@ -1635,7 +1620,7 @@ class TemplateEditorDialog(QDialog):
         if self.template_id is None or self.fields_table.rowCount() == 0:
             found_fields = self._smart_scan_fields(show_message=False)
         if prepared.converted_from_pdf and not found_fields:
-            QTimer.singleShot(0, self._detect_fields_without_tags)
+            QTimer.singleShot(0, self._scan_fields)
         self._schedule_editor_change()
         self._update_readiness()
 
@@ -1800,12 +1785,12 @@ class TemplateEditorDialog(QDialog):
         return answer == QMessageBox.StandardButton.Yes
 
     def _scan_fields(self) -> None:
-        self._smart_scan_fields(show_message=True)
+        self._start_field_localization()
 
     def _smart_scan_fields(self, *, show_message: bool) -> bool:
         if self.selected_docx is None:
             if show_message:
-                QMessageBox.warning(self, 'Nenhum arquivo selecionado', 'Selecione primeiro um arquivo DOCX ou PDF.')
+                QMessageBox.warning(self, 'Nenhum arquivo selecionado', 'Selecione primeiro um arquivo DOCX, DOCM ou PDF.')
             return False
         repair_result = None
         try:
@@ -1843,8 +1828,7 @@ class TemplateEditorDialog(QDialog):
                     'Nenhum campo encontrado',
                     (
                         'Nenhuma tag ou controle reconhecido foi encontrado.\n\n'
-                        'Use Ferramentas do arquivo > Detectar campos sem tags para receber '
-                        'sugestões de áreas preenchíveis.'
+                        'Clique em Localizar campos para analisar também áreas preenchíveis sem tags.'
                     ),
                 )
             return False
@@ -1881,143 +1865,179 @@ class TemplateEditorDialog(QDialog):
             )
         return True
 
-    def _detect_fields_without_tags(self) -> None:
+    def _start_field_localization(self) -> None:
+        """Run tagged/native and untagged discovery behind one user action."""
+
         if self.selected_docx is None:
             QMessageBox.warning(
                 self,
                 'Nenhum arquivo selecionado',
-                'Selecione primeiro um arquivo DOCX ou PDF.',
+                'Selecione primeiro um arquivo DOCX, DOCM ou PDF.',
             )
             return
 
         if self._detection_thread is not None and self._detection_thread.isRunning():
             QMessageBox.information(
                 self,
-                'Detecção em andamento',
+                'Localização em andamento',
                 'Aguarde a análise atual terminar ou use Cancelar na janela de progresso.',
             )
             return
 
         existing = self._collect_fields(validate=False)
-        existing_ids = {
-            str(field.get('id', '')).strip()
-            for field in existing
-            if str(field.get('id', '')).strip()
-        }
 
         progress = QProgressDialog(
-            'Analisando texto, tabelas, opções e contexto do documento…',
+            'Localizando tags, controles, tabelas, opções e áreas sem tags…',
             'Cancelar',
             0,
             0,
             self,
         )
-        progress.setWindowTitle('Detectando campos sem tags')
+        progress.setWindowTitle('Localizando campos')
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(0)
         progress.setAutoClose(False)
         progress.setAutoReset(False)
 
         thread = QThread(self)
-        worker = _AutomaticDetectionWorker(
+        worker = _FieldLocalizationWorker(
             self.selected_docx,
-            existing_ids,
             existing,
+            self._source_field_hints,
         )
         worker.moveToThread(thread)
 
         thread.started.connect(worker.run)
-        worker.result_ready.connect(self._automatic_detection_ready)
-        worker.failed.connect(self._automatic_detection_failed)
-        worker.canceled.connect(self._automatic_detection_canceled)
+        worker.result_ready.connect(self._field_localization_ready)
+        worker.failed.connect(self._field_localization_failed)
+        worker.canceled.connect(self._field_localization_canceled)
 
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(self._automatic_detection_thread_finished)
-        progress.canceled.connect(self._request_automatic_detection_cancel)
+        thread.finished.connect(self._field_localization_thread_finished)
+        progress.canceled.connect(self._request_field_localization_cancel)
 
         self._detection_thread = thread
         self._detection_worker = worker
         self._detection_progress = progress
+        self.locate_fields_button.setEnabled(False)
         progress.show()
         thread.start()
 
-    def _request_automatic_detection_cancel(self) -> None:
+    def _request_field_localization_cancel(self) -> None:
         worker = self._detection_worker
         if worker is None:
             return
         worker.request_cancel()
         if self._detection_progress is not None:
             self._detection_progress.setLabelText(
-                'Cancelando a detecção com segurança…'
+                'Cancelando a localização com segurança…'
             )
-            self._detection_progress.setCancelButtonText("Cancelando…")
+            self._detection_progress.setCancelButtonText('Cancelando…')
 
-    def _automatic_detection_thread_finished(self) -> None:
+    def _field_localization_thread_finished(self) -> None:
         if self._detection_progress is not None:
             self._detection_progress.close()
             self._detection_progress.deleteLater()
         self._detection_progress = None
         self._detection_worker = None
         self._detection_thread = None
+        self.locate_fields_button.setEnabled(True)
 
-    def _automatic_detection_failed(self, exc: object) -> None:
+    def _field_localization_failed(self, exc: object) -> None:
         if self._detection_progress is not None:
             self._detection_progress.close()
         error = exc if isinstance(exc, Exception) else RuntimeError(str(exc))
         show_exception_dialog(
             self,
-            'Não foi possível detectar áreas preenchíveis',
-            'A detecção assistida não conseguiu analisar o documento.',
+            'Não foi possível localizar os campos',
+            'A análise completa do documento não pôde ser concluída.',
             error,
-            stage='template_editor.automatic_detection',
+            stage='template_editor.field_localization',
             context={"source": self.selected_docx or ""},
         )
 
-    def _automatic_detection_canceled(self) -> None:
+    def _field_localization_canceled(self) -> None:
         if self._detection_progress is not None:
             self._detection_progress.close()
         show_toast(
             self,
-            'Detecção cancelada',
-            'Nenhuma alteração foi aplicada ao modelo.',
+            'Localização cancelada',
+            'Nenhuma sugestão foi aplicada ao modelo.',
             kind='info',
         )
 
-    def _automatic_detection_ready(self, payload: object) -> None:
+    def _field_localization_ready(self, payload: object) -> None:
         if self._detection_progress is not None:
             self._detection_progress.close()
-        candidates: object = []
-        existing: list[dict[str, Any]] = []
-        scan_report: dict[str, Any] = {}
-        if isinstance(payload, tuple) and len(payload) in {2, 3}:
-            candidates = payload[0]
-            existing = [
-                dict(field)
-                for field in (payload[1] if isinstance(payload[1], list) else [])
-                if isinstance(field, dict)
-            ]
-            if len(payload) == 3 and isinstance(payload[2], dict):
-                scan_report = dict(payload[2])
-        values = [
-            dict(candidate)
-            for candidate in (candidates if isinstance(candidates, list) else [])
-            if isinstance(candidate, dict)
-        ]
-        self._write_scanner_telemetry(scan_report, values)
-        if not values:
-            QMessageBox.information(
-                self,
-                'Nenhuma sugestão encontrada',
-                (
-                    'O documento não contém áreas não marcadas que possam ser '
-                    'identificadas com segurança. As tags e controles existentes '
-                    'continuam disponíveis em Localizar campos.'
-                ),
+
+        if not isinstance(payload, TemplateScanResult):
+            self._field_localization_failed(
+                RuntimeError('O scanner retornou um resultado em formato inesperado.')
             )
             return
-        self._review_detected_candidates(values, existing, scan_report)
+
+        fields = payload.field_list()
+        candidates = payload.candidate_list()
+        scan_report = dict(payload.report)
+        self._write_scanner_telemetry(scan_report, candidates)
+
+        # Authoritative tags/native controls are deterministic and can be
+        # synchronized immediately. Untagged interpretations still pass through
+        # the review dialog before they modify the DOCX.
+        self._load_fields_into_table(fields)
+        self._schedule_editor_change()
+        self._update_readiness()
+
+        if not candidates:
+            if not fields:
+                QMessageBox.information(
+                    self,
+                    'Nenhum campo encontrado',
+                    (
+                        'Nenhuma tag, controle ou área preenchível reconhecida foi encontrada. '
+                        'Você ainda pode adicionar campos manualmente e usar o diagnóstico para '
+                        'investigar a estrutura do documento.'
+                    ),
+                )
+                return
+
+            details = (
+                f'{len(fields)} campo(s) reconhecido(s) por tags ou controles. '
+                'Nenhuma área adicional sem tags precisa de revisão.'
+            )
+            if payload.repaired_marker_count:
+                details += (
+                    f' {payload.repaired_marker_count} marcador(es) de tabela repetível '
+                    'foram corrigidos automaticamente.'
+                )
+            show_toast(self, 'Campos localizados', details)
+            return
+
+        applied = self._review_detected_candidates(
+            candidates,
+            fields,
+            scan_report,
+        )
+        if applied == 0:
+            review_only = payload.review_candidate_count
+            preselected = payload.preselected_candidate_count
+            details = (
+                f'{len(fields)} campo(s) por tags/controles foram sincronizados. '
+                f'{len(candidates)} sugestão(ões) adicional(is) foram revisadas sem aplicação.'
+            )
+            if preselected or review_only:
+                details += (
+                    f' {preselected} recomendada(s); {review_only} deixada(s) para revisão manual.'
+                )
+            show_toast(
+                self,
+                'Localização concluída',
+                details,
+                kind='info',
+                duration=6200,
+            )
 
     def _write_scanner_telemetry(
         self,
@@ -2059,13 +2079,18 @@ class TemplateEditorDialog(QDialog):
         candidates: list[dict[str, Any]],
         existing: list[dict[str, Any]],
         scan_report: dict[str, Any] | None = None,
-    ) -> None:
-        dialog = AutomaticDetectionDialog(candidates, self, scan_report=scan_report)
+    ) -> int:
+        dialog = AutomaticDetectionDialog(
+            candidates,
+            self,
+            scan_report=scan_report,
+            known_field_count=len(existing),
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
+            return 0
         accepted = dialog.accepted_candidates()
         if not accepted:
-            return
+            return 0
 
         work_path: Path | None = None
         try:
@@ -2100,7 +2125,7 @@ class TemplateEditorDialog(QDialog):
                 stage='template_editor.apply_detection',
                 context={"source": self.selected_docx or ""},
             )
-            return
+            return 0
 
         self._automatic_work_files.add(work_path)
         self.selected_docx = work_path
@@ -2120,6 +2145,7 @@ class TemplateEditorDialog(QDialog):
             ),
             duration=6200,
         )
+        return len(accepted)
 
     def _cleanup_automatic_work_files(self) -> None:
         for path in list(self._automatic_work_files):
@@ -2131,7 +2157,7 @@ class TemplateEditorDialog(QDialog):
 
     def _show_diagnostics(self) -> None:
         if self.selected_docx is None:
-            QMessageBox.warning(self, 'Nenhum arquivo selecionado', 'Selecione primeiro um arquivo DOCX ou PDF.')
+            QMessageBox.warning(self, 'Nenhum arquivo selecionado', 'Selecione primeiro um arquivo DOCX, DOCM ou PDF.')
             return
         try:
             fields = self._collect_fields(validate=False)
@@ -2928,11 +2954,11 @@ class TemplateEditorDialog(QDialog):
 
     def _cancel_editor(self) -> None:
         if self._detection_thread is not None and self._detection_thread.isRunning():
-            self._request_automatic_detection_cancel()
+            self._request_field_localization_cancel()
             QMessageBox.information(
                 self,
                 'Cancelando análise',
-                'Aguarde a detecção terminar de cancelar antes de fechar o editor.',
+                'Aguarde a localização terminar de cancelar antes de fechar o editor.',
             )
             return
         if self._dirty:
@@ -2951,7 +2977,7 @@ class TemplateEditorDialog(QDialog):
 
     def closeEvent(self, event) -> None:
         if self._detection_thread is not None and self._detection_thread.isRunning():
-            self._request_automatic_detection_cancel()
+            self._request_field_localization_cancel()
             event.ignore()
             return
         if not self._dirty:

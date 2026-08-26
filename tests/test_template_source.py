@@ -46,7 +46,7 @@ def test_template_source_rejects_other_extensions(tmp_path: Path) -> None:
     try:
         prepare_template_source(source, tmp_path / 'work')
     except TemplateSourceError as exc:
-        assert 'DOCX ou PDF' in str(exc)
+        assert 'DOCX, DOCM ou PDF' in str(exc)
     else:
         raise AssertionError('expected TemplateSourceError')
 

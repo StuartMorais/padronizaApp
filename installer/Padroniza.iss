@@ -23,7 +23,7 @@ PrivilegesRequired=lowest
 OutputDir=..\release
 OutputBaseFilename=Padroniza-Setup-v{#MyAppVersion}
 
-Compression=lzma2
+Compression=lzma2/fast
 SolidCompression=yes
 WizardStyle=modern
 
@@ -49,7 +49,7 @@ Name: "desktopicon"; Description: "Criar atalho na área de trabalho"; GroupDesc
 
 
 [Files]
-Source: "..\dist\Padroniza\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\Padroniza.exe"; DestDir: "{app}"; DestName: "Padroniza.exe"; Flags: ignoreversion
 
 
 [Icons]

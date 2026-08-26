@@ -58,11 +58,13 @@ class AutomaticDetectionDialog(QDialog):
         parent=None,
         *,
         scan_report: dict[str, Any] | None = None,
+        known_field_count: int = 0,
     ) -> None:
         super().__init__(parent)
         self._candidates = [deepcopy(item) for item in candidates]
         self._scan_report = dict(scan_report or {})
-        self.setWindowTitle("Detectar campos sem tags")
+        self._known_field_count = max(0, int(known_field_count or 0))
+        self.setWindowTitle("Revisar campos encontrados")
         self.resize(1180, 720)
         self.setMinimumSize(820, 520)
 
@@ -70,16 +72,20 @@ class AutomaticDetectionDialog(QDialog):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(10)
 
-        title = QLabel("Revise as áreas que parecem precisar de preenchimento")
+        title = QLabel("Revise os campos adicionais encontrados")
         title.setObjectName("dialogTitle")
         root.addWidget(title)
 
+        known_prefix = (
+            f"O Padroniza já reconheceu {self._known_field_count} campo(s) por tags ou controles. "
+            if self._known_field_count
+            else ""
+        )
         description = QLabel(
-            "A detecção assistida combina vários sinais do documento — texto, posição relativa, "
-            "linhas/colunas, grupos e consistência com campos vizinhos — sem exigir uma estrutura "
-            "fixa. Ainda assim, documentos feitos livremente podem ser ambíguos: revise as sugestões "
-            "quando necessário. As tags existentes continuam prioritárias, sugestões de baixa "
-            "confiança ficam desmarcadas e o modelo pode ser corrigido depois durante o uso."
+            known_prefix
+            + "Abaixo estão áreas adicionais encontradas por estrutura, texto, posição, tabelas e "
+            "consistência visual. Sugestões fortes podem vir marcadas; interpretações ambíguas ficam "
+            "desmarcadas para confirmação. Somente as opções marcadas serão inseridas no DOCX."
         )
         description.setWordWrap(True)
         root.addWidget(description)
@@ -229,9 +235,22 @@ class AutomaticDetectionDialog(QDialog):
                 if bool(candidate.get("selected", False))
                 else Qt.CheckState.Unchecked
             )
+            selection_reasons = [
+                str(value)
+                for value in candidate.get("auto_apply_reasons", []) or []
+                if str(value).strip()
+            ]
             if candidate.get("requires_configuration"):
                 use_item.setToolTip(
                     "Esta sugestão precisa ser editada antes de ser aplicada."
+                )
+            elif selection_reasons:
+                use_item.setToolTip(
+                    "Não foi pré-marcada automaticamente:\n" + "\n".join(selection_reasons)
+                )
+            elif candidate.get("auto_apply_eligible") is True:
+                use_item.setToolTip(
+                    "Sinais estruturais consistentes: pré-marcada para aplicação."
                 )
             self.table.setItem(row, 0, use_item)
 
@@ -289,7 +308,16 @@ class AutomaticDetectionDialog(QDialog):
             use_item.setCheckState(Qt.CheckState.Unchecked)
             use_item.setToolTip("Esta sugestão precisa ser editada antes de ser aplicada.")
         else:
-            use_item.setToolTip("")
+            selection_reasons = [
+                str(value)
+                for value in candidate.get("auto_apply_reasons", []) or []
+                if str(value).strip()
+            ]
+            use_item.setToolTip(
+                "Não foi pré-marcada automaticamente:\n" + "\n".join(selection_reasons)
+                if selection_reasons
+                else ""
+            )
         self._refresh_candidate_review_state(candidate)
         self._apply_filters()
         self._update_summary()
@@ -307,6 +335,7 @@ class AutomaticDetectionDialog(QDialog):
         bands = {"high": 0, "medium": 0, "low": 0}
         priorities = {"ready": 0, "recommended": 0, "required": 0}
         checked = 0
+        auto_eligible = 0
         visible = 0
         for row, item in enumerate(self._candidates):
             band = str(item.get("confidence_band", "")) or confidence_band(float(item.get("confidence", 0.0)))
@@ -315,15 +344,24 @@ class AutomaticDetectionDialog(QDialog):
             priority = str(item.get("review_priority", "")) or self._review_priority(item)
             if priority in priorities:
                 priorities[priority] += 1
+            if item.get("auto_apply_eligible") is True:
+                auto_eligible += 1
             use_item = self.table.item(row, 0)
             if use_item is not None and use_item.checkState() == Qt.CheckState.Checked:
                 checked += 1
             if row < self.table.rowCount() and not self.table.isRowHidden(row):
                 visible += 1
+        prefix = (
+            f"{self._known_field_count} campo(s) já reconhecido(s). "
+            if self._known_field_count
+            else ""
+        )
         text = (
-            f"{len(self._candidates)} sugestão(ões): "
+            prefix
+            + f"{len(self._candidates)} sugestão(ões) adicional(is): "
             f"{bands['high']} alta, {bands['medium']} média e {bands['low']} baixa confiança. "
             f"{priorities['required']} exigem revisão e {priorities['recommended']} recomendam revisão. "
+            f"{auto_eligible} passaram pela política de pré-aplicação. "
             f"Exibindo {visible}; {checked} marcada(s) para aplicar."
         )
         self.summary_label.setText(text)
@@ -421,6 +459,15 @@ class AutomaticDetectionDialog(QDialog):
         reasons = [str(value) for value in candidate.get("review_reasons", []) or [] if str(value).strip()]
         if reasons:
             lines.append("Revisar porque: " + " • ".join(reasons))
+        auto_reasons = [
+            str(value)
+            for value in candidate.get("auto_apply_reasons", []) or []
+            if str(value).strip()
+        ]
+        if candidate.get("auto_apply_eligible") is True:
+            lines.append("Pré-aplicação: elegível; os sinais mínimos foram satisfeitos.")
+        elif auto_reasons:
+            lines.append("Pré-aplicação: exige confirmação — " + " • ".join(auto_reasons))
         explanation = candidate_explanation(candidate)
         if explanation:
             lines.append("Sinais usados:\n" + explanation)

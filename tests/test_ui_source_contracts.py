@@ -123,22 +123,34 @@ def test_user_facing_review_and_template_editor_capabilities_remain_available() 
         "_apply_field_filters",
         "_refresh_field_validation",
         "_generate_test_document",
-        "_request_automatic_detection_cancel",
+        "_request_field_localization_cancel",
         "_review_detected_candidates",
     } <= editor_methods
 
 
-def test_assisted_detection_result_is_delivered_without_worker_thread_lambda() -> None:
+def test_field_localization_result_is_delivered_without_worker_thread_lambda() -> None:
     path = ROOT / "app/ui/template_manager/template_editor_dialog.py"
     source = path.read_text(encoding="utf-8")
-    assert "worker.result_ready.connect(self._automatic_detection_ready)" in source
+    assert "worker.result_ready.connect(self._field_localization_ready)" in source
     assert "lambda candidates" not in source
 
     worker_methods = _class_method_names(
         "app/ui/template_manager/template_editor_dialog.py",
-        "_AutomaticDetectionWorker",
+        "_FieldLocalizationWorker",
     )
     assert {"run", "request_cancel"} <= worker_methods
+
+
+def test_template_editor_exposes_one_normal_field_localization_action() -> None:
+    path = ROOT / "app/ui/template_manager/template_editor_dialog.py"
+    source = path.read_text(encoding="utf-8")
+
+    assert "self.locate_fields_button = QPushButton('Localizar campos')" in source
+    assert "self.locate_fields_button.clicked.connect(self._scan_fields)" in source
+    assert "self.diagnostics_button = QPushButton('Diagnóstico')" in source
+    assert "Detectar campos sem tags" not in source
+    assert "Ferramentas do arquivo" not in source
+    assert "locate_template_fields" in source
 
 
 def test_generated_field_shell_keeps_assisted_action_and_dropdown_responsive() -> None:

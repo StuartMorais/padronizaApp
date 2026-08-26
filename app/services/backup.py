@@ -6,7 +6,7 @@ import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 from app.core.constants import APPLICATION, ORGANIZATION
@@ -263,18 +263,17 @@ def restore_backup(
                 )
             settings_data = parsed_settings
 
+        settings_commit: Callable[[], None] | None = None
+        if settings_data is not None:
+            resolved_settings = settings_data
+            settings_commit = lambda: _apply_settings_transactionally(resolved_settings)
+
         _restore_data_folders_transactionally(
             project_root,
             temporary_root,
             ("templates", "data"),
+            after_activate=settings_commit,
         )
-
-        if settings_data is not None:
-            settings = _settings_store()
-            settings.clear()
-            for key, value in settings_data.items():
-                settings.setValue(str(key), value)
-            settings.sync()
 
 
 def create_scheduled_backup(
@@ -346,12 +345,15 @@ def _restore_data_folders_transactionally(
     project_root: Path,
     extracted_root: Path,
     folder_names: tuple[str, ...],
+    *,
+    after_activate: Callable[[], None] | None = None,
 ) -> None:
     """Replace restored folders atomically enough to permit rollback.
 
     Incoming data is copied into a staging directory first. Only fully staged
-    folders are swapped into place. If any swap fails, every folder already
-    changed in this restore attempt is rolled back to its original state.
+    folders are swapped into place. If any swap or final settings commit fails,
+    every folder already changed in this restore attempt is rolled back to its
+    original state before the staging directory is released.
     """
 
     with tempfile.TemporaryDirectory(
@@ -390,7 +392,10 @@ def _restore_data_folders_transactionally(
                         previous.replace(destination)
                     raise
                 activated.append((destination, previous if had_previous else None))
-        except OSError as exc:
+
+            if after_activate is not None:
+                after_activate()
+        except Exception as exc:
             for destination, previous in reversed(activated):
                 try:
                     if destination.exists():
@@ -401,11 +406,55 @@ def _restore_data_folders_transactionally(
                     # Preserve the original exception; any surviving previous
                     # folder remains inside the staging directory until cleanup.
                     pass
+            if isinstance(exc, BackupError):
+                raise BackupError(
+                    f"{exc} As pastas restauradas também foram revertidas."
+                ) from exc
             raise BackupError(
                 "A restauração não pôde substituir os dados atuais. "
                 "As pastas já alteradas foram revertidas."
             ) from exc
 
+
+def _apply_settings_transactionally(settings_data: dict[str, Any]) -> None:
+    settings = _settings_store()
+    previous = {key: settings.value(key) for key in settings.allKeys()}
+    try:
+        _write_settings(settings, settings_data)
+    except Exception as exc:
+        rollback_error: Exception | None = None
+        try:
+            _write_settings(settings, previous)
+        except Exception as restore_exc:  # pragma: no cover - catastrophic backend failure
+            rollback_error = restore_exc
+        detail = (
+            " Também não foi possível restaurar as configurações anteriores."
+            if rollback_error is not None
+            else " As configurações anteriores foram restauradas."
+        )
+        raise BackupError(
+            "Não foi possível aplicar as configurações do backup." + detail
+        ) from exc
+
+
+def _write_settings(settings: Any, values: dict[str, Any]) -> None:
+    settings.clear()
+    for key, value in values.items():
+        settings.setValue(str(key), value)
+    settings.sync()
+
+    status_method = getattr(settings, "status", None)
+    if not callable(status_method):
+        return
+    status = status_method()
+    status_name = str(getattr(status, "name", status))
+    status_value = getattr(status, "value", status)
+    try:
+        numeric_status = int(status_value)
+    except (TypeError, ValueError):
+        numeric_status = 0 if status_name.casefold() in {"noerror", "status.noerror", "0"} else 1
+    if numeric_status != 0:
+        raise OSError(f"QSettings retornou status de erro: {status_name}")
 
 
 def _read_backup_metadata(archive: zipfile.ZipFile) -> dict[str, Any]:

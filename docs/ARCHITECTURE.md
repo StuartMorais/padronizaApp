@@ -28,7 +28,7 @@ Practical rules:
 ## Canonical field flow
 
 ```text
-DOCX/PDF/native controls
+DOCX/DOCM/PDF/native controls
         ↓
 scanner or assisted detector
         ↓
@@ -94,7 +94,7 @@ A failed generation or conversion therefore does not replace an existing final f
 
 The UI and generation service use `DocumentConverter` rather than calling the integrated PDF converter directly.
 
-DOCX → PDF backends are selected by fidelity priority:
+DOCX/DOCM → PDF backends are selected by fidelity priority. DOCM is first normalized into a macro-free canonical DOCX copy; Padroniza never executes or preserves VBA in its working document:
 
 ```text
 Microsoft Word COM (Windows + Word)
@@ -142,4 +142,4 @@ Backup restore validates archive sizes, member paths, backup schema, and setting
 
 ## CI and integration testing
 
-The Windows GitHub workflow runs the automated test suite before packaging and then starts the real PySide6 window in offscreen `--smoke-test` mode. This validates resource paths, theme loading, storage initialization, and window construction in addition to unit-level behavior.
+The Windows quality workflow runs the automated suite, static checks, and real PySide6 offscreen `--smoke-test` startup. The release workflow is deliberately separate and fast: semantic release tags do not rerun the full quality workflow, packaging performs only compile/dead-module preflight, PyInstaller runs once, and the same one-file executable is used for both the portable asset and Inno Setup installer before assets are published to GitHub Releases.

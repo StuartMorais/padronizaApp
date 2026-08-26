@@ -5,9 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from app.domain.fields import FieldDefinition
-from app.repositories.templates import (
-    TemplateRepository,
-)
+from app.repositories.templates import TemplateRepository
 
 
 @dataclass(frozen=True)
@@ -26,85 +24,55 @@ class TemplatePackage:
 def discover_templates(
     templates_dir: Path,
 ) -> list[TemplatePackage]:
-    """
-    Discover active templates through TemplateRepository.
+    """Discover usable active templates, preserving compatibility normalization."""
 
-    This uses the same compatibility normalization as the template editor, so
-    older templates appear consistently in both the main window and manager.
-    """
+    packages, _issues = discover_templates_with_issues(templates_dir)
+    return packages
 
-    repository = TemplateRepository(
-        templates_dir
-    )
+
+def discover_templates_with_issues(
+    templates_dir: Path,
+) -> tuple[list[TemplatePackage], list[dict[str, str]]]:
+    """Discover templates and return structured failures instead of hiding them."""
+
+    repository = TemplateRepository(templates_dir)
     packages: list[TemplatePackage] = []
+    summaries = repository.list_templates()
+    issues = repository.list_discovery_issues()
 
-    for summary in repository.list_templates():
-        template_id = str(
-            summary["id"]
-        )
-
+    for summary in summaries:
+        template_id = str(summary["id"])
         try:
-            config = repository.read_config(
-                template_id
+            config = repository.read_config(template_id)
+            source_path = repository.get_source_path(template_id)
+        except Exception as exc:
+            issues.append(
+                {
+                    "template_id": template_id,
+                    "folder": str(summary.get("folder", "")),
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                }
             )
-            source_path = (
-                repository.get_source_path(
-                    template_id
-                )
-            )
-        except Exception:
             continue
 
         template = config["template"]
-        output = config.get(
-            "output",
-            {},
-        )
-
+        output = config.get("output", {})
         packages.append(
             TemplatePackage(
                 template_id=template_id,
-                name=str(
-                    template.get(
-                        "name",
-                        template_id,
-                    )
-                ),
-                description=str(
-                    template.get(
-                        "description",
-                        "",
-                    )
-                ),
-                category=str(
-                    template.get(
-                        "category",
-                        "",
-                    )
-                ),
-                version=str(
-                    template.get(
-                        "version",
-                        "1.0",
-                    )
-                ),
+                name=str(template.get("name", template_id)),
+                description=str(template.get("description", "")),
+                category=str(template.get("category", "")),
+                version=str(template.get("version", "1.0")),
                 source_path=source_path,
                 fields=[
                     FieldDefinition(field)
-                    for field in config.get(
-                        "fields",
-                        [],
-                    )
-                    if isinstance(
-                        field,
-                        dict,
-                    )
+                    for field in config.get("fields", [])
+                    if isinstance(field, dict)
                 ],
                 output_filename=str(
-                    output.get(
-                        "filename_pattern",
-                        "{{template.name}}.docx",
-                    )
+                    output.get("filename_pattern", "{{template.name}}.docx")
                 ),
                 config=config,
             )
@@ -116,4 +84,5 @@ def discover_templates(
             package.template_id.casefold(),
         )
     )
-    return packages
+    issues.sort(key=lambda issue: str(issue.get("template_id", "")).casefold())
+    return packages, issues

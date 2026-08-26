@@ -26,7 +26,7 @@ if errorlevel 1 goto :error
 
 echo Limpando compilacoes anteriores...
 if exist build rmdir /s /q build
-if exist "dist\Padroniza" rmdir /s /q "dist\Padroniza"
+if exist "dist\Padroniza.exe" del /q "dist\Padroniza.exe"
 if exist Padroniza.spec del /q Padroniza.spec
 
 echo Gerando aplicativo...
@@ -35,8 +35,7 @@ if exist "assets\padroniza.ico" (
         --noconfirm ^
         --clean ^
         --windowed ^
-        --onedir ^
-        --contents-directory . ^
+        --onefile ^
         --name Padroniza ^
         --icon "assets\padroniza.ico" ^
         --add-data "app/ui/styles:app/ui/styles" ^
@@ -50,8 +49,7 @@ if exist "assets\padroniza.ico" (
         --noconfirm ^
         --clean ^
         --windowed ^
-        --onedir ^
-        --contents-directory . ^
+        --onefile ^
         --name Padroniza ^
         --add-data "app/ui/styles:app/ui/styles" ^
         --add-data "templates:templates" ^
@@ -62,16 +60,12 @@ if exist "assets\padroniza.ico" (
 )
 if errorlevel 1 goto :error
 
-if not exist "dist\Padroniza\data" mkdir "dist\Padroniza\data"
-if not exist "dist\Padroniza\output" mkdir "dist\Padroniza\output"
-if not exist "dist\Padroniza\backups" mkdir "dist\Padroniza\backups"
-
 echo.
 echo Compilacao concluida.
 echo Executavel:
-echo %CD%\dist\Padroniza\Padroniza.exe
+echo %CD%\dist\Padroniza.exe
 echo.
-start "" "%CD%\dist\Padroniza"
+start "" "%CD%\dist"
 exit /b 0
 
 :error

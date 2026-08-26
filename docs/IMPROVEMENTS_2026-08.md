@@ -4,7 +4,7 @@ This pass builds on the structural cleanup and focuses on reliability, fidelity,
 
 ## Implemented
 
-- Fidelity-first DOCX → PDF backend chain: Microsoft Word COM, LibreOffice, integrated ReportLab fallback.
+- Fidelity-first DOCX/DOCM → PDF backend chain: Microsoft Word COM, LibreOffice, integrated ReportLab fallback.
 - Backend visibility in settings, generation feedback, live preview, and the file converter.
 - Cooperative conversion cancellation and staging/atomic publication in the converter UI.
 - Transactional generation with output validation before final publication.

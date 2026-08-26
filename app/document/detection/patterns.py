@@ -93,5 +93,6 @@ _SOURCE_LABELS = {
     "prefilled_text": "Texto existente possivelmente editável",
     "terminal_prompt": "Prompt final após bloco de instruções",
     "colored_prompt": "Placeholder textual destacado por formatação",
+    "colored_inline_choice": "Alternativas coloridas dentro do texto",
 }
 

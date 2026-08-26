@@ -54,6 +54,12 @@ def candidate_field_definitions(
                     "detection_reviewed": bool(candidate.get("reviewed_by_user", False)),
                     "detector_version": int(candidate.get("detector_version", 1) or 1),
                     "scanner_version": int(candidate.get("scanner_version", 1) or 1),
+                    "detection_pipeline_version": int(candidate.get("pipeline_version", 1) or 1),
+                    "detection_selection_policy_version": int(candidate.get("selection_policy_version", 1) or 1),
+                    "detection_auto_apply_eligible": bool(candidate.get("auto_apply_eligible", False)),
+                    "detection_document_fingerprint": str(candidate.get("document_fingerprint", "")),
+                    "detection_location_signature": str(candidate.get("location_signature", "")),
+                    "detection_location": deepcopy(candidate.get("location", {}) or {}),
                     "full_width": True,
                 })
             )
@@ -81,6 +87,12 @@ def candidate_field_definitions(
                 field["detection_reviewed"] = bool(candidate.get("reviewed_by_user", False))
                 field["detector_version"] = int(candidate.get("detector_version", 1) or 1)
                 field["scanner_version"] = int(candidate.get("scanner_version", 1) or 1)
+                field["detection_pipeline_version"] = int(candidate.get("pipeline_version", 1) or 1)
+                field["detection_selection_policy_version"] = int(candidate.get("selection_policy_version", 1) or 1)
+                field["detection_auto_apply_eligible"] = bool(candidate.get("auto_apply_eligible", False))
+                field["detection_document_fingerprint"] = str(candidate.get("document_fingerprint", ""))
+                field["detection_location_signature"] = str(candidate.get("location_signature", ""))
+                field["detection_location"] = deepcopy(candidate.get("location", {}) or {})
                 fields.append(FieldDefinition(field))
             continue
 
@@ -106,6 +118,12 @@ def candidate_field_definitions(
             "detection_reviewed": bool(candidate.get("reviewed_by_user", False)),
             "detector_version": int(candidate.get("detector_version", 1) or 1),
             "scanner_version": int(candidate.get("scanner_version", 1) or 1),
+            "detection_pipeline_version": int(candidate.get("pipeline_version", 1) or 1),
+            "detection_selection_policy_version": int(candidate.get("selection_policy_version", 1) or 1),
+            "detection_auto_apply_eligible": bool(candidate.get("auto_apply_eligible", False)),
+            "detection_document_fingerprint": str(candidate.get("document_fingerprint", "")),
+            "detection_location_signature": str(candidate.get("location_signature", "")),
+            "detection_location": deepcopy(candidate.get("location", {}) or {}),
         }
         options = compact_dropdown_options(candidate.get("options", []))
         if options:

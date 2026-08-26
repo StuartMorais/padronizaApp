@@ -79,7 +79,20 @@ class WordComBackend:
             word = win32com.client.DispatchEx("Word.Application")
             word.Visible = False
             word.DisplayAlerts = 0
-            document = word.Documents.Open(str(source), ReadOnly=True, AddToRecentFiles=False)
+            # msoAutomationSecurityForceDisable = 3. Keep automation hostile to
+            # macros even though DOCM sources are already normalized to an inert
+            # DOCX before reaching this backend. Also disable link updates while
+            # opening so conversion does not fetch external document content.
+            try:
+                word.AutomationSecurity = 3
+            except Exception:
+                pass
+            document = word.Documents.Open(
+                str(source),
+                ReadOnly=True,
+                AddToRecentFiles=False,
+                UpdateLinks=0,
+            )
             if cancel_check is not None and cancel_check():
                 raise ConversionCancelledError("Conversão cancelada pelo usuário.")
             # wdFormatPDF = 17. SaveAs2 is broadly available in supported Word versions.

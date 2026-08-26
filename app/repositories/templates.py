@@ -21,8 +21,12 @@ from app.domain.validation import infer_field_type
 from app.core.json_io import atomic_write_json
 from app.core.schema import TEMPLATE_SCHEMA_VERSION, SchemaVersionError
 from app.document.diagnostics import diagnose_template
+from app.document.word_package import WORD_INPUT_SUFFIXES, normalize_word_input
 
 
+MAX_TEMPLATE_PACKAGE_FILES = 100
+MAX_TEMPLATE_PACKAGE_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+MAX_TEMPLATE_PACKAGE_MEMBER_BYTES = 80 * 1024 * 1024
 
 
 class TemplatePreflightError(ValueError):
@@ -86,10 +90,12 @@ class TemplateRepository:
         self.templates_dir = Path(templates_dir)
         self.templates_dir.mkdir(parents=True, exist_ok=True)
         self.archive_dir = self.templates_dir / "_archive"
+        self._last_discovery_issues: list[dict[str, str]] = []
 
     # Discovery ----------------------------------------------------------------
     def list_templates(self) -> list[dict[str, Any]]:
         summaries: list[dict[str, Any]] = []
+        issues: list[dict[str, str]] = []
         for folder in self.templates_dir.iterdir():
             if not folder.is_dir() or folder.name.startswith(("_", ".")):
                 continue
@@ -110,11 +116,25 @@ class TemplateRepository:
                         "source_path": source_path,
                     }
                 )
-            except Exception:
+            except Exception as exc:
+                issues.append(
+                    {
+                        "template_id": folder.name,
+                        "folder": str(folder),
+                        "error_type": type(exc).__name__,
+                        "message": str(exc),
+                    }
+                )
                 continue
 
+        self._last_discovery_issues = issues
         summaries.sort(key=lambda item: (item["name"].casefold(), item["id"].casefold()))
         return summaries
+
+    def list_discovery_issues(self) -> list[dict[str, str]]:
+        """Return structured errors from the most recent active-template scan."""
+
+        return deepcopy(self._last_discovery_issues)
 
     def list_archived_templates(self) -> list[dict[str, Any]]:
         if not self.archive_dir.exists():
@@ -647,13 +667,8 @@ class TemplateRepository:
 
         folder = self._require_template_folder(template_id)
         existing = self._load_normalized_config(folder)
-        old_name = str(
-            existing.get("template", {}).get("name", "")
-        )
-        if (
-            self.normalize_template_name(name)
-            != self.normalize_template_name(old_name)
-        ):
+        old_name = str(existing.get("template", {}).get("name", ""))
+        if self.normalize_template_name(name) != self.normalize_template_name(old_name):
             self._ensure_template_name_available(
                 name,
                 allow_similar_name=allow_similar_name,
@@ -663,6 +678,7 @@ class TemplateRepository:
         normalized_fields = self._normalize_fields(fields, strict=True)
         normalized_sections = self._normalize_sections(sections, normalized_fields)
         source_name = str(existing["template"].get("source_file", "template.docx"))
+        target_source = folder / source_name
 
         updated = self._build_config(
             template_id=template_id, name=name, description=description,
@@ -677,29 +693,42 @@ class TemplateRepository:
             if key not in updated:
                 updated[key] = deepcopy(value)
 
-        target_source = folder / source_name
-        temporary_replacement: Path | None = None
+        replacement: Path | None = None
         if replacement_docx is not None:
-            replacement_docx = Path(replacement_docx)
-            self._validate_docx(replacement_docx)
+            replacement = Path(replacement_docx)
+            self._validate_docx(replacement)
             try:
-                same_file = replacement_docx.resolve() == target_source.resolve()
+                if replacement.resolve() == target_source.resolve():
+                    replacement = None
             except OSError:
-                same_file = False
-            if not same_file:
-                temporary_replacement = folder / f".{source_name}.replacement"
-                shutil.copy2(replacement_docx, temporary_replacement)
+                pass
 
-        source_for_preflight = temporary_replacement or target_source
-        try:
+        # Stage the complete new state before touching the live template.  The
+        # staged source deliberately keeps a .docx suffix because preflight and
+        # the strict scanner validate the file type from its extension.
+        with tempfile.TemporaryDirectory(
+            prefix=".padroniza-template-update-",
+            dir=str(folder),
+        ) as temporary:
+            stage_root = Path(temporary)
+            staged_config = stage_root / "template.json"
+            staged_source: Path | None = None
+            if replacement is not None:
+                staged_source = stage_root / "replacement.docx"
+                shutil.copy2(replacement, staged_source)
+
+            source_for_preflight = staged_source or target_source
             self._assert_preflight(updated, source_for_preflight)
+            self._atomic_write_json(staged_config, updated)
+
+            # Snapshot only after the incoming state is fully validated/staged.
             self._snapshot_version(folder, existing)
-            if temporary_replacement is not None:
-                os.replace(temporary_replacement, target_source)
-            self._atomic_write_json(folder / "template.json", updated)
-        finally:
-            if temporary_replacement is not None:
-                temporary_replacement.unlink(missing_ok=True)
+            changes: list[tuple[Path, Path]] = [(staged_config, folder / "template.json")]
+            if staged_source is not None:
+                # Replace the source first; if the config publication fails, the
+                # transaction helper restores the previous source automatically.
+                changes.insert(0, (staged_source, target_source))
+            self._publish_files_transactionally(stage_root, changes)
 
         return template_id
 
@@ -817,7 +846,7 @@ class TemplateRepository:
                 # Accept a package with one top-level folder.
                 matches = list(temporary_root.rglob("template.json"))
                 if len(matches) != 1:
-                    raise ValueError('O pacote deve conter template.json e um arquivo DOCX.')
+                    raise ValueError('O pacote deve conter template.json e um arquivo DOCX ou DOCM.')
                 config_path = matches[0]
                 temporary_root = config_path.parent
 
@@ -840,13 +869,24 @@ class TemplateRepository:
             )
             source_candidate = temporary_root / Path(requested_source).name
             if not source_candidate.exists():
-                docx_files = list(temporary_root.glob("*.docx"))
-                if len(docx_files) != 1:
-                    raise ValueError('O pacote deve conter exatamente um arquivo DOCX de origem.')
-                source_candidate = docx_files[0]
+                word_files = [
+                    candidate
+                    for candidate in temporary_root.iterdir()
+                    if candidate.is_file() and candidate.suffix.casefold() in WORD_INPUT_SUFFIXES
+                ]
+                if len(word_files) != 1:
+                    raise ValueError(
+                        'O pacote deve conter exatamente um arquivo DOCX ou DOCM de origem.'
+                    )
+                source_candidate = word_files[0]
+
+            normalized_source = source_candidate
+            if source_candidate.suffix.casefold() == '.docm':
+                normalized_source = temporary_root / '.padroniza-import-normalized.docx'
+                normalize_word_input(source_candidate, normalized_source)
 
             duplicate_matches = self.find_templates_using_docx(
-                source_candidate
+                normalized_source
             )
             if duplicate_matches and not allow_duplicate:
                 raise DuplicateTemplateFileError(
@@ -856,7 +896,7 @@ class TemplateRepository:
             destination = self._template_folder(template_id)
             destination.mkdir(parents=True)
             try:
-                shutil.copy2(source_candidate, destination / "template.docx")
+                shutil.copy2(normalized_source, destination / "template.docx")
                 preview = temporary_root / "preview.png"
                 if preview.exists():
                     shutil.copy2(preview, destination / "preview.png")
@@ -908,17 +948,40 @@ class TemplateRepository:
             raise FileNotFoundError(f"Cópia de versão do modelo não encontrada: {snapshot_name}")
 
         current = self._load_normalized_config(folder)
-        self._snapshot_version(folder, current)
-
         snapshot_config = self._read_json(snapshot / "template.json")
         snapshot_config.pop("_snapshot", None)
-        normalized = self._normalize_config(snapshot_config, canonical_id=template_id, folder=snapshot)
+        normalized = self._normalize_config(
+            snapshot_config,
+            canonical_id=template_id,
+            folder=snapshot,
+        )
+        normalized["template"]["id"] = template_id
         source_name = str(normalized["template"]["source_file"])
         snapshot_docx = snapshot / source_name
-        if snapshot_docx.exists():
-            shutil.copy2(snapshot_docx, folder / source_name)
-        normalized["template"]["id"] = template_id
-        self._atomic_write_json(folder / "template.json", normalized)
+        if not snapshot_docx.exists():
+            raise FileNotFoundError(
+                f"DOCX da versão selecionada não encontrado: {snapshot_docx}"
+            )
+
+        with tempfile.TemporaryDirectory(
+            prefix=".padroniza-template-restore-",
+            dir=str(folder),
+        ) as temporary:
+            stage_root = Path(temporary)
+            staged_source = stage_root / "replacement.docx"
+            staged_config = stage_root / "template.json"
+            shutil.copy2(snapshot_docx, staged_source)
+            self._assert_preflight(normalized, staged_source)
+            self._atomic_write_json(staged_config, normalized)
+
+            self._snapshot_version(folder, current)
+            self._publish_files_transactionally(
+                stage_root,
+                [
+                    (staged_source, folder / source_name),
+                    (staged_config, folder / "template.json"),
+                ],
+            )
 
     def _snapshot_version(self, folder: Path, config: dict[str, Any]) -> None:
         versions_dir = folder / "versions"
@@ -1092,6 +1155,22 @@ class TemplateRepository:
             "example",
             "detection_source",
             "detection_confidence",
+            "detection_confidence_band",
+            "detection_evidence",
+            "detection_confidence_dimensions",
+            "detection_type_inference",
+            "detection_review_priority",
+            "detection_review_reasons",
+            "detection_needs_review",
+            "detection_reviewed",
+            "detector_version",
+            "scanner_version",
+            "detection_pipeline_version",
+            "detection_selection_policy_version",
+            "detection_auto_apply_eligible",
+            "detection_document_fingerprint",
+            "detection_location_signature",
+            "detection_location",
             "choice_group_label",
             "compact_choice",
             "context_evidence",
@@ -1374,6 +1453,43 @@ class TemplateRepository:
         return str(value).strip().casefold() in {"1", "true", "yes", "sim", "required", "checked"}
 
     @staticmethod
+    def _publish_files_transactionally(
+        stage_root: Path,
+        changes: list[tuple[Path, Path]],
+    ) -> None:
+        """Publish a group of staged files with rollback on any replacement error."""
+
+        activated: list[tuple[Path, Path | None]] = []
+        try:
+            for index, (staged, destination) in enumerate(changes):
+                if not staged.is_file():
+                    raise FileNotFoundError(f"Arquivo preparado não encontrado: {staged}")
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                previous = stage_root / f"previous-{index}-{destination.name}"
+                had_previous = destination.exists()
+                if had_previous:
+                    os.replace(destination, previous)
+                try:
+                    os.replace(staged, destination)
+                except Exception:
+                    if had_previous and previous.exists() and not destination.exists():
+                        os.replace(previous, destination)
+                    raise
+                activated.append((destination, previous if had_previous else None))
+        except Exception:
+            for destination, previous in reversed(activated):
+                try:
+                    destination.unlink(missing_ok=True)
+                    if previous is not None and previous.exists():
+                        os.replace(previous, destination)
+                except OSError:
+                    # Preserve the original failure. The version snapshot remains
+                    # available for manual recovery even if the filesystem itself
+                    # refuses a rollback operation.
+                    pass
+            raise
+
+    @staticmethod
     def _read_json(path: Path) -> dict[str, Any]:
         with path.open("r", encoding="utf-8-sig") as handle:
             value = json.load(handle)
@@ -1387,6 +1503,21 @@ class TemplateRepository:
 
     @staticmethod
     def _safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
+        members = [item for item in archive.infolist() if not item.is_dir()]
+        if len(members) > MAX_TEMPLATE_PACKAGE_FILES:
+            raise ValueError('O pacote do modelo contém arquivos demais para ser importado com segurança.')
+        total_size = sum(max(0, int(item.file_size)) for item in members)
+        if total_size > MAX_TEMPLATE_PACKAGE_UNCOMPRESSED_BYTES:
+            raise ValueError('O pacote do modelo é grande demais para ser importado com segurança.')
+        oversized = next(
+            (item for item in members if int(item.file_size) > MAX_TEMPLATE_PACKAGE_MEMBER_BYTES),
+            None,
+        )
+        if oversized is not None:
+            raise ValueError(
+                f"O arquivo '{oversized.filename}' dentro do pacote é grande demais."
+            )
+
         destination = destination.resolve()
         for member in archive.infolist():
             target = (destination / member.filename).resolve()

@@ -12,7 +12,7 @@ from app.document.diagnostics import diagnose_template
 from app.repositories.local_data import LocalDataStore
 from app.services.output_planner import OutputPlanner
 from app.document.conversion.service import DocumentConverter, PdfConversionError
-from app.core.atomic_output import publish_staged_output, staged_output
+from app.core.atomic_output import reversible_publish, staged_output
 from app.services.templates import TemplatePackage
 
 
@@ -49,25 +49,30 @@ class GenerationService:
     ) -> GenerationResult:
         output_path = Path(output_path).expanduser().resolve()
         self._preflight(package)
+        expected_sequence = self.output_planner.peek_sequence(package)
         try:
             with staged_output(output_path, suffix=".docx") as staged:
                 generate_docx(package.source_path, staged, values)
                 self._validate_docx(staged)
-                publish_staged_output(staged, output_path)
+                with reversible_publish(staged, output_path):
+                    document_id = self._record_generation(
+                        package,
+                        values,
+                        output_path,
+                        format_name="docx",
+                        profile_id=profile_id,
+                        profile_name=profile_name,
+                        expected_sequence=expected_sequence,
+                    )
         except DocumentGenerationError:
             raise
         except Exception as exc:
             raise DocumentGenerationError(
-                f"Não foi possível publicar o DOCX gerado: {exc}"
+                "Não foi possível concluir a transação do DOCX gerado. "
+                "O arquivo final e os metadados anteriores foram restaurados: "
+                f"{exc}"
             ) from exc
 
-        # Numbering and history are side effects only after a complete artifact
-        # has been validated and atomically published.
-        self.output_planner.commit_sequence(package)
-        document_id = self._record_generation(
-            package, values, output_path, format_name="docx",
-            profile_id=profile_id, profile_name=profile_name,
-        )
         return GenerationResult(document_id, output_path, "docx")
 
     def generate_pdf(
@@ -81,6 +86,7 @@ class GenerationService:
     ) -> GenerationResult:
         output_path = Path(output_path).expanduser().resolve()
         self._preflight(package)
+        expected_sequence = self.output_planner.peek_sequence(package)
         warnings: list[str] = []
         backend = self.converter.available_backend()
         with tempfile.TemporaryDirectory(prefix="padroniza-pdf-") as temporary_folder:
@@ -93,19 +99,25 @@ class GenerationService:
                     if hasattr(self.converter, "last_backend"):
                         backend = self.converter.last_backend() or backend
                     self._validate_pdf(staged_pdf)
-                    publish_staged_output(staged_pdf, output_path)
+                    with reversible_publish(staged_pdf, output_path):
+                        document_id = self._record_generation(
+                            package,
+                            values,
+                            output_path,
+                            format_name="pdf",
+                            profile_id=profile_id,
+                            profile_name=profile_name,
+                            expected_sequence=expected_sequence,
+                        )
             except PdfConversionError:
                 raise
             except Exception as exc:
                 raise PdfConversionError(
-                    f"Não foi possível publicar o PDF gerado: {exc}"
+                    "Não foi possível concluir a transação do PDF gerado. "
+                    "O arquivo final e os metadados anteriores foram restaurados: "
+                    f"{exc}"
                 ) from exc
 
-        self.output_planner.commit_sequence(package)
-        document_id = self._record_generation(
-            package, values, output_path, format_name="pdf",
-            profile_id=profile_id, profile_name=profile_name,
-        )
         return GenerationResult(
             document_id, output_path, "pdf", tuple(warnings), backend
         )
@@ -169,6 +181,7 @@ class GenerationService:
         format_name: str,
         profile_id: str,
         profile_name: str,
+        expected_sequence: int | None,
     ) -> str:
         is_pdf = format_name == "pdf"
         record = {
@@ -188,20 +201,28 @@ class GenerationService:
                 profile_name=profile_name,
             ),
         }
-        document_id = self.local_store.add_recent(record)
+        provisional_document_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        record["id"] = provisional_document_id
         details = {
-            "document_id": document_id,
+            "document_id": provisional_document_id,
             "template_id": package.template_id,
             "path": str(output_path),
         }
         if is_pdf:
             details["format"] = "pdf"
-        self.local_store.add_audit(
-            "document_generated",
-            output_path.name,
-            details,
+        sequence_key = (
+            self.output_planner.sequence_key(package)
+            if expected_sequence is not None
+            else None
         )
-        return document_id
+        return self.local_store.commit_generated_document(
+            record,
+            audit_action="document_generated",
+            audit_description=output_path.name,
+            audit_details=details,
+            sequence_key=sequence_key,
+            expected_sequence=expected_sequence,
+        )
 
     @staticmethod
     def _history_metadata(

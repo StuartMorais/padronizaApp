@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QTableWidgetItem
 
 from app.domain.field_metadata import uses_assisted_detection
-from app.services.templates import TemplatePackage, discover_templates
+from app.services.templates import TemplatePackage, discover_templates_with_issues
 from app.ui.template_manager.template_editor_dialog import TemplateEditorDialog
 from app.ui.template_manager.template_manager_dialog import TemplateManagerDialog
 from app.ui.widgets.toast import show_toast
@@ -27,7 +27,26 @@ class TemplateActionsMixin:
                 self._active_template_id
             )
             self._form_dirty = False
-        self.templates = discover_templates(self.templates_dir)
+        self.templates, discovery_issues = discover_templates_with_issues(self.templates_dir)
+        issue_signature = tuple(
+            (str(issue.get("template_id", "")), str(issue.get("message", "")))
+            for issue in discovery_issues
+        )
+        if discovery_issues and issue_signature != getattr(self, "_template_discovery_issue_signature", ()):
+            preview = "; ".join(
+                f"{issue.get('template_id', 'modelo')}: {issue.get('message', 'erro desconhecido')}"
+                for issue in discovery_issues[:3]
+            )
+            if len(discovery_issues) > 3:
+                preview += f"; e mais {len(discovery_issues) - 3}"
+            show_toast(
+                self,
+                "Alguns modelos não puderam ser carregados",
+                preview,
+                kind="warning",
+                duration=7000,
+            )
+        self._template_discovery_issue_signature = issue_signature
         self.template_combo.blockSignals(True)
         self.template_combo.clear()
         selected_index = 0

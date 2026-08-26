@@ -300,6 +300,14 @@ def postprocess_candidates(
                     "Texto curto destacado por formatação coincide com um rótulo típico de preenchimento.",
                 )
             )
+        elif source == "colored_inline_choice":
+            evidences.append(
+                Evidence(
+                    "colored_choice",
+                    0.07,
+                    "Trecho colorido dentro de texto fixo contém alternativas explícitas separadas por OU.",
+                )
+            )
         elif source == "inline_placeholder":
             evidences.append(
                 Evidence(
@@ -579,6 +587,7 @@ def _pick_candidate(a: dict[str, Any], b: dict[str, Any]) -> tuple[dict[str, Any
             "prefilled_text": 3,
             "terminal_prompt": 5,
             "colored_prompt": 4,
+            "colored_inline_choice": 6,
             "dropdown_prompt": 2,
         }.get(source, 1)
         label_quality = 0 if _poor_label(str(item.get("label", ""))) else 1

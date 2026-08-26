@@ -767,8 +767,12 @@ class TutorialPage(QWidget):
                         'Compara nomes ignorando acentos, maiúsculas/minúsculas, pontuação, sufixos de cópia/versão e pequenas diferenças de digitação.',
                     ),
                     (
-                        'Ferramentas DOCX',
-                        'Abre Localizar campos e Executar diagnóstico em um menu compacto.',
+                        'Localizar campos',
+                        'Executa uma análise completa em uma única etapa: tags, controles do Word/PDF, tabelas, opções e áreas sem tags. Sugestões ambíguas são revisadas antes de alterar o modelo.',
+                    ),
+                    (
+                        'Diagnóstico',
+                        'Verifica conflitos, marcadores inválidos e problemas estruturais sem misturar essa função com a localização de campos.',
                     ),
                     (
                         "Montar nome do arquivo…",

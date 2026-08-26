@@ -70,7 +70,6 @@ class OutputPlanner:
         root.mkdir(parents=True, exist_ok=True)
         return PlannedOutput(path=root / filename, sequence=sequence)
 
-
     def _filename(
         self,
         package: TemplatePackage,
@@ -95,16 +94,16 @@ class OutputPlanner:
         numbering = package.config.get("numbering", {})
         if not bool(numbering.get("enabled", False)):
             return None
-        return self.local_store.peek_sequence(self._sequence_key(package))
+        return self.local_store.peek_sequence(self.sequence_key(package))
 
     def commit_sequence(self, package: TemplatePackage) -> int | None:
         numbering = package.config.get("numbering", {})
         if not bool(numbering.get("enabled", False)):
             return None
-        return self.local_store.next_sequence(self._sequence_key(package))
+        return self.local_store.next_sequence(self.sequence_key(package))
 
     @staticmethod
-    def _sequence_key(package: TemplatePackage) -> str:
+    def sequence_key(package: TemplatePackage) -> str:
         numbering = package.config.get("numbering", {})
         return str(numbering.get("key", package.template_id)) or package.template_id
 

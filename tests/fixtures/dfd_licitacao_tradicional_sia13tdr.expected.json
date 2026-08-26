@@ -25,7 +25,11 @@
       "columns": 5
     },
     {
-      "header_labels": ["DATA", "VERSÃO", "DESCRIÇÃO"],
+      "header_labels": [
+        "DATA",
+        "VERSÃO",
+        "DESCRIÇÃO"
+      ],
       "kind": "reference",
       "columns": 3
     }
@@ -55,12 +59,35 @@
       "source": "colored_prompt",
       "label": "Matrícula",
       "section_prefix": "6. Indicação do membro responsável"
+    },
+    {
+      "source": "long_choice",
+      "type": "dropdown",
+      "section_prefix": "5.1. Justificativa em caso de ausência parcial ou total"
+    },
+    {
+      "source": "colored_inline_choice",
+      "type": "dropdown",
+      "label": "Destino do encaminhamento",
+      "section_prefix": "7. Despacho de encaminhamento"
     }
   ],
   "forbidden_candidate_sources_by_section_prefix": [
-    {"source": "prefilled_text", "section_prefix": "2. Justificativa"},
-    {"source": "prefilled_text", "section_prefix": "4. Previsão"},
-    {"source": "prefilled_text", "section_prefix": "5.1. Justificativa"},
-    {"source": "prefilled_text", "section_prefix": "7. Despacho"}
+    {
+      "source": "prefilled_text",
+      "section_prefix": "2. Justificativa"
+    },
+    {
+      "source": "prefilled_text",
+      "section_prefix": "4. Previsão"
+    },
+    {
+      "source": "prefilled_text",
+      "section_prefix": "5.1. Justificativa"
+    },
+    {
+      "source": "prefilled_text",
+      "section_prefix": "7. Despacho"
+    }
   ]
 }

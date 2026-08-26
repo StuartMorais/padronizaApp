@@ -4,8 +4,8 @@
 >
 > **Maintenance rule:** update this file after every meaningful architecture change, feature addition, bug fix that affects project assumptions, quality-gate change, or known limitation. Do not use it as a line-by-line changelog; keep it focused on the current state and decisions that a new developer/chat needs to continue safely.
 
-**Last updated:** 2026-08-25  
-**Current baseline:** Scanner V4 structure-first detection + Structural Table Intelligence + user-facing capability baseline  
+**Last updated:** 2026-08-26  
+**Current baseline:** Scanner V5.3 review-first detection + unified field localization + safe DOCM ingestion + automatic GitHub Releases  
 **Primary platform:** Windows / PySide6 desktop application  
 **Entry point:** `main.py`
 
@@ -13,14 +13,16 @@
 
 ## 1. What Padroniza does
 
-Padroniza is a desktop application that turns DOCX/PDF documents into reusable templates and user-fillable forms.
+Padroniza is a desktop application that turns DOCX/DOCM/PDF documents into reusable templates and user-fillable forms.
 
 Core workflow:
 
 ```text
-DOCX / PDF
+DOCX / DOCM / PDF
     ↓
-scan explicit tags and/or automatically detect fillable fields
+safe source preparation (DOCM -> macro-free DOCX working copy; PDF -> reconstructed DOCX)
+    ↓
+one field-localization workflow: authoritative tags/native controls + review-first untagged candidates
     ↓
 normalize fields into the application field model
     ↓
@@ -41,7 +43,7 @@ Important capabilities include:
 
 - Tagged and untagged field scanning.
 - DOCX generation with user-provided values.
-- DOCX ↔ PDF conversion.
+- DOCX/DOCM → PDF and PDF → DOCX conversion. DOCM is normalized to a macro-free DOCX working copy before any scanner/converter backend opens it.
 - Native Word/content-control handling where supported.
 - Dates, text, checkboxes, dropdowns, single-choice fields, repeatable tables, and `default_or_text` fields.
 - Template creation/editing/import/update and diagnostics.
@@ -58,7 +60,7 @@ The source tree is organized by responsibility:
 app/
 ├── core/            # paths, settings, schema/atomic helpers, logging, constants
 ├── domain/          # field models/types/handlers, metadata, conditions, validation
-├── document/        # DOCX/PDF scanning, generation, conversion, detection, understanding
+├── document/        # DOCX/DOCM/PDF ingestion, DOCX scanning/generation, conversion, detection, understanding
 ├── repositories/    # persistence and local/template repositories
 ├── services/        # application workflows/orchestration
 └── ui/              # PySide6 windows, pages, dialogs, widgets, styles, action mixins
@@ -142,9 +144,11 @@ commit numbering/history
 
 A failed generation/conversion must not consume a sequence number or leave a partially written final file.
 
-### Conversion backends
+### Word source preparation and conversion backends
 
-For DOCX → PDF, prefer the best available backend:
+DOCX is the canonical editable/generation format. DOCM is accepted as an input format, but `app/document/word_package.py` creates an inert DOCX working copy by removing VBA project/data/signature parts and changing the macro-enabled main content type. The original DOCM is never modified and Padroniza must not execute macros. PDF input is reconstructed to a DOCX working copy through the existing source-preparation path.
+
+For DOCX/DOCM → PDF, prefer the best available backend after safe DOCM normalization:
 
 ```text
 Microsoft Word COM (Windows, highest fidelity when available)
@@ -203,44 +207,50 @@ confidence/evidence/review priority
 application of accepted detections
 ```
 
-### Scanner V4 structure-first model
+### Scanner V5 review-first model
 
-The current structural scanner version is **4**. Automatic detection must understand document ownership before emitting fields:
+The current scanner baseline is **Scanner V5**. It preserves the proven Scanner V4 structure-first heuristics, but changes the contract: detection is allowed to find broadly while only candidates supported by strong structural/evidence rules are preselected for automatic application. Ambiguous candidates remain visible for human review instead of silently modifying the template.
 
 ```text
-DocumentStructureExtractor
+DOCX/DOCM/PDF source
 ↓
-SectionResolver
+safe source preparation to canonical DOCX where required
 ↓
-TableAnalyzer
+normalized structural extraction + document fingerprint
 ↓
-ContentRoleClassifier
+section/table/content ownership
 ↓
-Candidate discovery / context / type inference
+independent detector passes
 ↓
-Stable IDs + multidimensional confidence
+candidate evidence + semantic/type inference
 ↓
-Invariants / review
+selection policy (preselected vs review-only)
+↓
+user review / acceptance
 ↓
 transactional tag application
 ↓
 strict re-scan round-trip validation
 ```
 
-Important Scanner V4 rules:
+Key Scanner V5 implementation pieces live under `app/document/detection/`, including `extraction.py`, `passes.py`, and `selection_policy.py`. `app/services/template_scanning.py` is the application-level orchestration boundary for the editor: one call locates authoritative tags/native controls and additional untagged review candidates while the detector layers remain independently testable. Candidate metadata preserves source/location/evidence and document fingerprint information so future per-template learning can be added without letting heuristics directly mutate documents.
+
+Important structure-first rules retained from Scanner V4:
 
 - every candidate retains a meaningful section/structural owner;
 - numbered instruction-list items inside notes are not document sections;
 - physical Word tables are classified before ordinary cell candidates;
 - valid manual tags protect their local structure from reinterpretation;
 - formatting is evidence, not an absolute field rule;
+- binary long-choice blocks with a single standalone `OU` are valid choices (two alternatives are sufficient);
+- mixed-color sentences may expose a narrowly bounded inline choice when one contiguous colored span contains explicit `OU` alternatives; only that colored span is replaced;
 - terminal prompts after instructional blocks can become fields when context is strong;
 - field type inference combines structure, vocabulary, placeholders, controls, neighbors and section context;
 - candidates expose multidimensional confidence (`structure`, `fillable`, `label`, `type`) and evidence;
 - automatically written tags are staged and must pass the strict normal DOCX scanner before publication;
 - real scanner bugs should become permanent regression fixtures/contracts.
 
-See `docs/SCANNER_V4_2026-08.md`.
+See `docs/SCANNER_V5_2026-08.md` for the current contract and `docs/SCANNER_V4_2026-08.md` for the underlying structure-first rules.
 
 ### Assisted-detection review model
 
@@ -345,6 +355,14 @@ These bugs were found during the refactor and are important regression cases:
 9. **Diagnostics normalized dropdown/table configuration before checking duplicates**, which made duplicate-option/column warnings impossible to trigger. Diagnostics now inspect normalized raw values first, while runtime normalization still deduplicates safely.
 10. **Malformed visibility rules could be dropped from editor snapshots**, hiding what the author typed. Invalid non-empty rules are now preserved for live validation/undo and rejected on validated save.
 11. **A real Word data table could be flattened into unrelated filling fields** (for example section 3 of SIA33TDR showed header boxes plus a standalone `SIM` field). Structural table analysis now runs before cell heuristics, recognizes the merged 9-column repeatable grid, owns the region, expands grouped year headers, and converts `SIM / NÃO` into a table dropdown. The same fix prevents a later row in the fiscalização matrix from being misclassified as an editable sheet.
+12. **Replacing an existing template source could fail preflight because the staged replacement lost its `.docx` suffix.** Replacement sources now retain a valid DOCX suffix and source/config publication is rollback-capable.
+13. **A template update could publish the new DOCX but fail writing `template.json`, leaving mismatched live state.** Template source and configuration updates now roll back together on failure.
+14. **Generation could publish a valid output and consume its sequence, then raise because recent/audit persistence failed.** Output publication plus sequence/recent/audit metadata now behave as one logical rollback-capable transaction.
+15. **Backup restore could swap restored data successfully and then fail restoring settings.** Data folders and settings now participate in the same rollback operation and QSettings status is checked.
+16. **Future-schema/corrupt templates could silently disappear during discovery.** Discovery now preserves/report compatibility failures instead of treating them as absent templates.
+17. **Template package imports lacked resource limits.** ZIP imports now enforce path safety, member count, individual-member size, and total uncompressed-size limits.
+18. **DOCM was invisible to the application and cannot be passed directly to python-docx safely.** Word input now accepts `.docm`, strips VBA into an inert canonical DOCX working copy, preserves the original macro-enabled file untouched, and uses the normal scanner/converter pipeline. The converter never hands an original DOCM to Word COM/LibreOffice, preventing an `AutoOpen` macro from being executed by Padroniza's conversion path.
+19. **The GitHub release workflow repeated dependency installation, the full quality gate, and two PyInstaller builds, then only uploaded Actions artifacts.** Release packaging now installs dependencies once, runs a fast compile/dead-module preflight, runs one PyInstaller `--onefile` build, feeds that exact EXE to Inno Setup, calculates SHA-256 hashes, and publishes the installer/portable EXEs directly to GitHub Releases. Manual releases auto-increment SemVer from existing tags (`patch`/`minor`/`major`), while semantic tag pushes use their explicit version.
 
 Any future cleanup should keep tests around these scenarios rather than assuming the problem cannot return.
 
@@ -372,16 +390,19 @@ It currently performs:
 
 Current coverage policy enforces a **75% minimum** over the non-UI core (`core`, `domain`, `document`, `repositories`, `services`). UI correctness relies more heavily on constructor/navigation/startup smoke coverage than line coverage.
 
-At the current structural-table baseline validation:
+At the Scanner V5.3/DOCM/release baseline validation in the Linux review environment:
 
 ```text
-pytest:         186 passed, 3 skipped
-core coverage: 77.22%
+pytest:         224 passed, 3 skipped (single process)
+core coverage: 79.42%
 dead modules:   none
 compileall:     pass
+workflow YAML: parsed successfully
 ```
 
-The skipped tests were PySide6-dependent in the Linux review environment. The Windows quality workflow is expected to install PySide6 and execute the GUI gates.
+Ruff, Pyright, PySide6 UI smoke tests, a real Windows executable build, and the real GUI startup remain authoritative Windows CI gates and should be rerun in the normal Windows/GitHub environment.
+
+The skipped tests are PySide6-dependent in the Linux review environment. The Windows quality workflow installs PySide6 and executes the GUI gates.
 
 See `docs/QUALITY_GATE.md` for the exact policy.
 
@@ -425,6 +446,12 @@ Run the application:
 
 Build dependencies are separate in `requirements-build.txt`.
 
+### GitHub release workflow
+
+The normal release path is **Actions → Gerar release do Padroniza para Windows → Run workflow**. Choose `patch`, `minor`, or `major`; do not type a version manually. `tools/resolve_release_version.py` reads existing semantic Git tags and computes the next version (first semantic release defaults to `v1.0.0`). The workflow uses `contents: write` and `gh release` to publish `Padroniza-Setup-vX.Y.Z.exe`, `Padroniza-vX.Y.Z.exe`, and `SHA256SUMS.txt` directly on the GitHub Releases page.
+
+The full quality workflow intentionally ignores semantic release tags so a release does not rerun the expensive quality suite while packaging. Full Windows quality remains the pre-merge acceptance gate; the release workflow performs only fast compile/dead-module checks before building. `build_github.ps1` must not install dependencies or invoke PyInstaller more than once.
+
 Do not carry `.venv/`, `__pycache__/`, `.pytest_cache/`, `build/`, or `dist/` between clean replacements. `.git/` is local Git metadata and should be preserved separately if the working folder must remain attached to the existing checkout.
 
 ---
@@ -435,11 +462,11 @@ These are not necessarily bugs; they are the main future product-development are
 
 ### Conversion fidelity
 
-The internal DOCX → PDF converter cannot perfectly reproduce all Microsoft Word layout features. Prefer Word COM when available, then LibreOffice. Continue improving backend reporting/fallback behavior rather than attempting to make the UI depend on a specific converter.
+The internal DOCX/DOCM → PDF converter cannot perfectly reproduce all Microsoft Word layout features. DOCM macros are intentionally removed before conversion; macro preservation is not a Padroniza feature. Prefer Word COM when available, then LibreOffice. Continue improving backend reporting/fallback behavior rather than attempting to make the UI depend on a specific converter.
 
 ### Automatic detection quality
 
-Scanner V4 now adds structure-first ownership, section/table analysis, content-role classification, multidimensional confidence, review evidence, caching, cooperative cancellation, invariants, and transactional tag round-trip validation. It is still heuristic: unusual legal/government layouts can produce false positives/negatives or imperfect type/label inference. Future work should improve detection quality using real failure documents and committed structure contracts rather than broad score tuning without fixtures.
+Scanner V5 uses structure-first ownership, section/table analysis, content-role classification, multidimensional confidence, review evidence, caching, cooperative cancellation, invariants, and transactional tag round-trip validation. It is still heuristic: unusual legal/government layouts can produce false positives/negatives or imperfect type/label inference. Future work should improve detection quality using real failure documents and committed structure contracts rather than broad score tuning without fixtures.
 
 ### Generated filling-form layout
 
@@ -447,11 +474,13 @@ Generated fields now use a reusable `FieldContainer` shell so labels, help, assi
 
 For genuine Word data tables, do **not** solve layout problems by arranging independent field cards. Preserve table identity through detection → tagged model → canonical repeatable-table field → `RepeatableTableWidget` → DOCX generation. Multi-column forms that are only using a Word table for positioning may still use the normal `layout=table/form_grid` metadata path.
 
-Template-editor work copies also have a conservative repeatable-marker migration in `app/document/docx/repair.py`. Before Smart Scan, duplicate child IDs inside an existing `{{repeat:...}}` row are disambiguated from the physical Word headers (for example `quantidade_2023`, `quantidade_2024`, `quantidade_2025`), and child markers using the wrong table prefix are repaired. This exists specifically so an older/partial assisted-detection run cannot leave the editor permanently unable to reopen or rescan its own work copy. The original user source is not modified by this migration.
+Template-editor work copies also have a conservative repeatable-marker migration in `app/document/docx/repair.py`. Before field localization / Smart Scan, duplicate child IDs inside an existing `{{repeat:...}}` row are disambiguated from the physical Word headers (for example `quantidade_2023`, `quantidade_2024`, `quantidade_2025`), and child markers using the wrong table prefix are repaired. This exists specifically so an older/partial assisted-detection run cannot leave the editor permanently unable to reopen or rescan its own work copy. The original user source is not modified by this migration.
 
 ### Template authoring UX
 
-The editor now has live field status, search/type/status filtering, sample preview, test-DOCX generation, diagnostics navigation, and existing undo/redo. Useful next improvements include richer document-side visual highlighting of source locations, preview-before-install for PDF as well as DOCX, and more direct editing from diagnostic/review cards.
+The editor now has live field status, search/type/status filtering, sample preview, test-DOCX generation, diagnostics navigation, and existing undo/redo. The previous `Ferramentas do arquivo` menu with separate `Localizar campos` / `Detectar campos sem tags` commands was intentionally simplified: the normal path is one primary **Localizar campos** button backed by `TemplateScanResult` / `locate_template_fields()`. That operation synchronizes deterministic tags/native controls first, then presents any additional untagged candidates in the review-first dialog. **Diagnóstico** remains a separate secondary button because it answers a different question ("is this model structurally valid?") rather than locating fields. This is a UI simplification only; the scanner remains separated into specialized internal phases.
+
+Useful next improvements include richer document-side visual highlighting of source locations, preview-before-install for PDF as well as DOCX, and more direct editing from diagnostic/review cards.
 
 ### Type coverage
 
@@ -488,7 +517,7 @@ When starting a new conversation, the user can attach:
 
 1. the latest full project ZIP;
 2. `PROJECT_CONTEXT.md` from that same ZIP;
-3. any DOCX/PDF that reproduces the current problem, when relevant.
+3. any DOCX/DOCM/PDF that reproduces the current problem, when relevant.
 
 Suggested opening message:
 
@@ -499,16 +528,23 @@ For the assistant/developer continuing the project:
 - Treat this document as context, **not as proof that the current code matches it**. Inspect the actual attached source before editing.
 - If source and this handoff disagree, source/tests are authoritative; fix this handoff as part of the change.
 - Do not claim tests or GUI paths were executed unless they actually were.
-- For document-specific failures, reproduce against the user's actual DOCX/PDF when possible.
+- For document-specific failures, reproduce against the user's actual DOCX/DOCM/PDF when possible.
 - Preserve the clean replacement workflow and quality gates.
 
 ---
 
 ## 15. Current handoff summary
 
-Padroniza has completed the major architecture cleanup, stability/quality gate, the first user-facing capability milestone, and the structural-table intelligence/recovery pass. The project is organized by responsibility; generation/conversion/backups/schema handling are hardened; assisted detection v3 exposes confidence evidence/review priority and runs responsively; the template editor provides live validation/filtering plus safe sample/test generation; and real repeatable Word grids are now preserved as tables instead of being flattened into unrelated fields, and malformed repeatable-row markers left by older editor work copies are repaired from the physical header structure before Smart Scan. Future changes are expected to pass the Windows-oriented quality gate with static analysis, tests, coverage, UI smoke testing, and startup validation.
+Padroniza now uses a **Scanner V5 review-first contract** on top of the proven Scanner V4 structure-first/table intelligence. DOCM is now a supported Word input alongside DOCX: it is converted into a macro-free canonical DOCX working copy before scanning or conversion, and VBA is never executed/preserved by Padroniza. The scanner separates discovery from automatic application: strong, structurally consistent candidates can be preselected, while ambiguous candidates remain review-only with evidence and source metadata. The reliability pass also makes template replacement/config updates, generated-output metadata persistence, and backup data/settings restoration rollback-capable; incompatible template discovery is surfaced; and template-package imports are resource-limited. The obsolete preview/batch modules were removed so the dead-code gate is green.
 
-The next phase should continue to favor **measurable product quality**: test structural classification and detector accuracy against more troublesome real documents, add richer source-location/document preview interactions, improve fixed-table editing where real fixtures justify it, and improve PDF→DOCX fidelity/performance where practical. Avoid another broad architecture rewrite unless a concrete problem justifies it.
+The normal template-editor scan UX now exposes one **Localizar campos** action even though the backend remains multi-stage. `app/services/template_scanning.py` coordinates authoritative tag/native-control discovery plus untagged candidate discovery and returns a single `TemplateScanResult`; the UI synchronizes deterministic fields immediately and reviews only the heuristic additions. Diagnostics remains separate.
+
+
+GitHub Windows releases are now versioned and published automatically. Manual workflow runs choose only the SemVer bump (`patch`, `minor`, or `major`); the workflow resolves the next version from Git tags, runs a single PyInstaller build, uses that same EXE for Inno Setup, and uploads the installer, portable EXE, and checksums directly to GitHub Releases. Semantic tag pushes are also supported, and the full quality workflow ignores release tags to avoid duplicate 30+ minute work.
+
+The next phase should focus on **measured detector quality**, not another language rewrite: add troublesome real documents as fixtures, calibrate the selection policy from observed false positives/negatives, add richer source-location highlighting, and then build per-template learned mappings/fingerprints on top of the V5 candidate metadata. Keep deterministic structure/location logic authoritative and use semantic/AI assistance only as evidence, never as a direct OOXML editor.
+
+A real DFD regression on 2026-08-26 added two scanner contracts that were previously missing: (1) a 5.1-style block with exactly two alternatives separated by one `OU` is detected as a single-choice dropdown; and (2) a section-7-style sentence containing one red inline span such as `área técnica competente ou à equipe de planejamento da contratação` is detected as a two-option single choice while preserving the surrounding black sentence.
 
 ---
 

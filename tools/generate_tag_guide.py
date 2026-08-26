@@ -278,7 +278,7 @@ def build_guide() -> Path:
     document.add_heading("1. Fluxo rápido", level=1)
     add_step(document, 1, "Prepare o DOCX", "Mantenha o texto e a formatação final no Word. Substitua somente os pontos variáveis por tags.")
     add_step(document, 2, "Crie o modelo", "No Padroniza, abra Gerenciar modelos > Criar modelo e selecione o DOCX.")
-    add_step(document, 3, "Localize os campos", "Use Ferramentas DOCX > Localizar campos. O aplicativo identifica tags, rótulos, seções e estruturas de tabela.")
+    add_step(document, 3, "Localize os campos", "Clique em Localizar campos. O aplicativo analisa tags, controles do Word/PDF, tabelas, opções e áreas sem tags em uma única etapa; sugestões ambíguas continuam sujeitas à revisão.")
     add_step(document, 4, "Revise Campos e seções", "Ajuste tipo, obrigatoriedade, seção e layout. Use a prévia para conferir a organização.")
     add_step(document, 5, "Salve e teste", "Gere um documento com dados de exemplo e confirme a aparência do DOCX final.")
 

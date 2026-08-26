@@ -36,3 +36,17 @@ The replacement produced by the quality pass was revalidated locally with:
 - source-level constructor/name-resolution contracts — passed
 
 The skipped modules are GUI-specific and are expected when PySide6 is unavailable. Ruff, Pyright, the complete PySide6 smoke matrix, and the real `main.py --smoke-test` are enforced by the Windows quality workflow, where the development requirements are installed before the gate runs.
+
+## Scanner V5.3 / DOCM / release validation — 2026-08-26
+
+The current clean source tree was revalidated with:
+
+- `pytest -q` — **224 passed, 3 skipped** in one Linux process
+- core coverage — **79.42%**, above the 75% floor
+- `python -m compileall -q app tests tools main.py` — pass
+- `python tools/check_dead_code.py` — all production modules reachable
+- release/quality workflow YAML — parsed successfully
+- synthetic macro-enabled DOCM package regression — VBA parts/relationships are removed, the resulting DOCX opens with `python-docx`, template scanning finds its field, and DOCM → PDF hands only the macro-free DOCX copy to the selected conversion backend
+- semantic release version tests — numeric latest-tag selection and patch/minor/major increments pass
+
+A real Windows PyInstaller/Inno Setup/GitHub Release run was not executable in this Linux environment; `.github/workflows/build-windows.yml` is the authoritative Windows packaging path.

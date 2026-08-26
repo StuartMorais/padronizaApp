@@ -162,7 +162,7 @@ class _ConversionTask(QRunnable):
 
 
 class _FileDropZone(ClickableDropZone):
-    SUPPORTED_SUFFIXES = frozenset({".docx", ".pdf"})
+    SUPPORTED_SUFFIXES = frozenset({".docx", ".docm", ".pdf"})
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -228,6 +228,8 @@ class _FileDropZone(ClickableDropZone):
         self._expected_suffix = normalized
 
         display = normalized.lstrip(".").upper()
+        if normalized == ".docx":
+            display = "DOCX ou DOCM"
         self.title_label.setText(
             f"Arraste um arquivo {display} para cá"
         )
@@ -254,10 +256,11 @@ class FileConverterPage(QWidget):
     DIRECTIONS = {
         "docx_to_pdf": {
             "source_suffix": ".docx",
+            "source_suffixes": frozenset({".docx", ".docm"}),
             "destination_suffix": ".pdf",
-            "label": "DOCX → PDF",
+            "label": "DOCX/DOCM → PDF",
             "button": 'Converter para PDF',
-            "filter": "Documento do Word (*.docx)",
+            "filter": "Documentos do Word (*.docx *.docm)",
             "stages": [
                 'Lendo o documento do Word…',
                 'Preparando páginas e formatação…',
@@ -267,6 +270,7 @@ class FileConverterPage(QWidget):
         },
         "pdf_to_docx": {
             "source_suffix": ".pdf",
+            "source_suffixes": frozenset({".pdf"}),
             "destination_suffix": ".docx",
             "label": "PDF → DOCX",
             "button": 'Converter para DOCX',
@@ -333,7 +337,7 @@ class FileConverterPage(QWidget):
         title.setObjectName("pageTitle")
 
         description = QLabel(
-            "Selecione ou arraste um arquivo DOCX ou PDF. "
+            "Selecione ou arraste um arquivo DOCX, DOCM ou PDF. "
             "O arquivo convertido recebe um nome automaticamente "
             "e é salvo ao lado do original."
         )
@@ -411,7 +415,7 @@ class FileConverterPage(QWidget):
         self.mode_group.setExclusive(True)
 
         self.docx_mode_button = QPushButton(
-            "DOCX  →  PDF"
+            "WORD  →  PDF"
         )
         self.docx_mode_button.setObjectName(
             "conversionModeButton"
@@ -465,7 +469,7 @@ class FileConverterPage(QWidget):
             HelpIconButton(
                 'Tipos de conversão',
                 (
-                    '<p><b>DOCX → PDF</b> cria uma versão pronta para leitura e impressão.</p>'
+                    '<p><b>DOCX/DOCM → PDF</b> cria uma versão pronta para leitura e impressão. DOCM é aberto sem executar macros.</p>'
                     '<p><b>PDF → DOCX</b> recupera texto, tabelas e imagens quando possível. '
                     'PDFs digitalizados sem texto selecionável são inseridos como imagens, '
                     'e layouts complexos podem ser simplificados.</p>'
@@ -756,7 +760,7 @@ class FileConverterPage(QWidget):
         self.empty_history_state = EmptyState(
             'Nenhuma conversão recente',
             (
-                'Escolha um arquivo DOCX ou PDF. As conversões concluídas '
+                'Escolha um arquivo DOCX, DOCM ou PDF. As conversões concluídas '
                 'aparecerão aqui para acesso rápido.'
             ),
             icon='⇄',
@@ -885,6 +889,10 @@ class FileConverterPage(QWidget):
         source_suffix = str(
             config["source_suffix"]
         )
+        source_suffixes = frozenset(
+            str(item).lower()
+            for item in config.get("source_suffixes", {source_suffix})
+        )
         self.drop_zone.set_expected_suffix(
             source_suffix
         )
@@ -896,7 +904,7 @@ class FileConverterPage(QWidget):
             clear_incompatible
             and self._selected_source is not None
             and self._selected_source.suffix.lower()
-            != source_suffix
+            not in source_suffixes
         ):
             self._clear_selected_source()
         elif self._selected_source is not None:
@@ -939,13 +947,13 @@ class FileConverterPage(QWidget):
             QMessageBox.warning(
                 self,
                 'Seleção inválida',
-                'Selecione um arquivo DOCX ou PDF.',
+                'Selecione um arquivo DOCX, DOCM ou PDF.',
             )
             return
 
         suffix = source.suffix.lower()
 
-        if suffix == ".docx":
+        if suffix in {".docx", ".docm"}:
             direction = "docx_to_pdf"
         elif suffix == ".pdf":
             direction = "pdf_to_docx"
@@ -953,7 +961,7 @@ class FileConverterPage(QWidget):
             QMessageBox.warning(
                 self,
                 'Arquivo não compatível',
-                'Somente arquivos DOCX e PDF podem ser convertidos.',
+                'Somente arquivos DOCX, DOCM e PDF podem ser convertidos.',
             )
             return
 
@@ -1088,7 +1096,7 @@ class FileConverterPage(QWidget):
             QMessageBox.warning(
                 self,
                 'Selecionar arquivo',
-                'Primeiro, selecione ou arraste um arquivo DOCX ou PDF.',
+                'Primeiro, selecione ou arraste um arquivo DOCX, DOCM ou PDF.',
             )
             return
 
@@ -1105,8 +1113,12 @@ class FileConverterPage(QWidget):
         expected_suffix = str(
             config["source_suffix"]
         )
+        expected_suffixes = frozenset(
+            str(item).lower()
+            for item in config.get("source_suffixes", {expected_suffix})
+        )
 
-        if source.suffix.lower() != expected_suffix:
+        if source.suffix.lower() not in expected_suffixes:
             self._show_error_state(
                 "O arquivo selecionado não corresponde "
                 "ao tipo de conversão escolhido."

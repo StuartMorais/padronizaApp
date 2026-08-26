@@ -1,65 +1,141 @@
-name: Compilar Padroniza para Windows
+name: Gerar release do Padroniza para Windows
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Versão do Padroniza, por exemplo: 1.5.0"
+      bump:
+        description: "Qual parte da versão deve aumentar?"
         required: true
-        default: "1.5.0"
-
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
   push:
     tags:
-      - "v*"
+      - "v*.*.*"
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: padroniza-release
+  cancel-in-progress: false
 
 jobs:
-  build-windows:
-    name: Gerar aplicativo e instalador
+  build-release:
+    name: Compilar e publicar release
     runs-on: windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 25
 
     steps:
-      - name: Baixar o código do repositório
-        uses: actions/checkout@v6
+      - name: Baixar o código e as tags
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Preparar Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: "pip"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
 
-      - name: Instalar dependências de teste
+      - name: Resolver versão da release
+        id: version
         shell: pwsh
-        run: pip install -r requirements-dev.txt
+        run: |
+          if ("${{ github.event_name }}" -eq "push") {
+            $tag = "${{ github.ref_name }}"
+            if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
+              throw "Tag de release inválida: $tag. Use vMAJOR.MINOR.PATCH."
+            }
+            $version = $tag.Substring(1)
+            "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+          else {
+            python tools/resolve_release_version.py `
+              --bump "${{ inputs.bump }}" `
+              --github-output $env:GITHUB_OUTPUT
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
-      - name: Executar quality gate antes da compilação
+      - name: Instalar dependências uma única vez
         shell: pwsh
-        run: ./tools/run_quality_gate.ps1
+        timeout-minutes: 8
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements.txt -r requirements-build.txt
 
-      - name: Compilar o Padroniza
+      - name: Verificação rápida antes do build
+        shell: pwsh
+        timeout-minutes: 3
+        run: |
+          python -m compileall -q app main.py tools
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/check_dead_code.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compilar uma única vez
         id: build
         shell: pwsh
+        timeout-minutes: 12
         env:
-          APP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          APP_VERSION: ${{ steps.version.outputs.version }}
         run: ./build_github.ps1
 
-      - name: Disponibilizar o instalador
-        uses: actions/upload-artifact@v7
-        with:
-          name: Padroniza-Instalador-v${{ steps.build.outputs.version }}
-          path: ${{ steps.build.outputs.installer_path }}
-          if-no-files-found: error
-          retention-days: 30
-          compression-level: 0
+      - name: Publicar arquivos na página Releases
+        id: publish
+        shell: pwsh
+        timeout-minutes: 4
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          INSTALLER_PATH: ${{ steps.build.outputs.installer_path }}
+          PORTABLE_PATH: ${{ steps.build.outputs.portable_path }}
+          CHECKSUM_PATH: ${{ steps.build.outputs.checksum_path }}
+          TARGET_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          $assets = @($env:INSTALLER_PATH, $env:PORTABLE_PATH, $env:CHECKSUM_PATH)
+          foreach ($asset in $assets) {
+            if (-not (Test-Path -LiteralPath $asset -PathType Leaf)) {
+              throw "Arquivo de release não encontrado: $asset"
+            }
+          }
 
-      - name: Disponibilizar o executável portátil
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $env:RELEASE_TAG já existe; substituindo os assets."
+            gh release upload $env:RELEASE_TAG @assets --clobber
+          }
+          else {
+            $arguments = @(
+              "release", "create", $env:RELEASE_TAG,
+              $env:INSTALLER_PATH, $env:PORTABLE_PATH, $env:CHECKSUM_PATH,
+              "--title", "Padroniza $env:RELEASE_TAG",
+              "--generate-notes"
+            )
+            if ($env:EVENT_NAME -eq "workflow_dispatch") {
+              $arguments += @("--target", $env:TARGET_SHA)
+            }
+            else {
+              $arguments += "--verify-tag"
+            }
+            gh @arguments
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Guardar build se a publicação falhar
+        if: failure() && steps.build.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: Padroniza-Portatil-v${{ steps.build.outputs.version }}
-          path: ${{ steps.build.outputs.portable_path }}
+          name: Padroniza-release-${{ steps.version.outputs.version }}
+          path: release/*
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
           compression-level: 0

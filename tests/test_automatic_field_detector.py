@@ -60,7 +60,9 @@ def test_detects_red_instruction_as_multiline_field(tmp_path: Path) -> None:
     instruction = next(item for item in candidates if item["source"] == "instruction")
 
     assert instruction["type"] == "multiline"
-    assert instruction["selected"] is True
+    assert instruction["selected"] is False
+    assert instruction["auto_apply_eligible"] is False
+    assert any("confirmação humana" in reason for reason in instruction["auto_apply_reasons"])
     assert "Descrição" in instruction["label"]
 
 
@@ -108,6 +110,71 @@ def test_detects_ou_block_as_long_single_choice(tmp_path: Path) -> None:
     )
     assert "{{single_choice:" in all_text
     assert "\nOU\n" not in all_text
+
+
+def test_detects_binary_ou_block_as_long_single_choice(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=2, cols=1)
+    table.cell(0, 0).text = "5.1. Justificativa em caso de ausência parcial ou total no PCA 2025:"
+    cell = table.cell(1, 0)
+    cell.text = "5.1.1. Não se aplica"
+    cell.add_paragraph("")
+    cell.add_paragraph("OU")
+    cell.add_paragraph("")
+    cell.add_paragraph(
+        "5.1.1. Nos termos do art. 13, justificamos a não inclusão total ou parcial "
+        "por demandas supervenientes surgidas após a elaboração do planejamento."
+    )
+    source = _save(document, tmp_path / "binary-choice.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    choice = next(item for item in candidates if item["source"] == "long_choice")
+
+    assert choice["type"] == "dropdown"
+    assert choice["layout"] == "choice"
+    assert choice["selected"] is True
+    assert len(choice["options"]) == 2
+    assert choice["options"][0]["label"] == "Não se aplica"
+
+    output = tmp_path / "binary-choice-prepared.docx"
+    apply_docx_field_candidates(source, output, [choice])
+    fields = smart_fields_from_docx(output, candidate_field_definitions([choice]))
+    assert len(fields) == 1
+    assert fields[0]["type"] == "dropdown"
+    assert len(fields[0]["options"]) == 2
+
+
+def test_detects_colored_inline_ou_choice_without_replacing_static_sentence(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=2, cols=1)
+    table.cell(0, 0).text = "7. Despacho de encaminhamento:"
+    paragraph = table.cell(1, 0).paragraphs[0]
+    paragraph.add_run("Após a avaliação, encaminham-se os autos à ")
+    choice_run = paragraph.add_run(
+        "área técnica competente ou à equipe de planejamento da contratação"
+    )
+    choice_run.font.color.rgb = RGBColor(255, 0, 0)
+    paragraph.add_run(" para o prosseguimento das demais etapas.")
+    source = _save(document, tmp_path / "inline-colored-choice.docx")
+
+    candidates = detect_docx_field_candidates(source)
+    choice = next(item for item in candidates if item["source"] == "colored_inline_choice")
+
+    assert choice["label"] == "Destino do encaminhamento"
+    assert choice["type"] == "dropdown"
+    assert choice["layout"] == "choice"
+    assert choice["selected"] is True
+    assert [option["value"] for option in choice["options"]] == [
+        "área técnica competente",
+        "equipe de planejamento da contratação",
+    ]
+
+    output = tmp_path / "inline-colored-choice-prepared.docx"
+    apply_docx_field_candidates(source, output, [choice])
+    result = Document(str(output))
+    rendered = result.tables[0].cell(1, 0).paragraphs[0].text
+    assert rendered.startswith("Após a avaliação, encaminham-se os autos à {{single_choice:")
+    assert rendered.endswith(" para o prosseguimento das demais etapas.")
 
 
 def test_existing_tags_are_authoritative_and_not_suggested_again(tmp_path: Path) -> None:
@@ -1080,7 +1147,9 @@ def test_detects_existing_written_justification_as_prefilled_multiline(tmp_path:
     assert candidate["label"] == "Justificativa da necessidade da Contratação"
     assert candidate["type"] == "multiline"
     assert candidate["default_value"] == prose
-    assert candidate["selected"] is True
+    assert candidate["selected"] is False
+    assert candidate["auto_apply_eligible"] is False
+    assert any("confirmação humana" in reason for reason in candidate["auto_apply_reasons"])
 
     output = tmp_path / "prefilled-justification-prepared.docx"
     apply_docx_field_candidates(source, output, [candidate])

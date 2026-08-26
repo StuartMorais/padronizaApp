@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   pull_request:
   push:
+    tags-ignore:
+      - "v*.*.*"
 
 permissions:
   contents: read
@@ -16,17 +18,18 @@ jobs:
 
     steps:
       - name: Baixar o código do repositório
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Preparar Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: "pip"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
 
       - name: Instalar dependências de desenvolvimento
         shell: pwsh
-        run: pip install -r requirements-dev.txt
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
 
       - name: Executar quality gate completo
         shell: pwsh

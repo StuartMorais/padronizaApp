@@ -46,4 +46,6 @@ Pyright runs in `basic` mode over the most stable typed boundaries first: domain
 
 ## CI
 
-`.github/workflows/quality.yml` runs the full quality gate on Windows for pushes and pull requests. The Windows build workflow runs the same gate again before packaging, so a tagged/manual release cannot be built when the quality gate fails.
+`.github/workflows/quality.yml` runs the full quality gate on Windows for normal pushes, pull requests, and manual quality runs. Semantic release tags (`v*.*.*`) are ignored by that workflow so packaging does not launch the same expensive test/type/UI suite a second time.
+
+`.github/workflows/build-windows.yml` is intentionally a fast packaging/release workflow: it installs runtime/build dependencies once, runs bytecode compilation plus the dead-module check, invokes PyInstaller once, builds the Inno Setup installer from that same executable, and publishes the resulting assets directly to GitHub Releases. Manual runs calculate the next semantic version from existing Git tags (`patch`, `minor`, or `major`); tag-triggered runs use the pushed version. Repository branch protection/normal CI should therefore remain the authoritative full-quality gate before merging code that will be released.

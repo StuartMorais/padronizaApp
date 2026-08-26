@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
@@ -8,9 +9,10 @@ from uuid import uuid4
 
 from app.document.understanding.context_resolver import prepare_word_controls_with_context
 from app.document.conversion.service import DEFAULT_CONVERTER, DocxConversionError
+from app.document.word_package import WORD_INPUT_SUFFIXES, WordPackageError, normalize_word_input
 
 
-SUPPORTED_TEMPLATE_SUFFIXES = frozenset({'.docx', '.pdf'})
+SUPPORTED_TEMPLATE_SUFFIXES = frozenset({*WORD_INPUT_SUFFIXES, '.pdf'})
 
 
 class TemplateSourceError(RuntimeError):
@@ -22,6 +24,7 @@ class PreparedTemplateSource:
     original_path: Path
     docx_path: Path
     converted_from_pdf: bool
+    converted_from_docm: bool = False
     warnings: tuple[str, ...] = ()
     native_pdf_fields: int = 0
     native_pdf_field_hints: tuple[dict[str, Any], ...] = ()
@@ -30,10 +33,11 @@ class PreparedTemplateSource:
 
 
 def prepare_template_source(source_path: Path | str, work_dir: Path | str) -> PreparedTemplateSource:
-    """Prepare DOCX or PDF input for the existing DOCX template engine.
+    """Prepare DOCX, DOCM, or PDF input for the canonical DOCX template engine.
 
     DOCX remains the canonical editable template format used by the generator.
-    A PDF is reconstructed into a temporary DOCX. When the PDF contains native
+    DOCM is normalized to an inert DOCX working copy with VBA removed, and a
+    PDF is reconstructed into a temporary DOCX. When the PDF contains native
     AcroForm widgets, a temporary PDF copy receives normal Padroniza tags at the
     widget positions before reconstruction. This lets the existing scanner and
     generator reuse those native field definitions instead of losing blank PDF
@@ -46,25 +50,54 @@ def prepare_template_source(source_path: Path | str, work_dir: Path | str) -> Pr
 
     suffix = source.suffix.casefold()
     if suffix not in SUPPORTED_TEMPLATE_SUFFIXES:
-        raise TemplateSourceError('Selecione um arquivo DOCX ou PDF.')
+        raise TemplateSourceError('Selecione um arquivo DOCX, DOCM ou PDF.')
 
     target_dir = Path(work_dir).expanduser().resolve()
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    if suffix == '.docx':
+    if suffix in WORD_INPUT_SUFFIXES:
         stem = source.stem[:80] or 'modelo'
-        destination = target_dir / f'{stem}-contexto-{uuid4().hex[:10]}.docx'
+        normalized_source = source
+        normalized_docm: Path | None = None
+        warnings: list[str] = []
         try:
-            word_preparation = prepare_word_controls_with_context(source, destination)
+            if suffix == '.docm':
+                normalized_docm = target_dir / f'{stem}-docm-{uuid4().hex[:10]}.docx'
+                normalized = normalize_word_input(source, normalized_docm)
+                normalized_source = normalized.path
+                warnings.append(
+                    'O DOCM foi aberto como uma cópia DOCX segura; macros VBA não são executadas nem preservadas.'
+                )
+
+            destination = target_dir / f'{stem}-contexto-{uuid4().hex[:10]}.docx'
+            word_preparation = prepare_word_controls_with_context(normalized_source, destination)
+            prepared_docx_path = word_preparation.path
+            if suffix == '.docm' and prepared_docx_path != destination:
+                # If no native controls needed rewriting, the context resolver
+                # returns its input path. Keep a persistent canonical DOCX copy
+                # before the temporary normalized DOCM package is removed.
+                shutil.copy2(prepared_docx_path, destination)
+                prepared_docx_path = destination
+        except WordPackageError as exc:
+            raise TemplateSourceError(str(exc)) from exc
         except Exception as exc:
             raise TemplateSourceError(f'Não foi possível preparar os controles do Word: {exc}') from exc
+        finally:
+            if normalized_docm is not None:
+                try:
+                    normalized_docm.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+        warnings.extend(word_preparation.warnings)
         return PreparedTemplateSource(
             original_path=source,
-            docx_path=word_preparation.path,
+            docx_path=prepared_docx_path,
             converted_from_pdf=False,
-            warnings=word_preparation.warnings,
+            converted_from_docm=suffix == '.docm',
+            warnings=tuple(warnings),
             native_word_field_hints=word_preparation.field_hints,
-            prepared_work_copy=word_preparation.changed,
+            prepared_work_copy=True if suffix == '.docm' else word_preparation.changed,
         )
 
     stem = source.stem[:80] or 'modelo'

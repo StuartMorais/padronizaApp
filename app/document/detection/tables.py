@@ -41,7 +41,11 @@ def _detect_long_choice_blocks(
             for index, text in enumerate(texts)
             if CHOICE_SEPARATOR_PATTERN.match(text)
         ]
-        if len(separators) < 2:
+        # One ``OU`` is enough to express a valid binary choice.  Older
+        # versions accidentally required two separators (three alternatives),
+        # which skipped common institutional blocks such as
+        # ``Não se aplica  OU  justificativa padrão``.
+        if len(separators) < 1:
             continue
         if any(_contains_authoritative_marker(record.paragraph) for record in cell_records):
             continue
@@ -86,7 +90,7 @@ def _detect_long_choice_blocks(
                 else max(last_content_index, segment_last)
             )
 
-        if len(options) < 3 or len(options) > 10:
+        if len(options) < 2 or len(options) > 10:
             continue
         if first_content_index is None or last_content_index is None:
             continue

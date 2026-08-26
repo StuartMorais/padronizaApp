@@ -41,3 +41,53 @@ def publish_staged_output(staged: Path | str, destination: Path | str) -> Path:
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     os.replace(staged_path, destination_path)
     return destination_path
+
+
+@contextmanager
+def reversible_publish(
+    staged: Path | str,
+    destination: Path | str,
+) -> Iterator[Path]:
+    """Publish a staged artifact and restore the previous file on later failure.
+
+    Use this when publishing the output is only one part of a larger logical
+    transaction (for example document output + numbering/history metadata).
+    The caller performs the remaining commits inside the context manager.
+    """
+
+    staged_path = Path(staged).resolve()
+    destination_path = Path(destination).expanduser().resolve()
+    if not staged_path.is_file():
+        raise FileNotFoundError(f"Arquivo temporário não encontrado: {staged_path}")
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fd, backup_name = tempfile.mkstemp(
+        prefix=f".{destination_path.stem}-",
+        suffix=f".previous{destination_path.suffix}",
+        dir=str(destination_path.parent),
+    )
+    os.close(fd)
+    backup_path = Path(backup_name)
+    backup_path.unlink(missing_ok=True)
+    had_previous = destination_path.exists()
+
+    try:
+        if had_previous:
+            os.replace(destination_path, backup_path)
+        try:
+            os.replace(staged_path, destination_path)
+        except Exception:
+            if had_previous and backup_path.exists() and not destination_path.exists():
+                os.replace(backup_path, destination_path)
+            raise
+
+        try:
+            yield destination_path
+        except Exception:
+            destination_path.unlink(missing_ok=True)
+            if had_previous and backup_path.exists():
+                os.replace(backup_path, destination_path)
+            raise
+    finally:
+        backup_path.unlink(missing_ok=True)
+

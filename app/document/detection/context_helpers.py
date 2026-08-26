@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from docx.text.paragraph import Paragraph
+from docx.text.run import Run
 
 from app.document.docx.tags import PLACEHOLDER_PATTERN
 from app.document.detection.identifiers import (
@@ -284,25 +285,31 @@ def _is_instruction_candidate(record: _ParagraphRecord) -> bool:
     return _paragraph_is_red(record.paragraph) or record.cell is not None
 
 
-def _paragraph_is_red(paragraph: Paragraph) -> bool:
-    for run in paragraph.runs:
-        color = run.font.color.rgb
-        if color is None:
-            continue
+def _run_is_red(run: Run) -> bool:
+    """Return True when a Word run is explicitly rendered as red.
+
+    Keeping this at run granularity is important for institutional forms where
+    only the editable fragment inside an otherwise static sentence is colored.
+    """
+
+    color = run.font.color.rgb
+    if color is None:
+        return False
+    try:
+        red, green, blue = int(color[0]), int(color[1]), int(color[2])
+    except Exception:
+        text = str(color)
+        if len(text) != 6:
+            return False
         try:
-            red, green, blue = int(color[0]), int(color[1]), int(color[2])
-        except Exception:
-            text = str(color)
-            if len(text) == 6:
-                try:
-                    red, green, blue = int(text[:2], 16), int(text[2:4], 16), int(text[4:], 16)
-                except ValueError:
-                    continue
-            else:
-                continue
-        if red >= 150 and red > green * 1.35 and red > blue * 1.35:
-            return True
-    return False
+            red, green, blue = int(text[:2], 16), int(text[2:4], 16), int(text[4:], 16)
+        except ValueError:
+            return False
+    return red >= 150 and red > green * 1.35 and red > blue * 1.35
+
+
+def _paragraph_is_red(paragraph: Paragraph) -> bool:
+    return any(_run_is_red(run) for run in paragraph.runs)
 
 
 def _contains_authoritative_marker(paragraph: Paragraph) -> bool:

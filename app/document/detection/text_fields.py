@@ -10,7 +10,7 @@ from app.document.docx.tags import PLACEHOLDER_PATTERN
 from app.document.detection.candidates import _candidate
 from app.document.detection.context_helpers import (
     _contains_authoritative_marker, _context_label_for_record, _detected_placeholder_type,
-    _is_pure_fill_area_text, _looks_like_fill_area_text, _paragraph_is_red,
+    _is_pure_fill_area_text, _looks_like_fill_area_text, _paragraph_is_red, _run_is_red,
 )
 from app.document.detection.identifiers import (
     _clean_label, _humanize_id, _is_reasonable_label, _legacy_placeholder_field_id,
@@ -874,6 +874,129 @@ def _detect_terminal_prompt(
         "confidence": inference.confidence,
         "reasons": list(inference.reasons),
     }
+    return candidate
+
+
+def _detect_colored_inline_choice(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    known_ids: set[str],
+) -> dict[str, Any] | None:
+    """Detect a choice expressed by a colored span inside static prose.
+
+    Government/administrative templates frequently encode author intent using
+    color rather than a native Word control.  A typical sentence is::
+
+        Encaminham-se os autos à [área técnica competente OU à equipe ...]
+
+    where only the bracketed text is red.  Whole-paragraph red detectors cannot
+    see that shape, so locate contiguous red runs and replace only that span.
+    The rule is deliberately narrow: exactly one colored region, two to five
+    alternatives separated by the standalone word ``ou``, and meaningful
+    static prose around the region.
+    """
+
+    paragraph = record.paragraph
+    runs = list(paragraph.runs)
+    if not runs or _contains_authoritative_marker(paragraph):
+        return None
+
+    # Build paragraph offsets for contiguous explicitly-red run groups.
+    groups: list[tuple[int, int, str]] = []
+    offset = 0
+    active_start: int | None = None
+    active_text: list[str] = []
+    for run in runs:
+        run_text = run.text or ""
+        run_start = offset
+        run_end = run_start + len(run_text)
+        is_red = bool(run_text) and _run_is_red(run)
+        if is_red:
+            if active_start is None:
+                active_start = run_start
+            active_text.append(run_text)
+        elif active_start is not None:
+            groups.append((active_start, run_start, "".join(active_text)))
+            active_start = None
+            active_text = []
+        offset = run_end
+    if active_start is not None:
+        groups.append((active_start, offset, "".join(active_text)))
+
+    choice_groups: list[tuple[int, int, str, list[str]]] = []
+    for start, end, raw in groups:
+        text = _normalize_space(raw)
+        if len(text) < 7 or len(text) > 360:
+            continue
+        # Require whitespace around OU. This intentionally does not match
+        # ``e/ou`` or words containing the letters "ou".
+        parts = [
+            _normalize_space(part)
+            for part in re.split(r"\s+ou\s+", text, flags=re.IGNORECASE)
+        ]
+        if len(parts) < 2 or len(parts) > 5 or any(len(part) < 2 for part in parts):
+            continue
+        choice_groups.append((start, end, raw, parts))
+
+    if len(choice_groups) != 1:
+        return None
+
+    start, end, raw, parts = choice_groups[0]
+    full_text = paragraph.text or ""
+    prefix = full_text[:start]
+    suffix = full_text[end:]
+    # Mixed prose is the safety signal. A fully-red paragraph belongs to the
+    # existing long-choice/instruction logic instead.
+    if not _normalize_space(prefix) and not _normalize_space(suffix):
+        return None
+
+    # If the static prefix already carries a preposition, avoid duplicating it
+    # when a later alternative repeats the same preposition (``à A ou à B``).
+    prefix_match = re.search(
+        r"\b(?P<prep>à|a|ao|aos|às|para|em|no|na|nos|nas|de|do|da|dos|das)\s*$",
+        prefix,
+        flags=re.IGNORECASE,
+    )
+    normalized_parts = list(parts)
+    if prefix_match:
+        prep = prefix_match.group("prep")
+        prep_pattern = re.compile(rf"^{re.escape(prep)}\s+", flags=re.IGNORECASE)
+        normalized_parts = [prep_pattern.sub("", part, count=1) for part in normalized_parts]
+
+    if len({part.casefold() for part in normalized_parts}) != len(normalized_parts):
+        return None
+
+    section = str(semantic_section(record) or "").strip()
+    context_label = _context_label_for_record(record, records)
+    if re.search(r"\bencaminh", prefix, flags=re.IGNORECASE):
+        label = "Destino do encaminhamento"
+    else:
+        label = _clean_label(context_label or section or "Escolha uma opção")
+    field_id = _unique_field_id(_make_field_id(label), known_ids)
+    options = [
+        {"label": part[:1].upper() + part[1:] if part else part, "value": part}
+        for part in normalized_parts
+    ]
+    candidate = _candidate(
+        field_id=field_id,
+        label=label,
+        field_type="dropdown",
+        confidence=0.95,
+        source="colored_inline_choice",
+        preview=raw,
+        location={
+            "kind": "text_span",
+            "paragraph": record.ordinal,
+            "start": start,
+            "end": end,
+            "original": raw,
+        },
+        options=options,
+        layout="choice",
+        layout_group=f"auto_choice_{field_id}",
+    )
+    if section:
+        candidate["section"] = section
     return candidate
 
 
