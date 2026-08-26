@@ -24,6 +24,7 @@ class ParagraphRecord:
         "cell",
         "table",
         "understanding",
+        "structure",
     )
 
     def __init__(
@@ -48,6 +49,7 @@ class ParagraphRecord:
         self.cell = cell
         self.table = table
         self.understanding = None
+        self.structure = None
 
 
 class CandidateDefinition(dict[str, Any]):

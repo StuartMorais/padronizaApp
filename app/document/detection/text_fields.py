@@ -369,6 +369,15 @@ def _detect_prefilled_written_text(
 
     raw_text = str(record.text or "")
     text = _normalize_space(raw_text)
+    role = str(getattr(getattr(record, "understanding", None), "role", "") or "")
+    if role in {
+        "instruction", "note", "heading", "table_title", "table_header",
+        "table_reference", "signature", "example", "tagged",
+    }:
+        return None
+    owner = getattr(record, "structure", None)
+    if getattr(owner, "table_kind", "") in {"fixed_form", "reference"}:
+        return None
     if (
         len(text) < 45
         or len(text) > 2200
@@ -472,6 +481,10 @@ def _detect_adjacent_sample_value(
     """
 
     text = _normalize_space(record.text)
+    role = str(getattr(getattr(record, "understanding", None), "role", "") or "")
+    owner = getattr(record, "structure", None)
+    if role in {"table_header", "table_title", "table_reference", "heading", "tagged"}:
+        return None
     if (
         not text
         or record.cell is None
@@ -809,3 +822,135 @@ def _detect_consistency_repair_fields(
         )
 
     return result
+
+
+def _detect_terminal_prompt(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    known_ids: set[str],
+    structure,
+) -> dict[str, Any] | None:
+    """Detect the final prompt after an instructional block.
+
+    Institutional forms often put several note paragraphs and the actual input
+    prompt in the same merged Word cell.  There may be no blank cell or visual
+    placeholder after the prompt, so a placeholder-only detector misses the
+    entire numbered section.  The prompt is preserved and the accepted tag is
+    appended after it rather than replacing the printed label.
+    """
+
+    from app.document.detection.field_inference import infer_field_type
+    from app.document.detection.roles import terminal_prompt_score
+
+    if _contains_authoritative_marker(record.paragraph):
+        return None
+    score, reasons = terminal_prompt_score(record, records, structure)
+    if score < 0.65:
+        return None
+
+    label = _clean_label(record.text)
+    if not _is_reasonable_label(label, maximum=190):
+        return None
+    owner = structure.owner_for(record.ordinal) if structure is not None else None
+    section = owner.section if owner is not None else ""
+    inference = infer_field_type(label, section=section, preview=record.text)
+    field_id = _unique_field_id(_make_field_id(label), known_ids)
+    candidate = _candidate(
+        field_id=field_id,
+        label=label,
+        field_type=inference.field_type,
+        confidence=min(0.96, max(score, inference.confidence * 0.88)),
+        source="terminal_prompt",
+        preview=record.text,
+        location={
+            "kind": "append_tag",
+            "paragraph": record.ordinal,
+        },
+    )
+    if section:
+        candidate["section"] = section
+    candidate["terminal_prompt_reasons"] = reasons
+    candidate["type_inference"] = {
+        "confidence": inference.confidence,
+        "reasons": list(inference.reasons),
+    }
+    return candidate
+
+
+def _detect_colored_prompt(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    known_ids: set[str],
+) -> dict[str, Any] | None:
+    """Detect short colored placeholders such as ``Nome`` / ``Matrícula``.
+
+    Some institutional DOCX files use red words as the fill target itself
+    rather than ``XXXX`` or an underscore.  We require a short field-like
+    token and strong structural context so ordinary colored instructions stay
+    static.
+    """
+
+    from app.document.detection.field_inference import infer_field_type
+    from app.document.detection.identifiers import _unique_contextual_field_id
+
+    text = _normalize_space(record.text)
+    if (
+        not text
+        or len(text) > 70
+        or not _paragraph_is_red(record.paragraph)
+        or _contains_authoritative_marker(record.paragraph)
+    ):
+        return None
+    role = str(getattr(getattr(record, "understanding", None), "role", "") or "")
+    if role in {"note", "heading", "table_header", "table_reference", "tagged"}:
+        return None
+
+    semantic, _source, semantic_confidence = semantic_label(record)
+    owner = getattr(record, "structure", None)
+    section = str(getattr(owner, "section", "") or semantic_section(record) or "")
+    normalized = _slug(text)
+    field_words = {
+        "nome", "nome_completo", "cargo", "matricula", "setor", "lotacao", "funcao",
+        "cpf", "cnpj", "email", "e_mail", "telefone", "celular", "cep", "cidade", "uf",
+        "data", "valor", "quantidade", "descricao", "observacao", "justificativa",
+    }
+    if normalized not in field_words:
+        return None
+
+    table_kind = str(getattr(owner, "table_kind", "") or "")
+    label = (
+        semantic
+        if table_kind in {"fixed_form", "repeatable", "editable_sheet"}
+        and semantic and semantic_confidence >= 0.75
+        else _clean_label(text)
+    )
+    semantics = getattr(record, "understanding", None)
+    row_label = str(getattr(semantics, "row_label", "") or "")
+    column_label = str(getattr(semantics, "column_label", "") or "")
+    field_id = _unique_contextual_field_id(
+        label,
+        known_ids,
+        section=section,
+        row_label=row_label,
+        column_label=column_label,
+    )
+    inference = infer_field_type(label, section=section, preview=text)
+    candidate = _candidate(
+        field_id=field_id,
+        label=label,
+        field_type=inference.field_type,
+        confidence=0.91 if semantic_confidence >= 0.80 else 0.83,
+        source="colored_prompt",
+        preview=text,
+        location={
+            "kind": "paragraph",
+            "paragraph": record.ordinal,
+        },
+    )
+    if section:
+        candidate["section"] = section
+    candidate["type_inference"] = {
+        "confidence": inference.confidence,
+        "reasons": list(inference.reasons),
+    }
+    return candidate

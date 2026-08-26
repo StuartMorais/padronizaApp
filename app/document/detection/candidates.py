@@ -37,8 +37,8 @@ def candidate_field_definitions(
                         for column in candidate.get("columns", []) or []
                         if isinstance(column, dict)
                     ],
-                    "minimum_rows": 1,
-                    "numbering_padding": 2,
+                    "minimum_rows": max(0, int(candidate.get("minimum_rows", 1) or 0)),
+                    "numbering_padding": max(1, int(candidate.get("numbering_padding", 2) or 2)),
                     "required": True,
                     "label_source": "automatic_detection",
                     "type_source": "automatic_detection",
@@ -46,16 +46,22 @@ def candidate_field_definitions(
                     "detection_confidence": float(candidate.get("confidence", 0.0)),
                     "detection_confidence_band": str(candidate.get("confidence_band", "")),
                     "detection_evidence": deepcopy(candidate.get("evidence", []) or []),
+                    "detection_confidence_dimensions": deepcopy(candidate.get("confidence_dimensions", {}) or {}),
+                    "detection_type_inference": deepcopy(candidate.get("type_inference", {}) or {}),
                     "detection_review_priority": str(candidate.get("review_priority", "")),
                     "detection_review_reasons": deepcopy(candidate.get("review_reasons", []) or []),
                     "detection_needs_review": bool(candidate.get("needs_review", False)),
                     "detection_reviewed": bool(candidate.get("reviewed_by_user", False)),
                     "detector_version": int(candidate.get("detector_version", 1) or 1),
+                    "scanner_version": int(candidate.get("scanner_version", 1) or 1),
                     "full_width": True,
                 })
             )
+            if "default_value" in candidate:
+                fields[-1]["default_value"] = deepcopy(candidate.get("default_value"))
             if str(candidate.get("section", "")).strip():
                 fields[-1]["section"] = str(candidate.get("section", "")).strip()
+                fields[-1]["section_source"] = str(candidate.get("section_source", "automatic_detection")).strip() or "automatic_detection"
             continue
         if str(candidate.get("source", "")) == "checkbox_choice":
             for raw_field in candidate.get("fields", []) or []:
@@ -67,11 +73,14 @@ def candidate_field_definitions(
                 field["detection_confidence"] = float(candidate.get("confidence", 0.0))
                 field["detection_confidence_band"] = str(candidate.get("confidence_band", ""))
                 field["detection_evidence"] = deepcopy(candidate.get("evidence", []) or [])
+                field["detection_confidence_dimensions"] = deepcopy(candidate.get("confidence_dimensions", {}) or {})
+                field["detection_type_inference"] = deepcopy(candidate.get("type_inference", {}) or {})
                 field["detection_review_priority"] = str(candidate.get("review_priority", ""))
                 field["detection_review_reasons"] = deepcopy(candidate.get("review_reasons", []) or [])
                 field["detection_needs_review"] = bool(candidate.get("needs_review", False))
                 field["detection_reviewed"] = bool(candidate.get("reviewed_by_user", False))
                 field["detector_version"] = int(candidate.get("detector_version", 1) or 1)
+                field["scanner_version"] = int(candidate.get("scanner_version", 1) or 1)
                 fields.append(FieldDefinition(field))
             continue
 
@@ -89,11 +98,14 @@ def candidate_field_definitions(
             "detection_confidence": float(candidate.get("confidence", 0.0)),
             "detection_confidence_band": str(candidate.get("confidence_band", "")),
             "detection_evidence": deepcopy(candidate.get("evidence", []) or []),
+            "detection_confidence_dimensions": deepcopy(candidate.get("confidence_dimensions", {}) or {}),
+            "detection_type_inference": deepcopy(candidate.get("type_inference", {}) or {}),
             "detection_review_priority": str(candidate.get("review_priority", "")),
             "detection_review_reasons": deepcopy(candidate.get("review_reasons", []) or []),
             "detection_needs_review": bool(candidate.get("needs_review", False)),
             "detection_reviewed": bool(candidate.get("reviewed_by_user", False)),
             "detector_version": int(candidate.get("detector_version", 1) or 1),
+            "scanner_version": int(candidate.get("scanner_version", 1) or 1),
         }
         options = compact_dropdown_options(candidate.get("options", []))
         if options:
@@ -123,6 +135,10 @@ def candidate_field_definitions(
             field["automatic"] = False
         if field["type"] == "multiline":
             field["full_width"] = True
+        section = str(candidate.get("section", "")).strip()
+        if section:
+            field["section"] = section
+            field["section_source"] = str(candidate.get("section_source", "automatic_detection")).strip() or "automatic_detection"
         fields.append(FieldDefinition(field))
     return fields
 

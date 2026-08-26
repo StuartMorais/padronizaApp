@@ -15,18 +15,22 @@ The source tree is organized by responsibility:
 - `assets/`, `docs/`, `examples/` — runtime resources and examples.
 - `tests/` — automated regression tests.
 
-See `docs/ARCHITECTURE.md` for the dependency rules and document pipeline, `docs/IMPROVEMENTS_2026-08.md` for the reliability pass, and `docs/USER_FACING_CAPABILITIES_2026-08.md` for the current template-authoring/detection UX milestone.
+See `docs/ARCHITECTURE.md` for the dependency rules and document pipeline, `docs/IMPROVEMENTS_2026-08.md` for the reliability pass, `docs/USER_FACING_CAPABILITIES_2026-08.md` for the template-authoring/detection UX milestone, `docs/STRUCTURAL_TABLE_INTELLIGENCE_2026-08.md` for Word-table preservation rules, and `docs/SCANNER_V4_2026-08.md` for the current structure-first scanner architecture.
 
 For continuity across development sessions or a new ChatGPT conversation, read **`PROJECT_CONTEXT.md`** first. It records the current architecture, quality baseline, important regressions, known limitations, and handoff instructions.
 
 
 ## Template authoring and assisted detection
 
-- Assisted detection v3 explains confidence with `ready` / `recommended` / `required` review priority and evidence.
+- Scanner V4 analyzes document structure and content roles before creating field candidates; accepted automatic tags must pass a strict detect → apply → re-scan round trip before publication.
+- Assisted detection exposes multidimensional confidence plus `ready` / `recommended` / `required` review priority and evidence.
 - The detection review dialog supports search plus confidence, review-priority, and type filters.
 - Template fields receive live `OK` / `Erro` / `Revisar` status with type/status filtering.
 - The preview tab can fill deterministic sample values and generate an atomically-published test DOCX after preflight.
 - Expensive DOCX assisted detection is cached and runs off the UI thread with cooperative cancellation.
+- Word tables are structurally classified before cell-level detection, so repeatable grids remain tables instead of becoming unrelated field cards.
+- Merged multi-level headers are expanded into distinct columns, and short legends such as `SIM / NÃO` become dropdown columns.
+- Smart Scan repairs structurally unambiguous duplicate/wrong-prefix markers in repeatable-table editor work copies before scanning, so older partial tagging runs do not permanently break the template editor.
 
 ## Reliability highlights
 

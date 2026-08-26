@@ -153,3 +153,24 @@ def _is_reasonable_label(value: str, *, maximum: int = 150) -> bool:
 
 def _normalize_space(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _unique_contextual_field_id(
+    label: str,
+    known_ids: set[str],
+    *,
+    section: str = "",
+    row_label: str = "",
+    column_label: str = "",
+) -> str:
+    """Prefer semantic hierarchy over anonymous numeric collision suffixes."""
+
+    base = _make_field_id(label)
+    if base not in known_ids:
+        return base
+    context_parts = [value for value in (section, row_label, column_label, label) if str(value).strip()]
+    if context_parts:
+        contextual = _make_field_id(" — ".join(context_parts))
+        if contextual not in known_ids:
+            return contextual
+    return _unique_field_id(base, known_ids)

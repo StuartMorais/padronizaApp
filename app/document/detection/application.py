@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import shutil
+import tempfile
 from collections import defaultdict
 from copy import deepcopy
 from pathlib import Path
@@ -38,59 +40,78 @@ def apply_docx_field_candidates(
         raise AutomaticDetectionError("Nenhuma sugestão foi selecionada.")
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    document = Document(str(destination))
-    records = _collect_paragraph_records(document)
-    by_ordinal = {record.ordinal: record for record in records}
-
     _validate_accepted_candidates(accepted)
 
-    # Whole-block operations are applied first. They do not invalidate the
-    # stored Paragraph XML objects used by the span replacements below.
-    for candidate in accepted:
-        kind = str(candidate.get("location", {}).get("kind", ""))
-        if kind == "repeatable_table":
-            _apply_repeatable_table(candidate, document)
-        elif kind == "paragraph_block":
-            _apply_paragraph_block(candidate, by_ordinal)
-        elif kind == "checkbox_group":
-            _apply_checkbox_group(candidate, by_ordinal)
-        elif kind == "checkbox_group_inline":
-            _apply_inline_checkbox_group(candidate, by_ordinal)
-        elif kind == "checkbox_group_multi_cell":
-            _apply_multi_cell_checkbox_group(candidate, by_ordinal)
+    fd, staged_name = tempfile.mkstemp(
+        prefix=f".{destination.stem}-detect-",
+        suffix=".docx",
+        dir=str(destination.parent),
+    )
+    os.close(fd)
+    staged = Path(staged_name)
+    try:
+        shutil.copy2(source, staged)
+        document = Document(str(staged))
+        records = _collect_paragraph_records(document)
+        by_ordinal = {record.ordinal: record for record in records}
 
-    # Apply text spans from right to left inside each paragraph so offsets stay
-    # valid even when one line contains several placeholders.
-    spans_by_paragraph: dict[int, list[dict[str, Any]]] = defaultdict(list)
-    for candidate in accepted:
-        location = candidate.get("location", {}) or {}
-        if str(location.get("kind", "")) == "text_span":
-            spans_by_paragraph[int(location.get("paragraph", -1))].append(candidate)
+        # Whole-block operations are applied first. They do not invalidate the
+        # stored Paragraph XML objects used by the span replacements below.
+        for candidate in accepted:
+            kind = str(candidate.get("location", {}).get("kind", ""))
+            if kind == "repeatable_table":
+                _apply_repeatable_table(candidate, document)
+            elif kind == "paragraph_block":
+                _apply_paragraph_block(candidate, by_ordinal)
+            elif kind == "checkbox_group":
+                _apply_checkbox_group(candidate, by_ordinal)
+            elif kind == "checkbox_group_inline":
+                _apply_inline_checkbox_group(candidate, by_ordinal)
+            elif kind == "checkbox_group_multi_cell":
+                _apply_multi_cell_checkbox_group(candidate, by_ordinal)
 
-    for ordinal, paragraph_candidates in spans_by_paragraph.items():
-        record = by_ordinal.get(ordinal)
-        if record is None:
-            raise AutomaticDetectionError(
-                "A estrutura do DOCX mudou durante a detecção automática. "
-                "Execute a análise novamente."
-            )
-        replacements: list[tuple[int, int, str]] = []
-        for candidate in paragraph_candidates:
+        # Apply text spans from right to left inside each paragraph so offsets stay
+        # valid even when one line contains several placeholders.
+        spans_by_paragraph: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for candidate in accepted:
             location = candidate.get("location", {}) or {}
-            replacements.append(
-                (
-                    int(location.get("start", 0)),
-                    int(location.get("end", 0)),
-                    _tag_for_candidate(candidate),
-                )
-            )
-        _replace_paragraph_spans(record.paragraph, replacements)
+            if str(location.get("kind", "")) == "text_span":
+                spans_by_paragraph[int(location.get("paragraph", -1))].append(candidate)
 
-    for candidate in accepted:
-        location = candidate.get("location", {}) or {}
-        kind = str(location.get("kind", ""))
-        if kind == "append_tag":
+        for ordinal, paragraph_candidates in spans_by_paragraph.items():
+            record = by_ordinal.get(ordinal)
+            if record is None:
+                raise AutomaticDetectionError(
+                    "A estrutura do DOCX mudou durante a detecção automática. "
+                    "Execute a análise novamente."
+                )
+            replacements: list[tuple[int, int, str]] = []
+            for candidate in paragraph_candidates:
+                location = candidate.get("location", {}) or {}
+                replacements.append(
+                    (
+                        int(location.get("start", 0)),
+                        int(location.get("end", 0)),
+                        _tag_for_candidate(candidate),
+                    )
+                )
+            _replace_paragraph_spans(record.paragraph, replacements)
+
+        for candidate in accepted:
+            location = candidate.get("location", {}) or {}
+            kind = str(location.get("kind", ""))
+            if kind == "append_tag":
+                ordinal = int(location.get("paragraph", -1))
+                record = by_ordinal.get(ordinal)
+                if record is None:
+                    raise AutomaticDetectionError(
+                        "Não foi possível localizar uma área aprovada no DOCX. "
+                        "Execute a análise novamente."
+                    )
+                _append_tag_to_paragraph(record.paragraph, _tag_for_candidate(candidate))
+                continue
+            if kind not in {"paragraph", "empty_cell"}:
+                continue
             ordinal = int(location.get("paragraph", -1))
             record = by_ordinal.get(ordinal)
             if record is None:
@@ -98,21 +119,86 @@ def apply_docx_field_candidates(
                     "Não foi possível localizar uma área aprovada no DOCX. "
                     "Execute a análise novamente."
                 )
-            _append_tag_to_paragraph(record.paragraph, _tag_for_candidate(candidate))
-            continue
-        if kind not in {"paragraph", "empty_cell"}:
-            continue
-        ordinal = int(location.get("paragraph", -1))
-        record = by_ordinal.get(ordinal)
-        if record is None:
-            raise AutomaticDetectionError(
-                "Não foi possível localizar uma área aprovada no DOCX. "
-                "Execute a análise novamente."
-            )
-        _replace_entire_paragraph(record.paragraph, _tag_for_candidate(candidate))
+            _replace_entire_paragraph(record.paragraph, _tag_for_candidate(candidate))
 
-    document.save(str(destination))
-    return destination
+        document.save(str(staged))
+        _validate_detection_roundtrip(staged, accepted)
+        os.replace(staged, destination)
+        return destination
+    except Exception:
+        try:
+            staged.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
+
+def _validate_detection_roundtrip(
+    prepared_docx: Path,
+    accepted: list[dict[str, Any]],
+) -> None:
+    """Strictly re-scan our own output before publishing it.
+
+    Assisted detection is never allowed to produce a DOCX that the normal tag
+    scanner cannot understand. This catches duplicate repeatable columns, bad
+    prefixes, malformed dropdowns and future writer/scanner disagreements at
+    the boundary where they are cheapest to recover.
+    """
+
+    from app.document.docx.scanner import clear_docx_scan_cache, scan_docx_fields
+
+    clear_docx_scan_cache()
+    try:
+        scanned = [dict(field) for field in scan_docx_fields(Path(prepared_docx))]
+    except Exception as exc:
+        raise AutomaticDetectionError(
+            "A validação de ida-e-volta rejeitou as tags geradas automaticamente: "
+            f"{exc}"
+        ) from exc
+
+    by_id = {str(field.get("id", "")).strip(): field for field in scanned}
+    expected_ids: set[str] = set()
+    for candidate in accepted:
+        source = str(candidate.get("source", ""))
+        if source == "checkbox_choice":
+            expected_ids.update(
+                str(field.get("id", "")).strip()
+                for field in candidate.get("fields", []) or []
+                if str(field.get("id", "")).strip()
+            )
+        else:
+            field_id = str(candidate.get("field_id", "")).strip()
+            if field_id:
+                expected_ids.add(field_id)
+
+    missing = sorted(expected_ids - set(by_id))
+    if missing:
+        raise AutomaticDetectionError(
+            "A validação de ida-e-volta não encontrou os campos gerados: "
+            + ", ".join(missing)
+        )
+
+    for candidate in accepted:
+        if str(candidate.get("source", "")) != "repeatable_table":
+            continue
+        field_id = str(candidate.get("field_id", "")).strip()
+        scanned_field = by_id.get(field_id, {})
+        scanned_columns = [
+            str(column.get("id", "")).strip()
+            for column in scanned_field.get("columns", []) or []
+            if isinstance(column, dict)
+        ]
+        expected_columns = [
+            str(column.get("id", "")).strip()
+            for column in candidate.get("columns", []) or []
+            if isinstance(column, dict)
+        ]
+        # auto-number can be represented as ``item`` by both sides; compare the
+        # stable set while preserving duplicate detection in the strict scanner.
+        if [value for value in scanned_columns if value] != [value for value in expected_columns if value]:
+            raise AutomaticDetectionError(
+                f"A tabela '{field_id}' mudou de colunas ao ser reescaneada. "
+                f"Esperado: {expected_columns}; encontrado: {scanned_columns}."
+            )
 
 
 def _tag_for_candidate(candidate: dict[str, Any]) -> str:
@@ -235,6 +321,21 @@ def _apply_repeatable_table(
                 text = f"{{{{date:{child_id}}}}}"
             elif column_type == "checkbox":
                 text = f"{{{{checkbox:{child_id}}}}}"
+            elif column_type == "dropdown":
+                options = compact_dropdown_options(column.get("options", []))
+                if len(options) < 2:
+                    raise AutomaticDetectionError(
+                        f"A coluna '{column.get('label', column_id)}' precisa de pelo menos duas opções."
+                    )
+                encoded: list[str] = []
+                for option in options:
+                    if isinstance(option, dict):
+                        label = _safe_tag_option(option.get("label", ""))
+                        value = _safe_tag_option(option.get("value", ""))
+                        encoded.append(value if label == value else f"{label} => {value}")
+                    else:
+                        encoded.append(_safe_tag_option(option))
+                text = "{{dropdown:" + child_id + "|" + "|".join(encoded) + "}}"
             else:
                 text = f"{{{{{child_id}}}}}"
 

@@ -1,0 +1,66 @@
+{
+  "scanner_structure_version": 4,
+  "required_sections": [
+    "1. Área Requisitante da Demanda",
+    "1.1. Identificação da Demanda",
+    "1.2. Modalidade de licitação Sugerida",
+    "2. Justificativa da necessidade da contratação, considerando o planejamento estratégico, as diretrizes de planejamento, se for o caso",
+    "3. Quantidade a ser contratada",
+    "4. Previsão de data em que devem ser entregues os bens ou que os serviços serão iniciados",
+    "5. Plano de Contratações Anual - PCA 2025",
+    "5.1. Justificativa em caso de ausência parcial ou total no PCA 2025",
+    "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+    "6. Indicação do membro responsável pela formalização da demanda",
+    "7. Despacho de encaminhamento"
+  ],
+  "required_tables": [
+    {
+      "title_prefix": "3. Quantidade a ser contratada",
+      "kind": "repeatable",
+      "columns": 9
+    },
+    {
+      "title_prefix": "5.2. Sugestão de designação",
+      "kind": "fixed_form",
+      "columns": 5
+    },
+    {
+      "header_labels": ["DATA", "VERSÃO", "DESCRIÇÃO"],
+      "kind": "reference",
+      "columns": 3
+    }
+  ],
+  "required_candidates": [
+    {
+      "source": "repeatable_table",
+      "type": "repeatable_table",
+      "section_prefix": "3. Quantidade a ser contratada"
+    },
+    {
+      "source": "terminal_prompt",
+      "type": "date",
+      "section_prefix": "4. Previsão de data"
+    },
+    {
+      "source": "colored_prompt",
+      "label": "Nome",
+      "section_prefix": "6. Indicação do membro responsável"
+    },
+    {
+      "source": "colored_prompt",
+      "label": "Cargo",
+      "section_prefix": "6. Indicação do membro responsável"
+    },
+    {
+      "source": "colored_prompt",
+      "label": "Matrícula",
+      "section_prefix": "6. Indicação do membro responsável"
+    }
+  ],
+  "forbidden_candidate_sources_by_section_prefix": [
+    {"source": "prefilled_text", "section_prefix": "2. Justificativa"},
+    {"source": "prefilled_text", "section_prefix": "4. Previsão"},
+    {"source": "prefilled_text", "section_prefix": "5.1. Justificativa"},
+    {"source": "prefilled_text", "section_prefix": "7. Despacho"}
+  ]
+}

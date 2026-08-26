@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from copy import deepcopy
 from pathlib import Path
 from threading import Event
@@ -50,11 +51,14 @@ from app.ui.dialogs.filename_builder_dialog import FilenameBuilderDialog
 from app.ui.dialogs.field_library_dialog import FieldLibraryDialog
 from app.document.detection.application import apply_docx_field_candidates
 from app.document.docx.generator import generate_docx
+from app.document.docx.repair import repair_repeatable_table_markers
+from app.document.docx.scanner import clear_docx_scan_cache
 from app.document.detection.candidates import candidate_field_definitions
-from app.document.detection.detector import detect_docx_field_candidates
+from app.document.detection.detector import detect_docx_with_report
 from app.document.detection.models import AutomaticDetectionCancelled
 from app.repositories.field_library import FieldLibraryStore
 from app.core.atomic_output import publish_staged_output, staged_output
+from app.core.json_io import atomic_write_json
 from app.core.paths import resolve_application_paths
 from app.domain.field_metadata import preserved_editor_field_metadata
 from app.domain.template_quality import field_configuration_issues, issue_counts
@@ -196,7 +200,7 @@ class _AutomaticDetectionWorker(QObject):
 
     def run(self) -> None:
         try:
-            candidates = detect_docx_field_candidates(
+            candidates, report = detect_docx_with_report(
                 self.source,
                 existing_field_ids=self.existing_ids,
                 existing_fields=self.existing_fields,
@@ -211,7 +215,7 @@ class _AutomaticDetectionWorker(QObject):
             # directly to a QObject method keeps UI work on the main thread; a
             # lambda connected to a worker-thread signal could otherwise run in
             # the emitter thread.
-            self.result_ready.emit((candidates, deepcopy(self.existing_fields)))
+            self.result_ready.emit((candidates, deepcopy(self.existing_fields), report.as_dict()))
         finally:
             self.finished.emit()
 
@@ -1803,7 +1807,17 @@ class TemplateEditorDialog(QDialog):
             if show_message:
                 QMessageBox.warning(self, 'Nenhum arquivo selecionado', 'Selecione primeiro um arquivo DOCX ou PDF.')
             return False
+        repair_result = None
         try:
+            # A previous/partial automatic-detection run can leave the editor's
+            # working DOCX with duplicate repeatable-column markers. Repair
+            # only structurally unambiguous cases before the normal scanner is
+            # allowed to validate the document. The original user file is not
+            # edited here; ``selected_docx`` is the editor work copy.
+            repair_result = repair_repeatable_table_markers(Path(self.selected_docx))
+            if repair_result.changed:
+                clear_docx_scan_cache()
+
             existing = self._collect_fields(validate=False)
             # Native PDF form fields have technical AcroForm names that are
             # intentionally different from the human labels printed on the
@@ -1855,6 +1869,11 @@ class TemplateEditorDialog(QDialog):
                 f"{contextual_labels} rótulo(s) lidos do documento e "
                 f"{specialized_types} tipo(s) especializado(s)."
             )
+            if repair_result is not None and repair_result.changed:
+                details += (
+                    f" {repair_result.marker_count} marcador(es) de tabela "
+                    "repetível foram corrigidos automaticamente."
+                )
             show_toast(
                 self,
                 'Análise inteligente concluída',
@@ -1971,18 +1990,22 @@ class TemplateEditorDialog(QDialog):
             self._detection_progress.close()
         candidates: object = []
         existing: list[dict[str, Any]] = []
-        if isinstance(payload, tuple) and len(payload) == 2:
+        scan_report: dict[str, Any] = {}
+        if isinstance(payload, tuple) and len(payload) in {2, 3}:
             candidates = payload[0]
             existing = [
                 dict(field)
                 for field in (payload[1] if isinstance(payload[1], list) else [])
                 if isinstance(field, dict)
             ]
+            if len(payload) == 3 and isinstance(payload[2], dict):
+                scan_report = dict(payload[2])
         values = [
             dict(candidate)
             for candidate in (candidates if isinstance(candidates, list) else [])
             if isinstance(candidate, dict)
         ]
+        self._write_scanner_telemetry(scan_report, values)
         if not values:
             QMessageBox.information(
                 self,
@@ -1994,14 +2017,50 @@ class TemplateEditorDialog(QDialog):
                 ),
             )
             return
-        self._review_detected_candidates(values, existing)
+        self._review_detected_candidates(values, existing, scan_report)
+
+    def _write_scanner_telemetry(
+        self,
+        report: dict[str, Any],
+        candidates: list[dict[str, Any]],
+    ) -> None:
+        """Persist local scanner diagnostics without document/form contents."""
+
+        try:
+            path = self.data_dir / "logs" / "scanner-last.json"
+            atomic_write_json(
+                path,
+                {
+                    "created_at": datetime.now().isoformat(timespec="seconds"),
+                    "source": str(self.selected_docx or ""),
+                    "report": dict(report or {}),
+                    "candidates": [
+                        {
+                            "field_id": str(item.get("field_id", "")),
+                            "label": str(item.get("label", "")),
+                            "type": str(item.get("type", "")),
+                            "source": str(item.get("source", "")),
+                            "section": str(item.get("section", "")),
+                            "confidence": float(item.get("confidence", 0.0) or 0.0),
+                            "confidence_dimensions": dict(item.get("confidence_dimensions", {}) or {}),
+                            "review_priority": str(item.get("review_priority", "")),
+                            "location": dict(item.get("location", {}) or {}),
+                        }
+                        for item in candidates
+                    ],
+                },
+            )
+        except Exception:
+            # Diagnostics must never make field detection fail.
+            pass
 
     def _review_detected_candidates(
         self,
         candidates: list[dict[str, Any]],
         existing: list[dict[str, Any]],
+        scan_report: dict[str, Any] | None = None,
     ) -> None:
-        dialog = AutomaticDetectionDialog(candidates, self)
+        dialog = AutomaticDetectionDialog(candidates, self, scan_report=scan_report)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         accepted = dialog.accepted_candidates()
@@ -2401,6 +2460,9 @@ class TemplateEditorDialog(QDialog):
                 )
             if section:
                 field["section"] = section
+                original_section = str(original.get("section", "") or "").strip()
+                if section != original_section:
+                    field["section_source"] = "manual"
             if profile_key:
                 field["profile_key"] = profile_key
             if group:

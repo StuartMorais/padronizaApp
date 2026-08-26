@@ -26,11 +26,14 @@ EDITOR_PRESERVED_METADATA_KEYS = (
     "detection_confidence",
     "detection_confidence_band",
     "detection_evidence",
+    "detection_confidence_dimensions",
+    "detection_type_inference",
     "detection_review_priority",
     "detection_review_reasons",
     "detection_needs_review",
     "detection_reviewed",
     "detector_version",
+    "scanner_version",
     "choice_group_label",
     "compact_choice",
     "choice_required",
@@ -174,6 +177,7 @@ def normalize_repeatable_columns(value: Any) -> list[dict[str, Any]]:
             )
 
         for key in (
+            "group_label",
             "placeholder",
             "validation_hint",
             "format_hint",

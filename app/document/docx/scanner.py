@@ -27,6 +27,9 @@ REPEAT_MARKER_PATTERN = re.compile(
     rf"\{{\{{\s*repeat:({FIELD_ID_TOKEN_PATTERN})\s*\}}\}}",
     re.IGNORECASE,
 )
+NUMBERED_SECTION_PATTERN = re.compile(
+    r"^\s*\d+(?:\.\d+)*[.)]?\s+\S+",
+)
 
 
 def scan_docx_fields(docx_path: Path) -> list[FieldDefinition]:
@@ -475,6 +478,10 @@ def _scan_repeatable_row(
         )
 
     table_id = next(iter(table_ids))
+    section_title = _repeatable_section_title(
+        previous_rows,
+        total_columns,
+    )
     columns: list[dict[str, Any]] = []
     seen_column_ids: set[str] = set()
 
@@ -582,19 +589,64 @@ def _scan_repeatable_row(
             f"Adicione marcadores como {{{{{table_id}.descricao}}}} na mesma linha."
         )
 
+    metadata: dict[str, Any] = {
+        "columns": columns,
+        "minimum_rows": 1,
+        "numbering_padding": 2,
+        "marker": f"repeat:{table_id}",
+    }
+    if section_title:
+        metadata["section"] = section_title
+        metadata["section_source"] = "word_table_title"
+
     add_field(
         table_id,
         "repeatable_table",
         None,
         "",
-        {
-            "columns": columns,
-            "minimum_rows": 1,
-            "numbering_padding": 2,
-            "marker": f"repeat:{table_id}",
-        },
+        metadata,
     )
     return True
+
+
+def _repeatable_section_title(
+    previous_rows: list[Any],
+    total_columns: int,
+) -> str:
+    """Return the nearest numbered full-width title above a repeat row.
+
+    Manually tagged repeatable tables are authoritative and therefore bypass
+    the automatic structural detector.  Their semantic section still needs to
+    come from the Word structure, otherwise a valid ``{{repeat:itens}}`` table
+    falls back to the generic ``Dados do documento`` section in the filling
+    form.  Institutional forms commonly keep the numbered section title in a
+    merged row directly above the table header, so recover that context here
+    while scanning the explicit markers.
+    """
+
+    if total_columns <= 0:
+        return ""
+
+    for row in reversed(previous_rows):
+        cells = _row_cells_with_positions(row)
+        if not cells:
+            continue
+
+        full_width = [
+            cell
+            for cell, _start, span in cells
+            if span >= total_columns
+        ]
+        if len(full_width) != 1:
+            continue
+
+        text = _clean_header_text(
+            _xml_visible_text(full_width[0])
+        )
+        if text and NUMBERED_SECTION_PATTERN.match(text):
+            return text.rstrip(":").strip()
+
+    return ""
 
 
 def _row_cells_with_positions(
@@ -1266,6 +1318,28 @@ def create_default_fields(
 
             for key, value in detected_metadata.items():
                 current = field.get(key)
+                if key == "section":
+                    current_section = str(current or "").strip()
+                    current_source = str(
+                        field.get("section_source", "") or ""
+                    ).strip().casefold()
+                    detected_section = str(value or "").strip()
+                    generic_section = current_section in {
+                        "Dados do documento",
+                        "Informações adicionais",
+                    }
+                    if (
+                        detected_section
+                        and generic_section
+                        and current_source not in {"manual", "user", "editor"}
+                    ):
+                        field["section"] = detected_section
+                        detected_source = str(
+                            detected_metadata.get("section_source", "") or ""
+                        ).strip()
+                        if detected_source:
+                            field["section_source"] = detected_source
+                        continue
                 if current in (None, "", "auto", False):
                     field[key] = value
 

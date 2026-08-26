@@ -440,6 +440,57 @@ class DocxEngineTests(unittest.TestCase):
             self.assertEqual(result_text.text, "06/08/2026")
             self.assertEqual(result_color.get(qn("w:val")), "000000")
 
+    def test_unnamed_native_dropdown_uses_same_context_id_as_scanner(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            template_path = temp_path / "template.docx"
+            output_path = temp_path / "output.docx"
+
+            document = Document()
+            table = document.add_table(rows=1, cols=1)
+            cell = table.cell(0, 0)
+
+            sdt = OxmlElement("w:sdt")
+            properties = OxmlElement("w:sdtPr")
+            dropdown = OxmlElement("w:dropDownList")
+            for option in (
+                "Escolha a Unidade Gestora",
+                "27.0001 - SEDH",
+                "50.0001 - FEAS",
+            ):
+                item = OxmlElement("w:listItem")
+                item.set(qn("w:displayText"), option)
+                item.set(qn("w:value"), option)
+                dropdown.append(item)
+            properties.append(dropdown)
+            sdt.append(properties)
+
+            content = OxmlElement("w:sdtContent")
+            paragraph = OxmlElement("w:p")
+            run = OxmlElement("w:r")
+            text = OxmlElement("w:t")
+            text.text = "Escolha a Unidade Gestora"
+            run.append(text)
+            paragraph.append(run)
+            content.append(paragraph)
+            sdt.append(content)
+            cell._tc.append(sdt)
+            document.save(template_path)
+
+            generate_docx(
+                template_path,
+                output_path,
+                {"unidade_gestora": "27.0001 - SEDH"},
+            )
+
+            result = Document(output_path)
+            result_sdt = next(result.element.iter(qn("w:sdt")))
+            result_text = "".join(
+                node.text or ""
+                for node in result_sdt.iter(qn("w:t"))
+            )
+            self.assertEqual(result_text, "27.0001 - SEDH")
+
     def test_reports_missing_values(
         self,
     ) -> None:

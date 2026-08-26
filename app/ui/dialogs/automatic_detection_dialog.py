@@ -56,9 +56,12 @@ class AutomaticDetectionDialog(QDialog):
         self,
         candidates: list[dict[str, Any]],
         parent=None,
+        *,
+        scan_report: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(parent)
         self._candidates = [deepcopy(item) for item in candidates]
+        self._scan_report = dict(scan_report or {})
         self.setWindowTitle("Detectar campos sem tags")
         self.resize(1180, 720)
         self.setMinimumSize(820, 520)
@@ -84,6 +87,11 @@ class AutomaticDetectionDialog(QDialog):
         self.summary_label = QLabel()
         self.summary_label.setWordWrap(True)
         root.addWidget(self.summary_label)
+
+        self.structure_summary_label = QLabel(self._format_structure_summary())
+        self.structure_summary_label.setWordWrap(True)
+        self.structure_summary_label.setObjectName("mutedText")
+        root.addWidget(self.structure_summary_label)
 
         filters = QHBoxLayout()
         filters.setSpacing(7)
@@ -389,6 +397,19 @@ class AutomaticDetectionDialog(QDialog):
             f"{candidate.get('label', candidate.get('field_id', 'Campo'))} — {confidence}% — {priority_label}",
             f"Origem: {candidate_source_label(candidate)}",
         ]
+        dimensions = candidate.get("confidence_dimensions", {}) or {}
+        if isinstance(dimensions, dict) and dimensions:
+            labels = {"structure": "estrutura", "fillable": "preenchível", "label": "rótulo", "type": "tipo"}
+            parts = []
+            for key in ("structure", "fillable", "label", "type"):
+                if key not in dimensions:
+                    continue
+                try:
+                    parts.append(f"{labels[key]} {int(round(float(dimensions[key]) * 100))}%")
+                except (TypeError, ValueError):
+                    pass
+            if parts:
+                lines.append("Confiança por dimensão: " + " · ".join(parts))
         semantic_label = str(candidate.get("semantic_label_suggestion", "")).strip()
         if semantic_label and semantic_label != str(candidate.get("label", "")).strip():
             semantic_confidence = int(round(float(candidate.get("semantic_label_confidence", 0.0)) * 100))
@@ -404,6 +425,30 @@ class AutomaticDetectionDialog(QDialog):
         if explanation:
             lines.append("Sinais usados:\n" + explanation)
         self.details_text.setPlainText("\n".join(lines))
+
+    def _format_structure_summary(self) -> str:
+        report = self._scan_report
+        if not report:
+            return ""
+        sections = len(report.get("sections", []) or [])
+        tables = report.get("tables", []) or []
+        kinds: dict[str, int] = {}
+        for table in tables:
+            if not isinstance(table, dict):
+                continue
+            kind = str(table.get("kind", "unknown"))
+            kinds[kind] = kinds.get(kind, 0) + 1
+        kind_text = ", ".join(f"{key}: {value}" for key, value in sorted(kinds.items()))
+        protected = int(report.get("protected_tables", 0) or 0)
+        ambiguous = int(report.get("ignored_ambiguous_tables", 0) or 0)
+        version = int(report.get("scanner_version", 0) or 0)
+        suffix = []
+        if protected:
+            suffix.append(f"{protected} tabela(s) manualmente protegida(s)")
+        if ambiguous:
+            suffix.append(f"{ambiguous} tabela(s) ambígua(s) não achatada(s)")
+        extra = (" · " + " · ".join(suffix)) if suffix else ""
+        return f"Estrutura v{version}: {sections} seção(ões), {len(tables)} tabela(s) ({kind_text or 'sem tabelas'}){extra}."
 
     def _selected_row(self) -> int:
         rows = self.table.selectionModel().selectedRows()
@@ -510,6 +555,10 @@ class _CandidateEditorDialog(QDialog):
         self.label_input = QLineEdit(str(candidate.get("label", "")))
         form.addRow("Rótulo", self.label_input)
 
+        self.section_input = QLineEdit(str(candidate.get("section", "")))
+        self.section_input.setPlaceholderText("Seção do formulário (opcional)")
+        form.addRow("Seção", self.section_input)
+
         self.type_input = QComboBox()
         source = str(candidate.get("source", ""))
         allowed_types = [field_type for field_type in FIELD_TYPE_ORDER if field_type != "repeatable_table"]
@@ -577,6 +626,7 @@ class _CandidateEditorDialog(QDialog):
     def _validate_and_accept(self) -> None:
         field_id = self.id_input.text().strip()
         label = self.label_input.text().strip()
+        section = self.section_input.text().strip()
         field_type = str(self.type_input.currentData() or "text")
 
         if str(self._candidate.get("source", "")) != "checkbox_choice":
@@ -603,6 +653,12 @@ class _CandidateEditorDialog(QDialog):
         self._candidate["field_id"] = field_id
         self._candidate["label"] = label
         self._candidate["type"] = field_type
+        if section:
+            self._candidate["section"] = section
+            self._candidate["section_source"] = "manual_review"
+        else:
+            self._candidate.pop("section", None)
+            self._candidate.pop("section_source", None)
         self._candidate["options"] = options
         self._candidate["requires_configuration"] = False
         if field_type == "dropdown" and self.choice_layout_checkbox.isChecked():

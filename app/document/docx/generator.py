@@ -9,6 +9,10 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
+from app.document.understanding.context_resolver import (
+    _element_path,
+    build_word_control_context_map,
+)
 from app.domain.field_ids import FIELD_ID_TOKEN_PATTERN
 from app.domain.field_metadata import dropdown_option_values
 from app.document.docx.tags import PLACEHOLDER_PATTERN, ROW_NUMBER_IDS, TagKind, parse_tag
@@ -58,6 +62,7 @@ def generate_docx(
 
     try:
         document = Document(str(template_path))
+        control_context_map = build_word_control_context_map(document)
 
         for root in iter_unique_story_roots(document):
             _expand_repeatable_rows(
@@ -73,6 +78,7 @@ def generate_docx(
             _replace_native_controls(
                 root,
                 values,
+                control_context_map,
             )
 
             _replace_legacy_checkbox_controls(
@@ -183,6 +189,7 @@ def _expand_repeatable_rows(
             _replace_native_controls(
                 cloned_row,
                 scoped_values,
+                {},
             )
             _replace_legacy_checkbox_controls(
                 cloned_row,
@@ -680,6 +687,7 @@ def _validated_selected_text(
 def _replace_native_controls(
     root,
     values: dict[str, Any],
+    control_context_map: dict[str, dict[str, Any]],
 ) -> None:
     for sdt_element in root.iter(qn("w:sdt")):
         properties = sdt_element.find(qn("w:sdtPr"))
@@ -693,14 +701,25 @@ def _replace_native_controls(
         if control_type is None:
             continue
 
-        field_id = get_control_identifier(
-            sdt_element
+        hint = dict(
+            control_context_map.get(
+                _element_path(sdt_element),
+                {},
+            )
+            or {}
+        )
+        field_id = (
+            get_control_identifier(sdt_element)
+            or str(hint.get("id", "")).strip()
         )
 
         if not field_id:
-            raise DocumentGenerationError(
-                'Um campo nativo do Word não possui Marca nem Título.'
-            )
+            # The scanner does not expose a native control that cannot be
+            # identified even after contextual resolution.  Generation must
+            # follow the same contract: leave such decorative/legacy controls
+            # untouched instead of failing on a field the user could never
+            # fill in the UI.
+            continue
 
         if field_id not in values:
             raise DocumentGenerationError(

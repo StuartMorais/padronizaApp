@@ -13,8 +13,9 @@ import re
 import unicodedata
 from typing import Any, Iterable
 
+from app.document.detection.structure import SCANNER_STRUCTURE_VERSION, is_numbered_section_heading
 
-_SECTION_RE = re.compile(r"^\s*\d+(?:\.\d+)*[.)]?\s+\S")
+
 _GENERIC_LABEL_RE = re.compile(r"^(?:campo|field)\s*\d+$", re.IGNORECASE)
 _CHECKBOX_TEXT_RE = re.compile(r"(?:☐|□|☑|☒|\(\s*\))")
 _FILL_RE = re.compile(
@@ -43,7 +44,7 @@ class RecordSemantics:
     evidence: list[Evidence] = field(default_factory=list)
 
 
-def annotate_document_records(records: list[Any]) -> None:
+def annotate_document_records(records: list[Any], structure=None) -> None:
     """Annotate paragraph-like records with relationship-based semantics.
 
     ``records`` are deliberately duck-typed.  Today they are DOCX paragraph
@@ -54,9 +55,14 @@ def annotate_document_records(records: list[Any]) -> None:
     current_section = ""
     for record in records:
         text = _space(getattr(record, "text", ""))
-        if _is_section_text(text):
-            current_section = text.rstrip(":").strip()
-        semantics = RecordSemantics(section=current_section)
+        if structure is not None:
+            owner = structure.owner_for(getattr(record, "ordinal", -1))
+            resolved_section = owner.section if owner is not None else ""
+        else:
+            if _is_section_text(text):
+                current_section = text.rstrip(":").strip()
+            resolved_section = current_section
+        semantics = RecordSemantics(section=resolved_section)
         _set_semantics(record, semantics)
 
     for index, record in enumerate(records):
@@ -105,7 +111,14 @@ def annotate_document_records(records: list[Any]) -> None:
         # is stronger than a generic row identity and does not assume a fixed
         # number of columns.
         adjacent_left = _adjacent_left_label(record)
-        if adjacent_left:
+        owner = getattr(record, "structure", None)
+        structural_table_kind = str(getattr(owner, "table_kind", "") or "")
+        # In matrix/data tables, the cell on the left is another value column,
+        # not a label/value pair. Prefer row + column axes there. The adjacent
+        # cell rule remains strongest for layout tables used as ordinary forms.
+        if adjacent_left and structural_table_kind not in {
+            "fixed_form", "repeatable", "editable_sheet", "reference"
+        }:
             _consider_label(
                 semantics,
                 adjacent_left,
@@ -182,7 +195,11 @@ def annotate_document_records(records: list[Any]) -> None:
                 Evidence("section_fallback", -0.05, "Título da seção usado apenas como fallback.")
             )
 
-        semantics.role = _infer_record_role(normalized, semantics)
+        if structure is not None:
+            from app.document.detection.roles import classify_record_role
+            semantics.role = classify_record_role(record, records, structure).value
+        else:
+            semantics.role = _infer_record_role(normalized, semantics)
         _set_semantics(record, semantics)
 
 
@@ -267,6 +284,30 @@ def postprocess_candidates(
             evidences.append(Evidence("type_support", 0.05, "Formato visual e tipo do campo são compatíveis."))
 
         source = str(candidate.get("source", ""))
+        if source == "terminal_prompt":
+            evidences.append(
+                Evidence(
+                    "terminal_prompt",
+                    0.06,
+                    "Prompt final após bloco de notas/instruções foi reconhecido como área de preenchimento.",
+                )
+            )
+        elif source == "colored_prompt":
+            evidences.append(
+                Evidence(
+                    "formatting_prompt",
+                    0.04,
+                    "Texto curto destacado por formatação coincide com um rótulo típico de preenchimento.",
+                )
+            )
+        elif source == "inline_placeholder":
+            evidences.append(
+                Evidence(
+                    "placeholder_pattern",
+                    0.05,
+                    "Máscara/placeholder visual aparece ao lado de um rótulo local.",
+                )
+            )
         if source in {"checkbox_choice", "long_choice", "repeatable_table"}:
             evidences.append(Evidence("group_structure", 0.06, "Vários elementos formam uma estrutura coerente."))
         if candidate.get("region_owner"):
@@ -292,6 +333,34 @@ def postprocess_candidates(
         if _poor_label(label):
             confidence = min(confidence, 0.54)
 
+        type_inference = dict(candidate.get("type_inference", {}) or {})
+        type_confidence = float(type_inference.get("confidence", 0.0) or 0.0)
+        if type_confidence <= 0:
+            type_confidence = 0.88 if _type_has_semantic_support(field_type, label, preview) else 0.58
+        location_kind = str(location.get("kind", ""))
+        structure_confidence = {
+            "repeatable_table": 0.99,
+            "checkbox_group_multi_cell": 0.96,
+            "checkbox_group": 0.94,
+            "empty_cell": 0.92,
+            "text_span": 0.90,
+            "append_tag": 0.90,
+            "paragraph_block": 0.86,
+            "paragraph": 0.80,
+        }.get(location_kind, 0.72)
+        if semantics.section:
+            structure_confidence = min(1.0, structure_confidence + 0.04)
+        label_confidence = max(
+            0.45 if not _poor_label(label) else 0.20,
+            float(semantics.label_confidence or 0.0),
+        )
+        fillable_confidence = original_confidence
+        candidate["confidence_dimensions"] = {
+            "structure": round(_clamp(structure_confidence), 3),
+            "fillable": round(_clamp(fillable_confidence), 3),
+            "label": round(_clamp(label_confidence), 3),
+            "type": round(_clamp(type_confidence), 3),
+        }
         candidate["confidence"] = confidence
         candidate["confidence_band"] = confidence_band(confidence)
         candidate["evidence"] = [
@@ -302,6 +371,7 @@ def postprocess_candidates(
             e.description for e in evidences if e.weight < 0
         ]
         candidate["detector_version"] = 3
+        candidate["scanner_version"] = SCANNER_STRUCTURE_VERSION
 
         requires_configuration = bool(candidate.get("requires_configuration"))
         poor_label = _poor_label(str(candidate.get("label", "")))
@@ -507,6 +577,8 @@ def _pick_candidate(a: dict[str, Any], b: dict[str, Any]) -> tuple[dict[str, Any
             "empty_cell": 3,
             "instruction": 3,
             "prefilled_text": 3,
+            "terminal_prompt": 5,
+            "colored_prompt": 4,
             "dropdown_prompt": 2,
         }.get(source, 1)
         label_quality = 0 if _poor_label(str(item.get("label", ""))) else 1
@@ -722,7 +794,7 @@ def _is_section_text(value: str) -> bool:
     text = _space(value)
     if not text:
         return False
-    return bool(_SECTION_RE.match(text)) and len(text) <= 190
+    return is_numbered_section_heading(text) and len(text) <= 190
 
 
 def _reasonable_label(value: str, *, maximum: int = 150) -> bool:

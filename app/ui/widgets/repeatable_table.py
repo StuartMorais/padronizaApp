@@ -311,7 +311,7 @@ class RepeatableTableWidget(QFrame):
         self.table = _PasteTableWidget(0, len(self.columns))
         self.table.setObjectName("repeatableDataTable")
         self.table.setHorizontalHeaderLabels(
-            [str(column.get("label", column.get("id", ""))) for column in self.columns]
+            [self._header_display_text(column) for column in self.columns]
         )
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -470,6 +470,16 @@ class RepeatableTableWidget(QFrame):
     def _paste_from_clipboard(self) -> None:
         clipboard = QApplication.clipboard()
         self.paste_text(clipboard.text() if clipboard else "")
+
+    @staticmethod
+    def _header_display_text(column: dict[str, Any]) -> str:
+        label = str(column.get("label", column.get("id", ""))).strip()
+        group = str(column.get("group_label", "")).strip()
+        if group and label.casefold().startswith((group + " — ").casefold()):
+            child = label[len(group) + 3 :].strip()
+            if child:
+                return f"{group}\n{child}"
+        return label
 
     def _configure_columns(self) -> None:
         header = self.table.horizontalHeader()

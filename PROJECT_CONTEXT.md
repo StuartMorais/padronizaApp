@@ -4,8 +4,8 @@
 >
 > **Maintenance rule:** update this file after every meaningful architecture change, feature addition, bug fix that affects project assumptions, quality-gate change, or known limitation. Do not use it as a line-by-line changelog; keep it focused on the current state and decisions that a new developer/chat needs to continue safely.
 
-**Last updated:** 2026-08-19  
-**Current baseline:** User-facing capability full replacement (assisted detection v3 + template-authoring UX)  
+**Last updated:** 2026-08-25  
+**Current baseline:** Scanner V4 structure-first detection + Structural Table Intelligence + user-facing capability baseline  
 **Primary platform:** Windows / PySide6 desktop application  
 **Entry point:** `main.py`
 
@@ -203,9 +203,48 @@ confidence/evidence/review priority
 application of accepted detections
 ```
 
-### Detector v3 review model
+### Scanner V4 structure-first model
 
-Assisted detection currently uses detector version 3. Candidates can expose:
+The current structural scanner version is **4**. Automatic detection must understand document ownership before emitting fields:
+
+```text
+DocumentStructureExtractor
+↓
+SectionResolver
+↓
+TableAnalyzer
+↓
+ContentRoleClassifier
+↓
+Candidate discovery / context / type inference
+↓
+Stable IDs + multidimensional confidence
+↓
+Invariants / review
+↓
+transactional tag application
+↓
+strict re-scan round-trip validation
+```
+
+Important Scanner V4 rules:
+
+- every candidate retains a meaningful section/structural owner;
+- numbered instruction-list items inside notes are not document sections;
+- physical Word tables are classified before ordinary cell candidates;
+- valid manual tags protect their local structure from reinterpretation;
+- formatting is evidence, not an absolute field rule;
+- terminal prompts after instructional blocks can become fields when context is strong;
+- field type inference combines structure, vocabulary, placeholders, controls, neighbors and section context;
+- candidates expose multidimensional confidence (`structure`, `fillable`, `label`, `type`) and evidence;
+- automatically written tags are staged and must pass the strict normal DOCX scanner before publication;
+- real scanner bugs should become permanent regression fixtures/contracts.
+
+See `docs/SCANNER_V4_2026-08.md`.
+
+### Assisted-detection review model
+
+Candidates can expose:
 
 - normalized confidence and `high` / `medium` / `low` band;
 - review priority `ready`, `recommended`, or `required`;
@@ -223,6 +262,21 @@ The review dialog supports text search plus confidence, review-priority, and fie
 Assisted detection is cached by source signature and semantic context. Cache entries return independent copies and invalidate when the source changes. In the template editor, the expensive detection phase runs on a worker `QThread` and supports cooperative cancellation. Do not remove cancellation checks from detector phases or allow the editor to be destroyed while that worker is still active.
 
 When improving detection, prefer identifying which stage is wrong rather than adding broad special cases to a single catch-all function.
+
+### Structural Table Intelligence
+
+Word tables are analyzed structurally **before** ordinary cell-level heuristics. `app/document/detection/table_structure.py` classifies physical tables as layout, repeatable, fixed-form, editable-sheet, reference, or unknown. A high-confidence repeatable table owns its title/header/model/continuation rows so lower-level detectors cannot flatten those cells into unrelated top-level fields.
+
+Important current behaviors:
+
+- one numbered model row plus an ellipsis row can establish a repeatable list;
+- horizontally merged/multi-level headers are expanded by physical Word-grid position (for example `Quantidade` → `Quantidade — 2023/2024/2025`);
+- short header legends such as `SIM / NÃO` become dropdown columns;
+- optional wording such as `se for o caso` makes that repeatable column optional;
+- editable-sheet detection only considers the primary structural header, so a later row inside a fixed matrix cannot be mistaken for a new spreadsheet merely because a merged note follows it;
+- repeatable child dropdowns are materialized as real dropdown tags in the Word model row.
+
+The real regression fixture `tests/fixtures/dfd_licitacao_tradicional_sia13tdr.docx` must remain covered. In that document, section 3 must be one 9-column repeatable table and no standalone `SIM` field may survive. See `docs/STRUCTURAL_TABLE_INTELLIGENCE_2026-08.md`.
 
 ---
 
@@ -290,6 +344,7 @@ These bugs were found during the refactor and are important regression cases:
 8. **Two form-layout paths referenced an undefined `field_type` variable** after cleanup. This was fixed and static/undefined-name checks were strengthened.
 9. **Diagnostics normalized dropdown/table configuration before checking duplicates**, which made duplicate-option/column warnings impossible to trigger. Diagnostics now inspect normalized raw values first, while runtime normalization still deduplicates safely.
 10. **Malformed visibility rules could be dropped from editor snapshots**, hiding what the author typed. Invalid non-empty rules are now preserved for live validation/undo and rejected on validated save.
+11. **A real Word data table could be flattened into unrelated filling fields** (for example section 3 of SIA33TDR showed header boxes plus a standalone `SIM` field). Structural table analysis now runs before cell heuristics, recognizes the merged 9-column repeatable grid, owns the region, expands grouped year headers, and converts `SIM / NÃO` into a table dropdown. The same fix prevents a later row in the fiscalização matrix from being misclassified as an editable sheet.
 
 Any future cleanup should keep tests around these scenarios rather than assuming the problem cannot return.
 
@@ -317,11 +372,11 @@ It currently performs:
 
 Current coverage policy enforces a **75% minimum** over the non-UI core (`core`, `domain`, `document`, `repositories`, `services`). UI correctness relies more heavily on constructor/navigation/startup smoke coverage than line coverage.
 
-At the current user-facing capability baseline validation:
+At the current structural-table baseline validation:
 
 ```text
-pytest:         182 passed, 3 skipped
-core coverage: 76.41%
+pytest:         186 passed, 3 skipped
+core coverage: 77.22%
 dead modules:   none
 compileall:     pass
 ```
@@ -384,11 +439,15 @@ The internal DOCX → PDF converter cannot perfectly reproduce all Microsoft Wor
 
 ### Automatic detection quality
 
-Detector v3 now has confidence bands, review priority/evidence, filtering/details UX, caching, and cooperative cancellation. It is still heuristic: unusual legal/government layouts can produce false positives/negatives or imperfect type/label inference. Future work should improve detection quality using real failure documents rather than broad score tuning without fixtures.
+Scanner V4 now adds structure-first ownership, section/table analysis, content-role classification, multidimensional confidence, review evidence, caching, cooperative cancellation, invariants, and transactional tag round-trip validation. It is still heuristic: unusual legal/government layouts can produce false positives/negatives or imperfect type/label inference. Future work should improve detection quality using real failure documents and committed structure contracts rather than broad score tuning without fixtures.
 
 ### Generated filling-form layout
 
 Generated fields now use a reusable `FieldContainer` shell so labels, help, assisted-detection actions, editors, hints, and validation messages stay structurally attached to the same field. Assisted fields show a subtle `Ajustar campo` action on its own left-aligned row rather than a distant `Corrigir` button at the far edge of a wide grid cell. `SearchableDropdown` explicitly expands to the width offered by the field container. The Windows Qt smoke suite includes geometry checks for this contract.
+
+For genuine Word data tables, do **not** solve layout problems by arranging independent field cards. Preserve table identity through detection → tagged model → canonical repeatable-table field → `RepeatableTableWidget` → DOCX generation. Multi-column forms that are only using a Word table for positioning may still use the normal `layout=table/form_grid` metadata path.
+
+Template-editor work copies also have a conservative repeatable-marker migration in `app/document/docx/repair.py`. Before Smart Scan, duplicate child IDs inside an existing `{{repeat:...}}` row are disambiguated from the physical Word headers (for example `quantidade_2023`, `quantidade_2024`, `quantidade_2025`), and child markers using the wrong table prefix are repaired. This exists specifically so an older/partial assisted-detection run cannot leave the editor permanently unable to reopen or rescan its own work copy. The original user source is not modified by this migration.
 
 ### Template authoring UX
 
@@ -447,6 +506,18 @@ For the assistant/developer continuing the project:
 
 ## 15. Current handoff summary
 
-Padroniza has completed the major architecture cleanup, stability/quality gate, and the first user-facing capability milestone. The project is organized by responsibility; generation/conversion/backups/schema handling are hardened; assisted detection v3 exposes confidence evidence/review priority and runs responsively; and the template editor provides live validation/filtering plus safe sample/test generation. Future changes are expected to pass the Windows-oriented quality gate with static analysis, tests, coverage, UI smoke testing, and startup validation.
+Padroniza has completed the major architecture cleanup, stability/quality gate, the first user-facing capability milestone, and the structural-table intelligence/recovery pass. The project is organized by responsibility; generation/conversion/backups/schema handling are hardened; assisted detection v3 exposes confidence evidence/review priority and runs responsively; the template editor provides live validation/filtering plus safe sample/test generation; and real repeatable Word grids are now preserved as tables instead of being flattened into unrelated fields, and malformed repeatable-row markers left by older editor work copies are repaired from the physical header structure before Smart Scan. Future changes are expected to pass the Windows-oriented quality gate with static analysis, tests, coverage, UI smoke testing, and startup validation.
 
-The next phase should continue to favor **measurable product quality**: improve detector accuracy using real troublesome documents, add richer source-location/document preview interactions, and improve PDF→DOCX fidelity/performance where practical. Avoid another broad architecture rewrite unless a concrete problem justifies it.
+The next phase should continue to favor **measurable product quality**: test structural classification and detector accuracy against more troublesome real documents, add richer source-location/document preview interactions, improve fixed-table editing where real fixtures justify it, and improve PDF→DOCX fidelity/performance where practical. Avoid another broad architecture rewrite unless a concrete problem justifies it.
+
+---
+
+## 16. Explicit repeatable-table section recovery (2026-08-25)
+
+A manually tagged repeatable Word table is authoritative and may bypass the automatic structural detector. The DOCX scanner therefore now recovers the semantic section directly from the nearest numbered full-width Word table row above `{{repeat:...}}`. Example: a tagged `{{repeat:itens}}` row under the merged heading `3. Quantidade a ser contratada:` receives `section = "3. Quantidade a ser contratada"` and `section_source = "word_table_title"` instead of falling back to `Dados do documento`.
+
+Older templates that already persisted the generic fallback `Dados do documento` are automatically migrated to the stronger physical Word section during Smart Scan, unless the section has `section_source = "manual"`. The template editor marks a section as manual when the author explicitly changes its text, so future inference does not overwrite an intentional choice.
+
+Native Word dropdown/date/checkbox controls without Developer-tab Tag/Title metadata must use the same contextual identifier during generation that the scanner used while building the form. `generate_docx()` now builds the Word control-context map before replacement and resolves unnamed native controls with that same mapping. Truly unresolvable recognized controls are left untouched instead of failing on a field that was never exposed to the user.
+
+The government DFD fixture with a header/background drawing was used to validate generation. The generated DOCX retained all three media assets and both drawings in `header1.xml`; visual rendering confirmed that the Paraíba government background/header artwork remained present after field replacement.

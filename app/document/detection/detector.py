@@ -27,6 +27,9 @@ from app.document.detection.identifiers import (
 )
 from app.document.detection.models import AutomaticDetectionCancelled, AutomaticDetectionError
 from app.document.detection.records import _collect_paragraph_records
+from app.document.detection.structure import StoryZone, TableKind, extract_document_structure
+from app.document.detection.roles import instruction_is_static_guidance
+from app.document.detection.invariants import apply_candidate_invariants
 from app.document.detection.tables import (
     _detect_editable_sheet_tables,
     _detect_long_choice_blocks,
@@ -36,6 +39,7 @@ from app.document.detection.text_fields import (
     _detect_adjacent_sample_value,
     _detect_blank_followup_areas,
     _detect_consistency_repair_fields,
+    _detect_colored_prompt,
     _detect_dropdown_prompt,
     _detect_empty_cells,
     _detect_inline_placeholders,
@@ -43,6 +47,7 @@ from app.document.detection.text_fields import (
     _detect_labeled_instruction,
     _detect_labeled_sample_value,
     _detect_prefilled_written_text,
+    _detect_terminal_prompt,
 )
 from app.document.docx.scanner import scan_docx_fields
 from app.document.understanding.semantic import annotate_document_records, postprocess_candidates
@@ -155,7 +160,8 @@ def detect_docx_field_candidates(
 
     document = Document(str(path))
     records = _collect_paragraph_records(document)
-    annotate_document_records(records)
+    structure = extract_document_structure(document, records)
+    annotate_document_records(records, structure)
     _raise_if_cancelled(cancel_check)
     existing_field_list = [dict(field) for field in provided_fields]
     known_ids = {field_id for field_id in provided_ids if field_id}
@@ -200,7 +206,31 @@ def detect_docx_field_candidates(
         pass
 
     candidates: list[dict[str, Any]] = []
-    reserved_ordinals: set[int] = set()
+    # Explicit/manual tags, whole manually-tagged repeatable tables and
+    # header/footer stories are authoritative/protected before heuristics run.
+    reserved_ordinals: set[int] = set(structure.protected_ordinals)
+    reserved_ordinals.update(
+        record.ordinal
+        for record in records
+        if (owner := structure.owner_for(record.ordinal)) is not None
+        and owner.zone is not StoryZone.BODY
+    )
+    # Reference tables and structurally ambiguous multi-column tables are not
+    # flattened into unrelated fields.  The review report exposes them so the
+    # user can mark/configure them explicitly instead of receiving a broken
+    # form by default.
+    for table_info in structure.tables:
+        if table_info.structure.kind is TableKind.REFERENCE:
+            reserved_ordinals.update(table_info.record_ordinals)
+        elif (
+            table_info.structure.kind is TableKind.UNKNOWN
+            and len(table_info.structure.data_rows) >= 2
+            and table_info.structure.total_columns >= 3
+        ):
+            # Only block genuinely data-like ambiguous matrices. A one-row
+            # form grid can be UNKNOWN structurally while still containing
+            # obvious masks/labels that lower-level detectors understand well.
+            reserved_ordinals.update(table_info.record_ordinals)
 
     _raise_if_cancelled(cancel_check)
     long_choices = _detect_long_choice_blocks(
@@ -290,6 +320,17 @@ def detect_docx_field_candidates(
         if _contains_authoritative_marker(record.paragraph):
             continue
 
+        terminal_prompt = _detect_terminal_prompt(
+            record,
+            records,
+            known_ids,
+            structure,
+        )
+        if terminal_prompt is not None:
+            candidates.append(terminal_prompt)
+            known_ids.add(str(terminal_prompt.get("field_id", "")))
+            continue
+
         dropdown_prompt = _detect_dropdown_prompt(
             record,
             records,
@@ -298,6 +339,16 @@ def detect_docx_field_candidates(
         if dropdown_prompt is not None:
             candidates.append(dropdown_prompt)
             known_ids.add(str(dropdown_prompt.get("field_id", "")))
+            continue
+
+        colored_prompt = _detect_colored_prompt(
+            record,
+            records,
+            known_ids,
+        )
+        if colored_prompt is not None:
+            candidates.append(colored_prompt)
+            known_ids.add(str(colored_prompt.get("field_id", "")))
             continue
 
         sample_value = _detect_labeled_sample_value(
@@ -332,7 +383,7 @@ def detect_docx_field_candidates(
         if not text:
             continue
 
-        if _is_instruction_candidate(record):
+        if _is_instruction_candidate(record) and not instruction_is_static_guidance(record, records):
             label = _context_label_for_record(record, records)
             field_type = "multiline" if len(text) >= 70 else suggest_field_type(label or text)
             if field_type == "text" and len(text) >= 70:
@@ -418,6 +469,22 @@ def detect_docx_field_candidates(
         candidates,
         existing_field_list,
     )
+    candidates, invariant_issues = apply_candidate_invariants(candidates, structure)
+    if invariant_issues:
+        issue_payload = [
+            {
+                "severity": issue.severity,
+                "code": issue.code,
+                "message": issue.message,
+                "field_id": issue.field_id,
+            }
+            for issue in invariant_issues
+        ]
+        for candidate in candidates:
+            candidate["scanner_invariant_issues"] = [
+                dict(issue) for issue in issue_payload
+                if not issue.get("field_id") or issue.get("field_id") == candidate.get("field_id")
+            ]
 
     _raise_if_cancelled(cancel_check)
     # Stable order keeps the review screen aligned with the source document.
@@ -537,3 +604,25 @@ def _candidate_first_ordinal(candidate: dict[str, Any]) -> int:
         return 10**9
 
 
+
+
+def detect_docx_with_report(
+    docx_path: Path,
+    *,
+    existing_field_ids: Iterable[str] | None = None,
+    existing_fields: Iterable[dict[str, Any]] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
+):
+    """Return candidates plus a structural review report for the UI."""
+
+    from app.document.detection.report import build_detection_report
+
+    candidates = detect_docx_field_candidates(
+        docx_path,
+        existing_field_ids=existing_field_ids,
+        existing_fields=existing_fields,
+        cancel_check=cancel_check,
+    )
+    _raise_if_cancelled(cancel_check)
+    report = build_detection_report(Path(docx_path), candidates)
+    return candidates, report

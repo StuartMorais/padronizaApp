@@ -33,6 +33,7 @@ from app.ui.widgets.field_layout_editor import FieldLayoutEditor
 from app.ui.widgets.file_converter_page import FileConverterPage
 from app.ui.widgets.home_page import HomePage
 from app.ui.widgets.searchable_dropdown import SearchableDropdown
+from app.ui.widgets.repeatable_table import RepeatableTableWidget
 from app.ui.widgets.sidebar import Sidebar
 from app.ui.widgets.template_header import TemplateHeader
 from app.ui.widgets.tutorial_page import TutorialPage
@@ -342,3 +343,39 @@ def test_existing_template_editor_constructor(
     assert editor.template_id == template_id
     assert editor.selected_docx is not None
     _close(editor, qt_app)
+
+
+def test_structural_repeatable_table_renders_as_one_grid(
+    qt_app: QApplication,
+) -> None:
+    widget = RepeatableTableWidget(
+        {
+            "id": "auto.quantidade_a_ser_contratada",
+            "label": "Quantidade a ser contratada",
+            "type": "repeatable_table",
+            "minimum_rows": 1,
+            "columns": [
+                {"id": "item", "label": "Item", "type": "auto_number"},
+                {"id": "descricao", "label": "Descrição", "type": "multiline", "required": True},
+                {"id": "und", "label": "UND", "type": "text", "required": True},
+                {"id": "quantidade_2023", "label": "Quantidade — 2023", "group_label": "Quantidade", "type": "integer", "required": True},
+                {"id": "quantidade_2024", "label": "Quantidade — 2024", "group_label": "Quantidade", "type": "integer", "required": True},
+                {"id": "quantidade_2025", "label": "Quantidade — 2025", "group_label": "Quantidade", "type": "integer", "required": True},
+                {"id": "quantidade_solicitada", "label": "Quantidade Solicitada", "type": "integer", "required": True},
+                {"id": "consta_no_pca", "label": "Consta no PCA para 2026?", "type": "dropdown", "options": ["SIM", "NÃO"], "required": True},
+                {"id": "justificativa", "label": "Justificativa se for o caso", "type": "multiline", "required": False},
+            ],
+        }
+    )
+    widget.resize(1200, 320)
+    widget.show()
+    qt_app.processEvents()
+
+    assert widget.table.columnCount() == 9
+    assert widget.table.rowCount() == 1
+    assert widget.table.horizontalHeaderItem(3).text() == "Quantidade\n2023"
+    assert widget.table.horizontalHeaderItem(4).text() == "Quantidade\n2024"
+    assert widget.table.horizontalHeaderItem(5).text() == "Quantidade\n2025"
+    assert widget.table.horizontalHeaderItem(7).text() == "Consta no PCA para 2026?"
+    assert widget.table.horizontalScrollBar().maximum() >= 0
+    _close(widget, qt_app)

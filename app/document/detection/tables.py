@@ -19,6 +19,7 @@ from app.document.detection.identifiers import (
 from app.document.detection.models import ParagraphRecord as _ParagraphRecord
 from app.document.detection.patterns import CHOICE_SEPARATOR_PATTERN
 from app.document.detection.word_helpers import _unique_row_cells
+from app.document.detection.table_structure import TableKind, analyze_word_table, row_grid_cells, row_values_by_grid
 
 def _detect_long_choice_blocks(
     document: _Document,
@@ -126,12 +127,12 @@ def _detect_repeatable_tables(
     known_ids: set[str],
     reserved_ordinals: set[int],
 ) -> list[dict[str, Any]]:
-    """Detect conservative numbered tables that represent repeated records.
+    """Detect real repeated-record Word tables before cell-level heuristics.
 
-    The automatic detector only proposes a repeatable table when the evidence
-    is strong: a header row, at least two numbered data rows, and at least two
-    editable columns.  This intentionally avoids turning questionnaire tables
-    (which also have repeated visual rows) into repeatable item editors.
+    Structural analysis owns this decision.  In particular, a merged section
+    title + multi-column header + one numbered model row + an ellipsis row is
+    treated as a repeatable table even though older versions required two
+    numbered rows.  This preserves the table relationship in the filling UI.
     """
 
     top_level_index = {
@@ -152,143 +153,153 @@ def _detect_repeatable_tables(
     result: list[dict[str, Any]] = []
     for table_key, table_records in by_table.items():
         table = table_refs[table_key]
-        if len(table.rows) < 3:
+        structure = analyze_word_table(table)
+        if structure.kind is not TableKind.REPEATABLE or structure.header_row is None:
             continue
+
+        owned_rows = structure.owned_rows
+        owned_records = [
+            record for record in table_records
+            if record.row_index in owned_rows
+        ]
         if any(
             record.ordinal in reserved_ordinals
             or _contains_authoritative_marker(record.paragraph)
-            for record in table_records
+            for record in owned_records
         ):
             continue
 
-        header_cells = _unique_row_cells(table.rows[0])
-        if len(header_cells) < 3:
-            continue
-        headers = [_clean_label(cell.text) for cell in header_cells]
-        if sum(_is_reasonable_label(value, maximum=80) for value in headers) < 3:
-            continue
-
-        data_rows: list[int] = []
-        number_values: list[int] = []
-        for row_index in range(1, len(table.rows)):
-            cells = _unique_row_cells(table.rows[row_index])
-            if len(cells) != len(header_cells):
-                break
-            number_text = _normalize_space(cells[0].text)
-            if not re.fullmatch(r"0*\d{1,4}", number_text):
-                break
-            data_rows.append(row_index)
-            number_values.append(int(number_text))
-
-        if len(data_rows) < 2:
-            continue
-        expected = list(range(number_values[0], number_values[0] + len(number_values)))
-        if number_values != expected:
+        numeric_rows = [
+            row_index
+            for row_index in structure.data_rows
+            if re.fullmatch(
+                r"0*\d{1,4}",
+                _normalize_space(row_values_by_grid(
+                    row_grid_cells(table.rows[row_index]),
+                    structure.total_columns,
+                )[0]),
+            )
+        ]
+        if not numeric_rows:
             continue
 
-        number_header = _slug(headers[0])
-        if number_header not in {"n", "no", "numero", "item", "n_item"}:
-            continue
-
-        editable_columns: list[int] = []
-        for column_index in range(1, len(header_cells)):
-            values = [
-                _normalize_space(_unique_row_cells(table.rows[row_index])[column_index].text)
-                for row_index in data_rows
-            ]
-            if any(_looks_like_fill_area_text(value) or not value for value in values):
-                editable_columns.append(column_index)
-        if len(editable_columns) < 2:
-            continue
-
-        first_record = min(table_records, key=lambda item: item.ordinal)
-        section_title = _nearest_section_title(first_record, records, preserve_number=True)
+        first_record = min(
+            (record for record in table_records if record.row_index == structure.header_row),
+            key=lambda item: item.ordinal,
+            default=min(table_records, key=lambda item: item.ordinal),
+        )
+        section_title = structure.title or _nearest_section_title(
+            first_record, records, preserve_number=True
+        )
         label = _clean_label(section_title) if section_title else "Itens da tabela"
         field_id = _unique_field_id(_make_field_id(label), known_ids)
 
-        columns: list[dict[str, Any]] = [
-            {
-                "id": "item",
-                "label": headers[0] or "Item",
-                "type": "auto_number",
-                "required": False,
-            }
-        ]
-        used_column_ids = {"item"}
-        for column_index in editable_columns:
-            header = headers[column_index] or f"Coluna {column_index + 1}"
-            column_values = [
-                _normalize_space(_unique_row_cells(table.rows[row_index])[column_index].text)
-                for row_index in data_rows
+        columns: list[dict[str, Any]] = []
+        used_column_ids: set[str] = set()
+        for column_index, header in enumerate(structure.header_labels):
+            display = _clean_label(header) or f"Coluna {column_index + 1}"
+            header_key = _slug(display)
+            if column_index == 0 and header_key in {"n", "no", "numero", "item", "n_item"}:
+                columns.append(
+                    {
+                        "id": "item",
+                        "label": display or "Item",
+                        "type": "auto_number",
+                        "required": False,
+                    }
+                )
+                used_column_ids.add("item")
+                continue
+
+            values = [
+                _normalize_space(
+                    row_values_by_grid(
+                        row_grid_cells(table.rows[row_index]),
+                        structure.total_columns,
+                    )[column_index]
+                )
+                for row_index in numeric_rows
             ]
-            column_id = _slug(header) or f"coluna_{column_index + 1}"
+            column_id = _slug(display) or f"coluna_{column_index + 1}"
             base_column_id = column_id
             suffix = 2
             while column_id in used_column_ids:
                 column_id = f"{base_column_id}_{suffix}"
                 suffix += 1
             used_column_ids.add(column_id)
-            columns.append(
-                {
-                    "id": column_id,
-                    "label": header,
-                    "type": _repeatable_column_type(header, column_values),
-                    "required": True,
-                    "column_index": column_index,
-                }
-            )
 
-        # Region ownership: once this physical table segment is classified as a
-        # repeatable table, its header and model rows belong to that high-level
-        # interpretation.  Lower-level detectors must not reinterpret header
-        # cells such as ``Unidade | Quantidade`` as ordinary label/value fields.
-        #
-        # Keep the ownership information explicit in the candidate as a second
-        # safety layer: post-processing can suppress overlapping interpretations
-        # even when a future detector runs before the reservation pass.
-        header_row = 0
-        owned_rows = [header_row, *data_rows]
+            options = structure.header_options.get(column_index, [])
+            column_type = (
+                "dropdown"
+                if len(options) >= 2
+                else _repeatable_column_type(display, values)
+            )
+            optional_header = any(
+                token in display.casefold()
+                for token in ("se for o caso", "opcional", "quando aplicável", "quando aplicavel")
+            )
+            column: dict[str, Any] = {
+                "id": column_id,
+                "label": display,
+                "type": column_type,
+                "required": not optional_header and column_type != "checkbox",
+                "column_index": column_index,
+            }
+            if options:
+                column["options"] = options
+            group_label = (
+                structure.header_groups[column_index]
+                if column_index < len(structure.header_groups)
+                else ""
+            )
+            if group_label:
+                column["group_label"] = group_label
+            columns.append(column)
+
+        if len(columns) < 2:
+            continue
+
+        model_rows = sorted(set(numeric_rows + structure.continuation_rows))
+        owned_ordinals = sorted(record.ordinal for record in owned_records)
         data_ordinals = sorted(
             record.ordinal
             for record in table_records
-            if record.row_index in data_rows
+            if record.row_index in model_rows
         )
-        owned_ordinals = sorted(
-            record.ordinal
-            for record in table_records
-            if record.row_index in owned_rows
+        candidate = _candidate(
+            field_id=field_id,
+            label=label,
+            field_type="repeatable_table",
+            confidence=structure.confidence,
+            source="repeatable_table",
+            preview=" | ".join(structure.header_labels)
+            + f" — {len(numeric_rows)} linha(s) modelo + {len(structure.continuation_rows)} continuação(ões)",
+            location={
+                "kind": "repeatable_table",
+                "document_table_index": top_level_index[table_key],
+                "table_index": first_record.table_index,
+                "header_row": structure.header_row,
+                "template_row": numeric_rows[0],
+                # All model/ellipsis rows except the first template row are
+                # removed when the reviewed suggestion is materialized.
+                "data_rows": model_rows,
+                "owned_rows": owned_rows,
+                "data_paragraphs": data_ordinals,
+                "owned_paragraphs": owned_ordinals,
+                "paragraphs": owned_ordinals,
+            },
         )
-        result.append(
-            _candidate(
-                field_id=field_id,
-                label=label,
-                field_type="repeatable_table",
-                confidence=0.95,
-                source="repeatable_table",
-                preview=" | ".join(headers)
-                + f" — {len(data_rows)} linha(s) modelo detectada(s)",
-                location={
-                    "kind": "repeatable_table",
-                    "document_table_index": top_level_index[table_key],
-                    "table_index": first_record.table_index,
-                    "header_row": header_row,
-                    "template_row": data_rows[0],
-                    "data_rows": data_rows,
-                    "owned_rows": owned_rows,
-                    "data_paragraphs": data_ordinals,
-                    "owned_paragraphs": owned_ordinals,
-                    # ``paragraphs`` is the generic reservation contract used
-                    # by the rest of the detector. Include the complete owned
-                    # region, not only the rows that will receive tags.
-                    "paragraphs": owned_ordinals,
-                },
-            )
-        )
-        result[-1]["region_owner"] = "repeatable_table"
-        result[-1]["columns"] = columns
+        candidate["region_owner"] = "repeatable_table"
+        candidate["structure_kind"] = structure.kind.value
+        candidate["structure_confidence"] = structure.confidence
+        candidate["structure_reasons"] = list(structure.reasons)
+        candidate["columns"] = columns
+        candidate["minimum_rows"] = 1
+        candidate["numbering_padding"] = max(2, len(str(len(model_rows) or 1)))
         if section_title:
-            result[-1]["section"] = section_title.rstrip(":").strip()
-        result[-1]["selected"] = True
+            candidate["section"] = section_title.rstrip(":").strip()
+        candidate["selected"] = True
+        result.append(candidate)
 
     return result
 
@@ -301,24 +312,9 @@ def _detect_editable_sheet_tables(
 ) -> list[dict[str, Any]]:
     """Detect a spreadsheet header that has no editable data row yet.
 
-    A common institutional Word pattern is a multi-column header followed by a
-    merged narrative row, for example::
-
-        Item | Quantidade | Unidade | Especificação | Valor
-        [ merged explanatory / prefilled paragraph                  ]
-
-    The header describes a real worksheet even though the source document does
-    not provide numbered model rows.  Earlier detector versions preserved the
-    visual header but offered no editable cells.  This detector creates a
-    repeatable-table interpretation with a *synthetic* model row inserted
-    between the header and the merged note when the approved suggestions are
-    applied.  All header columns are editable; the merged note remains available
-    to the normal prefilled-text detector as a separate full-width field.
-
-    The rule is intentionally narrow: at least three short header cells are
-    required and the immediately following row must be one merged/full-width
-    cell containing either substantial prose or an empty/fill area.  This keeps
-    ordinary label/value form grids out of the spreadsheet path.
+    Only a table classified structurally as ``EDITABLE_SHEET`` is eligible.
+    This prevents a data row deep inside a fixed matrix from being mistaken for
+    a new spreadsheet header merely because the following row is merged.
     """
 
     top_level_index = {
@@ -339,126 +335,105 @@ def _detect_editable_sheet_tables(
     result: list[dict[str, Any]] = []
     for table_key, table_records in by_table.items():
         table = table_refs[table_key]
-        if len(table.rows) < 2:
+        structure = analyze_word_table(table)
+        if structure.kind is not TableKind.EDITABLE_SHEET or structure.header_row is None:
             continue
 
-        for header_row_index in range(0, len(table.rows) - 1):
-            header_cells = _unique_row_cells(table.rows[header_row_index])
-            if len(header_cells) < 3:
-                continue
-            headers = [_clean_label(cell.text) for cell in header_cells]
-            if sum(_is_reasonable_label(value, maximum=100) for value in headers) < 3:
-                continue
-            if any(len(value) > 120 for value in headers if value):
-                continue
+        header_records = [
+            record for record in table_records
+            if record.row_index == structure.header_row
+        ]
+        if not header_records:
+            continue
+        if any(
+            record.ordinal in reserved_ordinals
+            or _contains_authoritative_marker(record.paragraph)
+            for record in header_records
+        ):
+            continue
 
-            next_row_index = header_row_index + 1
-            next_cells = _unique_row_cells(table.rows[next_row_index])
-            if len(next_cells) != 1:
-                continue
-            merged_text = _normalize_space(next_cells[0].text)
-            if merged_text:
-                # Short merged rows are often totals, signatures, or section
-                # separators.  Long prose (or a visual fill area) is the sheet
-                # + merged-note pattern we want.
-                if len(merged_text) < 55 and not _looks_like_fill_area_text(merged_text):
-                    continue
+        first_record = min(header_records, key=lambda item: item.ordinal)
+        section_title = structure.title or _nearest_section_title(
+            first_record,
+            records,
+            preserve_number=True,
+        )
+        label = _clean_label(section_title) if section_title else "Itens da planilha"
+        field_id = _unique_field_id(_make_field_id(label), known_ids)
 
-            header_records = [
-                record
-                for record in table_records
-                if record.row_index == header_row_index
-            ]
-            if not header_records:
-                continue
-            if any(
-                record.ordinal in reserved_ordinals
-                or _contains_authoritative_marker(record.paragraph)
-                for record in header_records
-            ):
-                continue
+        used_column_ids: set[str] = set()
+        columns: list[dict[str, Any]] = []
+        for column_index, header in enumerate(structure.header_labels):
+            display = header or f"Coluna {column_index + 1}"
+            column_id = _slug(display) or f"coluna_{column_index + 1}"
+            base_column_id = column_id
+            suffix = 2
+            while column_id in used_column_ids:
+                column_id = f"{base_column_id}_{suffix}"
+                suffix += 1
+            used_column_ids.add(column_id)
 
-            first_record = min(header_records, key=lambda item: item.ordinal)
-            section_title = _nearest_section_title(
-                first_record,
-                records,
-                preserve_number=True,
-            )
-            label = _clean_label(section_title) if section_title else "Itens da planilha"
-            field_id = _unique_field_id(_make_field_id(label), known_ids)
+            header_key = _slug(display)
+            if header_key in {"item", "codigo", "código"}:
+                column_type = "text"
+            elif any(token in header_key for token in ("descricao", "especificacao", "detalhamento")):
+                column_type = "multiline"
+            elif header_key in {"valor", "preco", "preço", "custo", "montante"} or header_key.endswith("_valor"):
+                column_type = "currency"
+            else:
+                column_type = _repeatable_column_type(display, [])
 
-            used_column_ids: set[str] = set()
-            columns: list[dict[str, Any]] = []
-            for column_index, header in enumerate(headers):
-                display = header or f"Coluna {column_index + 1}"
-                column_id = _slug(display) or f"coluna_{column_index + 1}"
-                base_column_id = column_id
-                suffix = 2
-                while column_id in used_column_ids:
-                    column_id = f"{base_column_id}_{suffix}"
-                    suffix += 1
-                used_column_ids.add(column_id)
+            column: dict[str, Any] = {
+                "id": column_id,
+                "label": display,
+                "type": column_type,
+                "required": False,
+                "column_index": column_index,
+            }
+            options = structure.header_options.get(column_index, [])
+            if options:
+                column["type"] = "dropdown"
+                column["options"] = options
+            columns.append(column)
 
-                header_key = _slug(display)
-                if header_key in {"item", "codigo", "código"}:
-                    # ``Item`` in user-authored spreadsheets is not assumed to
-                    # be an automatic row number; the user can edit it.
-                    column_type = "text"
-                elif any(token in header_key for token in ("descricao", "especificacao", "detalhamento")):
-                    column_type = "multiline"
-                elif header_key in {"valor", "preco", "preço", "custo", "montante"} or header_key.endswith("_valor"):
-                    column_type = "currency"
-                else:
-                    column_type = _repeatable_column_type(display, [])
+        if len(columns) < 3:
+            continue
 
-                columns.append(
-                    {
-                        "id": column_id,
-                        "label": display,
-                        "type": column_type,
-                        "required": False,
-                        "column_index": column_index,
-                    }
-                )
-
-            if len(columns) < 3:
-                continue
-
-            owned_ordinals = sorted(record.ordinal for record in header_records)
-            candidate = _candidate(
-                field_id=field_id,
-                label=label,
-                field_type="repeatable_table",
-                confidence=0.93,
-                source="repeatable_table",
-                preview=" | ".join(headers) + " — planilha editável detectada",
-                location={
-                    "kind": "repeatable_table",
-                    "document_table_index": top_level_index[table_key],
-                    "table_index": first_record.table_index,
-                    "header_row": header_row_index,
-                    # No source model row exists. _apply_repeatable_table will
-                    # create one immediately before the merged narrative row.
-                    "template_row": -1,
-                    "synthetic_template_row": True,
-                    "insert_before_row": next_row_index,
-                    "data_rows": [],
-                    "owned_rows": [header_row_index],
-                    "owned_paragraphs": owned_ordinals,
-                    "paragraphs": owned_ordinals,
-                },
-            )
-            candidate["region_owner"] = "repeatable_table"
-            candidate["sheet_generated_model_row"] = True
-            candidate["columns"] = columns
-            candidate["minimum_rows"] = 1
-            candidate["numbering_padding"] = 2
-            candidate["selected"] = True
-            if section_title:
-                candidate["section"] = section_title.rstrip(":").strip()
-            result.append(candidate)
-            # A single Word table should have one primary sheet header for this
-            # pattern.  Stop after the first convincing match.
-            break
+        insert_before_row = structure.header_row + 1
+        owned_ordinals = sorted(record.ordinal for record in header_records)
+        candidate = _candidate(
+            field_id=field_id,
+            label=label,
+            field_type="repeatable_table",
+            confidence=structure.confidence,
+            source="repeatable_table",
+            preview=" | ".join(structure.header_labels) + " — planilha editável detectada",
+            location={
+                "kind": "repeatable_table",
+                "document_table_index": top_level_index[table_key],
+                "table_index": first_record.table_index,
+                "header_row": structure.header_row,
+                "template_row": -1,
+                "synthetic_template_row": True,
+                "insert_before_row": insert_before_row,
+                "data_rows": [],
+                "owned_rows": [structure.header_row],
+                "owned_paragraphs": owned_ordinals,
+                "paragraphs": owned_ordinals,
+            },
+        )
+        candidate["region_owner"] = "repeatable_table"
+        candidate["sheet_generated_model_row"] = True
+        candidate["structure_kind"] = structure.kind.value
+        candidate["structure_confidence"] = structure.confidence
+        candidate["structure_reasons"] = list(structure.reasons)
+        candidate["columns"] = columns
+        candidate["minimum_rows"] = 1
+        candidate["numbering_padding"] = 2
+        candidate["selected"] = True
+        if section_title:
+            candidate["section"] = section_title.rstrip(":").strip()
+        result.append(candidate)
 
     return result
+

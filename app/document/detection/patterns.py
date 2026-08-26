@@ -91,5 +91,7 @@ _SOURCE_LABELS = {
     "checkbox_single": "Caixa de seleção independente",
     "consistency_repair": "Reparo por consistência do formulário",
     "prefilled_text": "Texto existente possivelmente editável",
+    "terminal_prompt": "Prompt final após bloco de instruções",
+    "colored_prompt": "Placeholder textual destacado por formatação",
 }
 
