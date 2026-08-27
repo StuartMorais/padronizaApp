@@ -49,6 +49,7 @@ from app.ui.dialogs.filename_builder_dialog import FilenameBuilderDialog
 from app.ui.dialogs.field_library_dialog import FieldLibraryDialog
 from app.document.detection.application import apply_docx_field_candidates
 from app.document.docx.generator import generate_docx
+from app.document.letterhead import apply_letterhead
 from app.document.docx.repair import repair_repeatable_table_markers
 from app.document.docx.scanner import clear_docx_scan_cache
 from app.document.detection.candidates import candidate_field_definitions
@@ -260,7 +261,10 @@ class TemplateEditorDialog(QDialog):
         super().__init__(parent)
         self.repository = repository
         self.template_id = template_id
-        self._creation_flow = template_id is None
+        # Creation and editing share the same guided four-step authoring UX.
+        # ``template_id`` still controls create-vs-update persistence semantics.
+        self._creation_flow = True
+        self._editing_existing = template_id is not None
         self._creation_step = 0
         self._creation_pending_advance = False
         self._creation_has_scanned = False
@@ -332,6 +336,14 @@ class TemplateEditorDialog(QDialog):
         self.numbering_padding_input = QSpinBox()
         self.numbering_padding_input.setRange(1, 10)
         self.numbering_padding_input.setValue(4)
+
+        self.letterhead_checkbox = QCheckBox(
+            'Aplicar o papel timbrado oficial aos documentos gerados'
+        )
+        self.letterhead_checkbox.setChecked(False)
+        self.letterhead_checkbox.setToolTip(
+            'Quando ativado, o cabeçalho, a arte lateral e o rodapé oficiais são aplicados ao DOCX e também ao PDF gerado.'
+        )
 
         self.docx_drop_zone = (
             _TemplateFileDropZone()
@@ -550,6 +562,7 @@ class TemplateEditorDialog(QDialog):
 
         self.general_group = self._create_general_group()
         self.output_group = self._create_output_group()
+        self.letterhead_group = self._create_letterhead_group()
         self.readiness_group = self._create_readiness_group()
         self.fields_group = self._create_fields_group()
 
@@ -594,6 +607,7 @@ class TemplateEditorDialog(QDialog):
         if self._creation_flow:
             content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         content_layout.addWidget(self.top_widget)
+        content_layout.addWidget(self.letterhead_group)
         content_layout.addWidget(self.readiness_group)
         content_layout.addWidget(self.fields_group, 1)
 
@@ -672,10 +686,14 @@ class TemplateEditorDialog(QDialog):
         text_layout = QVBoxLayout()
         text_layout.setContentsMargins(0, 0, 0, 0)
         text_layout.setSpacing(2)
-        self.creation_title_label = QLabel('Criar novo modelo')
+        self.creation_title_label = QLabel(
+            'Editar modelo' if self._editing_existing else 'Criar novo modelo'
+        )
         self.creation_title_label.setObjectName('templateCreationTitle')
         self.creation_description_label = QLabel(
-            'Escolha o documento. O Padroniza encontra os campos e guia você pelo restante.'
+            'Revise o documento e os campos com o mesmo fluxo guiado da criação.'
+            if self._editing_existing
+            else 'Escolha o documento. O Padroniza encontra os campos e guia você pelo restante.'
         )
         self.creation_description_label.setObjectName('templateCreationDescription')
         self.creation_description_label.setWordWrap(True)
@@ -747,9 +765,17 @@ class TemplateEditorDialog(QDialog):
 
         copies = {
             0: (
-                'Escolha o documento',
-                'Arraste um DOCX, DOCM ou PDF. Não é necessário configurar o scanner.',
-                'Analisar documento →',
+                'Confira o documento' if self._editing_existing else 'Escolha o documento',
+                (
+                    'Este é o documento atual do modelo. Substitua-o somente se precisar; os campos salvos já estão carregados.'
+                    if self._editing_existing
+                    else 'Arraste um DOCX, DOCM ou PDF. Não é necessário configurar o scanner.'
+                ),
+                (
+                    'Continuar →'
+                    if self._editing_existing and self._creation_has_scanned
+                    else 'Analisar documento →'
+                ),
             ),
             1: (
                 'Confira os campos',
@@ -762,9 +788,13 @@ class TemplateEditorDialog(QDialog):
                 'Continuar →',
             ),
             3: (
-                'Revise e crie',
-                'Confira a prévia e os dados do modelo. Depois é só criar.',
-                'Criar modelo',
+                'Revise e salve' if self._editing_existing else 'Revise e crie',
+                (
+                    'Confira a prévia e os dados do modelo. Depois é só salvar as alterações.'
+                    if self._editing_existing
+                    else 'Confira a prévia e os dados do modelo. Depois é só criar.'
+                ),
+                'Salvar alterações' if self._editing_existing else 'Criar modelo',
             ),
         }
         title, description, next_text = copies[self._creation_step]
@@ -788,15 +818,18 @@ class TemplateEditorDialog(QDialog):
             self.top_widget.show()
             self.general_group.show()
             self.output_group.hide()
+            self.letterhead_group.hide()
             self.readiness_group.hide()
             self.fields_group.hide()
         elif self._creation_step == 1:
             self.top_widget.hide()
+            self.letterhead_group.hide()
             self.readiness_group.show()
             self.fields_group.show()
             self.fields_tabs.setCurrentIndex(0)
         elif self._creation_step == 2:
             self.top_widget.hide()
+            self.letterhead_group.hide()
             self.readiness_group.show()
             self.fields_group.show()
             self.fields_tabs.setCurrentIndex(1)
@@ -805,6 +838,7 @@ class TemplateEditorDialog(QDialog):
             self.top_widget.show()
             self.general_group.show()
             self.output_group.setVisible(self._creation_advanced)
+            self.letterhead_group.show()
             self.readiness_group.show()
             self.fields_group.show()
             self.fields_tabs.setCurrentIndex(2)
@@ -863,6 +897,12 @@ class TemplateEditorDialog(QDialog):
         if self._creation_has_scanned or field_count:
             parts.append(f'{field_count} campo(s) no modelo')
         self.creation_summary_label.setText('  •  '.join(parts))
+        if self._creation_step == 0 and hasattr(self, 'creation_next_button'):
+            self.creation_next_button.setText(
+                'Continuar →'
+                if self._editing_existing and self._creation_has_scanned
+                else 'Analisar documento →'
+            )
 
     def _fit_to_available_screen(self) -> None:
         screen = self.screen()
@@ -1054,6 +1094,26 @@ class TemplateEditorDialog(QDialog):
         if not self._creation_flow:
             form.addRow(document_label, docx_widget)
         return form_group
+
+    def _create_letterhead_group(self) -> QGroupBox:
+        group = QGroupBox('Papel timbrado')
+        group.setObjectName('templateLetterheadGroup')
+        group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
+        layout = QVBoxLayout(group)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(6)
+        layout.addWidget(self.letterhead_checkbox)
+
+        note = QLabel(
+            'Opcional. O Padroniza aplica o Timbrado oficial em todas as páginas do DOCX e, ao gerar PDF, usa o mesmo documento timbrado na conversão.'
+        )
+        note.setObjectName('mutedText')
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        return group
 
     def _create_readiness_group(self) -> QGroupBox:
         group = QGroupBox('Verificação final' if self._creation_flow else 'Verificação do modelo')
@@ -1588,6 +1648,8 @@ class TemplateEditorDialog(QDialog):
             sample_values = sample_values_for_fields(effective_fields)
             with staged_output(destination, suffix='.docx') as staged:
                 generate_docx(self.selected_docx, staged, sample_values)
+                if self.letterhead_checkbox.isChecked():
+                    apply_letterhead(staged)
                 publish_staged_output(staged, destination)
         except Exception as exc:
             show_exception_dialog(
@@ -1709,6 +1771,15 @@ class TemplateEditorDialog(QDialog):
             'Saída e numeração'
         )
 
+        form.addRow(
+            HelpLabel(
+                'Versão do modelo:',
+                'Versão do modelo',
+                '<p>Identificação informativa do modelo, como <b>1.0</b> ou <b>2.1</b>. Fica em Opções avançadas para não atrapalhar o fluxo normal.</p>',
+            ),
+            self.version_input,
+        )
+
         filename_widget = QWidget()
         filename_row = QHBoxLayout(filename_widget)
         filename_row.setContentsMargins(0, 0, 0, 0)
@@ -1814,6 +1885,10 @@ class TemplateEditorDialog(QDialog):
             self.numbering_checkbox.setChecked(bool(numbering.get("enabled", False)))
             self.numbering_key_input.setText(str(numbering.get("key", "")))
             self.numbering_padding_input.setValue(int(numbering.get("padding", 4) or 4))
+            letterhead = config.get("letterhead", {})
+            self.letterhead_checkbox.setChecked(
+                bool(letterhead.get("enabled", False)) if isinstance(letterhead, dict) else False
+            )
 
             self.selected_docx = self.repository.get_source_path(self.template_id)
             self.selected_input_file = self.selected_docx
@@ -1833,6 +1908,10 @@ class TemplateEditorDialog(QDialog):
             for field in fields:
                 field.setdefault("section", section_by_field.get(str(field.get("id", "")), ""))
             self._load_fields_into_table(fields)
+            # Existing models already have an authoritative saved field map.
+            # Opening Editar must not force a rescan before the user can continue.
+            self._creation_has_scanned = True
+            self._update_creation_header_summary()
         except Exception as exc:
             show_exception_dialog(
                 self,
@@ -2977,6 +3056,7 @@ class TemplateEditorDialog(QDialog):
             widget.textChanged.connect(self._schedule_editor_change)
         self.description_input.textChanged.connect(self._schedule_editor_change)
         self.numbering_checkbox.toggled.connect(self._schedule_editor_change)
+        self.letterhead_checkbox.toggled.connect(self._schedule_editor_change)
         self.numbering_padding_input.valueChanged.connect(self._schedule_editor_change)
         self.fields_table.cellChanged.connect(self._schedule_editor_change)
 
@@ -3002,6 +3082,7 @@ class TemplateEditorDialog(QDialog):
             "numbering_enabled": self.numbering_checkbox.isChecked(),
             "numbering_key": self.numbering_key_input.text(),
             "numbering_padding": self.numbering_padding_input.value(),
+            "letterhead_enabled": self.letterhead_checkbox.isChecked(),
             "fields": self._collect_fields(validate=False),
         }
 
@@ -3086,6 +3167,7 @@ class TemplateEditorDialog(QDialog):
             self.numbering_checkbox.setChecked(bool(snapshot.get("numbering_enabled", False)))
             self.numbering_key_input.setText(str(snapshot.get("numbering_key", "")))
             self.numbering_padding_input.setValue(int(snapshot.get("numbering_padding", 4) or 4))
+            self.letterhead_checkbox.setChecked(bool(snapshot.get("letterhead_enabled", False)))
             fields = snapshot.get("fields", [])
             self._load_fields_into_table([dict(field) for field in fields if isinstance(field, dict)])
         finally:
@@ -3392,6 +3474,10 @@ class TemplateEditorDialog(QDialog):
                 "key": self.numbering_key_input.text().strip(),
                 "padding": self.numbering_padding_input.value(),
             }
+            letterhead = {
+                "enabled": self.letterhead_checkbox.isChecked(),
+                "source": "bundled_default",
+            }
 
             if self.template_id is None:
                 saved_id = self.repository.create_template(
@@ -3405,6 +3491,7 @@ class TemplateEditorDialog(QDialog):
                     sections=sections,
                     output_folder_pattern=self.folder_pattern_input.text(),
                     numbering=numbering,
+                    letterhead=letterhead,
                     allow_similar_name=True,
                 )
             else:
@@ -3420,6 +3507,7 @@ class TemplateEditorDialog(QDialog):
                     sections=sections,
                     output_folder_pattern=self.folder_pattern_input.text(),
                     numbering=numbering,
+                    letterhead=letterhead,
                     allow_similar_name=True,
                 )
         except Exception as exc:

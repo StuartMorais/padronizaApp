@@ -610,6 +610,7 @@ class TemplateRepository:
         sections: list[dict[str, Any]] | None = None,
         output_folder_pattern: str = "",
         numbering: dict[str, Any] | None = None,
+        letterhead: dict[str, Any] | None = None,
         allow_similar_name: bool = False,
     ) -> str:
         name = str(name).strip()
@@ -641,6 +642,7 @@ class TemplateRepository:
                 fields=normalized_fields, sections=normalized_sections,
                 filename_pattern=filename_pattern,
                 output_folder_pattern=output_folder_pattern, numbering=numbering,
+                letterhead=letterhead,
             )
             self._assert_preflight(config, source_docx)
             self._atomic_write_json(temporary_folder / "template.json", config)
@@ -666,6 +668,7 @@ class TemplateRepository:
         sections: list[dict[str, Any]] | None = None,
         output_folder_pattern: str = "",
         numbering: dict[str, Any] | None = None,
+        letterhead: dict[str, Any] | None = None,
         allow_similar_name: bool = False,
     ) -> str:
         name = str(name).strip()
@@ -687,12 +690,18 @@ class TemplateRepository:
         source_name = str(existing["template"].get("source_file", "template.docx"))
         target_source = folder / source_name
 
+        effective_letterhead = (
+            letterhead
+            if letterhead is not None
+            else existing.get("letterhead", {})
+        )
         updated = self._build_config(
             template_id=template_id, name=name, description=description,
             category=category, version=version, source_file=source_name,
             fields=normalized_fields, sections=normalized_sections,
             filename_pattern=filename_pattern,
             output_folder_pattern=output_folder_pattern, numbering=numbering,
+            letterhead=effective_letterhead,
         )
 
         # Preserve future-compatible top-level values not controlled by the editor.
@@ -1074,6 +1083,9 @@ class TemplateRepository:
         numbering = raw_config.get("numbering", {})
         if not isinstance(numbering, dict):
             numbering = {}
+        letterhead = raw_config.get("letterhead", {})
+        if not isinstance(letterhead, dict):
+            letterhead = {}
 
         normalized = {
             "schema_version": TEMPLATE_SCHEMA_VERSION,
@@ -1096,6 +1108,10 @@ class TemplateRepository:
                 "enabled": self._as_bool(numbering.get("enabled", False)),
                 "key": self._first_text(numbering.get("key"), canonical_id),
                 "padding": int(numbering.get("padding", 4) or 4),
+            },
+            "letterhead": {
+                "enabled": self._as_bool(letterhead.get("enabled", False)),
+                "source": "bundled_default",
             },
         }
 
@@ -1431,8 +1447,10 @@ class TemplateRepository:
         filename_pattern: str,
         output_folder_pattern: str,
         numbering: dict[str, Any] | None,
+        letterhead: dict[str, Any] | None,
     ) -> dict[str, Any]:
         numbering = numbering or {}
+        letterhead = letterhead or {}
         config = {
             "schema_version": TEMPLATE_SCHEMA_VERSION,
             "template": {
@@ -1454,6 +1472,10 @@ class TemplateRepository:
                 "enabled": self._as_bool(numbering.get("enabled", False)),
                 "key": self._first_text(numbering.get("key"), template_id),
                 "padding": max(1, min(10, int(numbering.get("padding", 4) or 4))),
+            },
+            "letterhead": {
+                "enabled": self._as_bool(letterhead.get("enabled", False)),
+                "source": "bundled_default",
             },
         }
         self._validate_config(config, expected_template_id=template_id)

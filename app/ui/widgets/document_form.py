@@ -96,6 +96,13 @@ class DocumentForm(QWidget):
         self.field_sections: dict[str, _CollapsibleSection] = {}
         self.checkbox_groups: dict[str, list[str]] = {}
         self.button_groups: list[QButtonGroup] = []
+        # Choice groups embedded in a Word form table can span several rows.
+        # A local QButtonGroup per cell is insufficient in that case: each
+        # option becomes independently checkable even though the scanner has
+        # correctly marked them as one exclusive choice. Keep one shared Qt
+        # button group per semantic checkbox group for ordinary form-grid
+        # cells. Same-cell choices continue to use their dedicated renderer.
+        self.form_grid_button_groups: dict[str, QButtonGroup] = {}
         self.section_widgets: list[tuple[_CollapsibleSection, list[str]]] = []
         self.block_widgets: list[tuple[QWidget, list[str]]] = []
         self._touched_fields: set[str] = set()
@@ -131,6 +138,7 @@ class DocumentForm(QWidget):
         self.field_sections.clear()
         self.checkbox_groups.clear()
         self.button_groups.clear()
+        self.form_grid_button_groups.clear()
         self.section_widgets.clear()
         self.block_widgets.clear()
         self.reset_validation_visibility()
@@ -642,6 +650,7 @@ class DocumentForm(QWidget):
                     if registered is None:
                         continue
                     field_id, field_type, widget = registered
+                    self._register_form_grid_exclusive_checkbox(field, widget)
                     label = str(field.get("label", field_id)).strip() or field_id
                     required = bool(field.get("required", False)) and field_type != "checkbox"
                     display_label = f"{label} *" if required else label
@@ -671,6 +680,46 @@ class DocumentForm(QWidget):
             return None
         outer_layout.addWidget(grid_frame)
         return outer
+
+    def _register_form_grid_exclusive_checkbox(
+        self,
+        field: dict[str, Any],
+        widget: QWidget,
+    ) -> None:
+        """Keep row-separated Word checkbox options mutually exclusive.
+
+        Some official forms use a two-column table where column 1 contains a
+        checkbox and column 2 contains the option text, with one option per
+        row. Layout reconstruction intentionally keeps those rows, but the
+        exclusivity belongs to the *semantic* group rather than to any single
+        table cell. Registering the widgets here ensures that the value sent to
+        document generation is the same option the user visibly selected.
+        """
+
+        if not isinstance(widget, QAbstractButton):
+            return
+        if str(field.get("type", "")).strip().casefold() != "checkbox":
+            return
+        if str(field.get("selection", "")).strip().casefold() not in {
+            "single",
+            "exclusive",
+            "radio",
+        }:
+            return
+        group_name = str(field.get("group") or "").strip()
+        if not group_name:
+            return
+
+        button_group = self.form_grid_button_groups.get(group_name)
+        if button_group is None:
+            button_group = QButtonGroup(self)
+            button_group.setExclusive(True)
+            self.form_grid_button_groups[group_name] = button_group
+            self.button_groups.append(button_group)
+        button_group.addButton(widget)
+        field_id = str(field.get("id", "")).strip()
+        if field_id:
+            self.checkbox_groups.setdefault(group_name, []).append(field_id)
 
     def _create_embedded_choice_form_grid_cell(
         self,

@@ -1,0 +1,26 @@
+{
+  "template": {
+    "id": "dfd-pca-2025-sedh-sia12pca",
+    "name": "Dfd   Pca 2025   Sedh   Sia12Pca",
+    "description": "",
+    "category": "",
+    "version": "1.0",
+    "source_file": "template.docx",
+    "adapter": "docx"
+  },
+  "fields": [],
+  "sections": [],
+  "output": {
+    "filename_pattern": "{{template.name}}.docx",
+    "folder_pattern": ""
+  },
+  "numbering": {
+    "enabled": false,
+    "key": "dfd-pca-2025-sedh-sia12pca",
+    "padding": 4
+  },
+  "_snapshot": {
+    "saved_at": "2026-08-17T11:37:51"
+  },
+  "schema_version": 1
+}

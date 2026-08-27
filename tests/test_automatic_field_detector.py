@@ -1391,3 +1391,71 @@ def test_explicit_adjacent_tag_owns_label_cell_and_suppresses_empty_cell_candida
         str(item.get("label", "")).casefold() != "descrição da demanda".casefold()
         for item in candidates
     )
+
+
+def test_real_pbdoc_process_number_and_row_choice_generation_regression(tmp_path: Path) -> None:
+    """Lock the SIA31003/PBDOC form regression reported from production use.
+
+    The document combines two patterns that previously exposed separate gaps:
+    an alphanumeric PBDOC process number embedded in prose and one exclusive
+    checkbox option per Word table row.
+    """
+
+    source = (
+        Path(__file__).parent
+        / "fixtures"
+        / "regression"
+        / "declaracao_inexistencia_contratos_sia31003.docx"
+    )
+    candidates = detect_docx_field_candidates(source, semantic_enabled=True)
+
+    process = next(
+        item for item in candidates
+        if item.get("field_id") == "process.number"
+    )
+    assert process["source"] == "semantic_inline"
+    assert process["default_value"] == "SDH-PRC-2026/04715"
+    assert process["label"] == "Número do processo"
+
+    choice = next(
+        item for item in candidates
+        if item.get("source") == "checkbox_choice"
+    )
+    assert choice["selection"] == "single"
+    assert len(choice["fields"]) == 3
+    assert choice["location"]["kind"] == "checkbox_group_multi_cell"
+
+    prepared = tmp_path / "declaracao-prepared.docx"
+    apply_docx_field_candidates(source, prepared, [process, choice])
+    fields = smart_fields_from_docx(
+        prepared,
+        candidate_field_definitions([process, choice]),
+    )
+
+    process_field = next(field for field in fields if field["id"] == "process.number")
+    choice_fields = [field for field in fields if field.get("type") == "checkbox"]
+    assert len(choice_fields) == 3
+    assert {field.get("group") for field in choice_fields} == {
+        "auto_checkbox_auto.ocorrencia_verificada"
+    }
+    assert {field.get("selection") for field in choice_fields} == {"single"}
+    assert {field.get("layout_row") for field in choice_fields} == {
+        "row_0",
+        "row_1",
+        "row_2",
+    }
+
+    values = {
+        process_field["id"]: "SDH-PRC-2026/09999",
+        choice_fields[0]["id"]: False,
+        choice_fields[1]["id"]: True,
+        choice_fields[2]["id"]: False,
+    }
+    generated = tmp_path / "declaracao-generated.docx"
+    generate_docx(prepared, generated, values)
+
+    result = Document(generated)
+    body = "\n".join(paragraph.text for paragraph in result.paragraphs)
+    assert "Processo Pbdoc : SDH-PRC-2026/09999" in body
+    marker_cells = [row.cells[0].text.strip() for row in result.tables[0].rows]
+    assert marker_cells == ["☐", "☑", "☐"]

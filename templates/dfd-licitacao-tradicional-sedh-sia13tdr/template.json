@@ -1,0 +1,1211 @@
+{
+  "template": {
+    "id": "dfd-licitacao-tradicional-sedh-sia13tdr",
+    "name": "Dfd  Licitação Tradicional  Sedh   Sia13Tdr",
+    "description": "",
+    "category": "",
+    "version": "1.0",
+    "source_file": "template.docx",
+    "adapter": "docx"
+  },
+  "fields": [
+    {
+      "id": "unidade_gestora",
+      "label": "Unidade Gestora",
+      "type": "dropdown",
+      "required": true,
+      "options": [
+        "27.0001- SECRETARIA DE ESTADO DO DESENVOLVIMENTO HUMANO - SEDH",
+        "50.0001- FUNDO ESTADUAL DE ASSISTÊNCIA SOCIAL - FEAS",
+        "85.0001- FUNDO DE APOIO AS AÇÕES CIDADÃS - FAAC",
+        "48.0001- FUNDO ESTADUAL DA CRIANÇA E DO ADOLESCENTE - FUNDESC",
+        "90.0001- FUNDO ESTADUAL DO TRABALHO - FET/PB"
+      ],
+      "type_source": "native_control",
+      "section": "Dados do documento",
+      "id_source": "context_resolver",
+      "profile_identity": "unidade_gestora:dropdown",
+      "context_evidence": {
+        "label": {
+          "confidence": 0.97,
+          "description": "Rótulo inferido pela opção inicial configurada na lista suspensa.",
+          "source": "dropdown_prompt",
+          "value": "Unidade Gestora"
+        },
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "unidade_gestora:dropdown"
+        }
+      },
+      "context_resolver_version": 3,
+      "detection_source": "native_word",
+      "label_source": "dropdown_prompt",
+      "context_confidence": 0.935,
+      "auto_tagged": true
+    },
+    {
+      "id": "auto.area_requisitante_da_demanda",
+      "label": "Área Requisitante da Demanda",
+      "type": "multiline",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_1",
+      "layout_group_label": "1. Área Requisitante da Demanda",
+      "layout_column_span": 2,
+      "section_source": "document_context",
+      "layout_grid_columns": 2,
+      "layout": "form_grid",
+      "full_width": true,
+      "section": "1. Área Requisitante da Demanda",
+      "default_value": "Órgão: Secretaria de Estado do Desenvolvimento Humano - SEDH",
+      "profile_identity": "area_requisitante_da_demanda.area_requisitante_da_demanda:multiline",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "area_requisitante_da_demanda.area_requisitante_da_demanda:multiline"
+        }
+      },
+      "layout_order": 1,
+      "layout_column_index": 0,
+      "layout_group": "doc_table_4_segment_1",
+      "detection_confidence": 0.94,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.setor_requisitante_unidade_setor_depto",
+      "label": "Setor Requisitante (Unidade/Setor/Depto)",
+      "type": "text",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_2",
+      "layout_group_label": "1. Área Requisitante da Demanda",
+      "layout_column_span": 2,
+      "section_source": "document_context",
+      "layout_grid_columns": 2,
+      "layout": "form_grid",
+      "full_width": true,
+      "section": "1. Área Requisitante da Demanda",
+      "profile_identity": "area_requisitante_da_demanda.setor_requisitante_unidade_setor_depto:text",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "area_requisitante_da_demanda.setor_requisitante_unidade_setor_depto:text"
+        }
+      },
+      "layout_order": 2,
+      "layout_column_index": 0,
+      "layout_group": "doc_table_4_segment_1",
+      "detection_confidence": 1.0,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.responsavel_pela_demanda",
+      "label": "Responsável pela Demanda",
+      "type": "text",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_3",
+      "layout_group_label": "1. Área Requisitante da Demanda",
+      "layout_column_span": 1,
+      "section_source": "document_context",
+      "layout_grid_columns": 2,
+      "layout": "form_grid",
+      "section": "1. Área Requisitante da Demanda",
+      "profile_identity": "area_requisitante_da_demanda.responsavel_pela_demanda:text",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "area_requisitante_da_demanda.responsavel_pela_demanda:text"
+        }
+      },
+      "layout_order": 3,
+      "layout_column_index": 0,
+      "layout_group": "doc_table_4_segment_1",
+      "detection_confidence": 1.0,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.matricula",
+      "label": "Matrícula",
+      "type": "text",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_3",
+      "layout_group_label": "1. Área Requisitante da Demanda",
+      "layout_column_span": 1,
+      "section_source": "document_context",
+      "layout_grid_columns": 2,
+      "layout": "form_grid",
+      "section": "1. Área Requisitante da Demanda",
+      "profile_identity": "area_requisitante_da_demanda.matricula:text",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "area_requisitante_da_demanda.matricula:text"
+        }
+      },
+      "layout_order": 3,
+      "layout_column_index": 1,
+      "layout_group": "doc_table_4_segment_1",
+      "detection_confidence": 1.0,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.e_mail",
+      "label": "E-mail",
+      "type": "email",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_4",
+      "layout_group_label": "1. Área Requisitante da Demanda",
+      "layout_column_span": 1,
+      "section_source": "document_context",
+      "layout_grid_columns": 2,
+      "validation_hint": "Exemplo: nome@orgao.gov.br",
+      "layout": "form_grid",
+      "section": "1. Área Requisitante da Demanda",
+      "profile_identity": "area_requisitante_da_demanda.e_mail:email",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "area_requisitante_da_demanda.e_mail:email"
+        }
+      },
+      "layout_order": 4,
+      "layout_column_index": 0,
+      "layout_group": "doc_table_4_segment_1",
+      "detection_confidence": 1.0,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.telefone",
+      "label": "Telefone",
+      "type": "phone",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_4",
+      "layout_group_label": "1. Área Requisitante da Demanda",
+      "layout_column_span": 1,
+      "section_source": "document_context",
+      "layout_grid_columns": 2,
+      "validation_hint": "Informe DDD e número. Exemplo: (83) 99999-9999",
+      "layout": "form_grid",
+      "section": "1. Área Requisitante da Demanda",
+      "profile_identity": "area_requisitante_da_demanda.telefone:phone",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "area_requisitante_da_demanda.telefone:phone"
+        }
+      },
+      "layout_order": 4,
+      "layout_column_index": 1,
+      "layout_group": "doc_table_4_segment_1",
+      "detection_confidence": 1.0,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "descricao.demanda",
+      "label": "Descrição da demanda",
+      "type": "multiline",
+      "required": true,
+      "type_source": "document_context",
+      "layout_row": "row_1",
+      "layout_group_label": "1.1 Identificação da Demanda",
+      "layout_column_span": 2,
+      "section_source": "document_context",
+      "layout_grid_columns": 2,
+      "layout": "form_grid",
+      "full_width": true,
+      "section": "1.1 Identificação da Demanda",
+      "profile_identity": "identificacao_da_demanda.descricao_da_demanda:multiline",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "identificacao_da_demanda.descricao_da_demanda:multiline"
+        }
+      },
+      "layout_order": 1,
+      "layout_column_index": 0,
+      "layout_group": "doc_table_5_segment_1",
+      "context_resolver_version": 3,
+      "label_source": "document_context",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "modalidade_de_licitacao_sugerida",
+      "label": "Modalidade de licitação Sugerida",
+      "type": "dropdown",
+      "required": true,
+      "options": [
+        "1. PREGÃO",
+        "2. CONCORRÊNCIA",
+        "3. CONCURSO",
+        "4. LEILÃO",
+        "5. DIÁLOGO COMPETITIVO"
+      ],
+      "type_source": "native_control",
+      "section_source": "document_context",
+      "section": "1.2. Modalidade de licitação Sugerida",
+      "id_source": "context_resolver",
+      "profile_identity": "modalidade_de_licitacao_sugerida.modalidade_de_licitacao_sugerida:dropdown",
+      "context_evidence": {
+        "label": {
+          "confidence": 0.88,
+          "description": "Cabeçalho/linha estrutural acima do controle.",
+          "source": "column_header",
+          "value": "Modalidade de licitação Sugerida"
+        },
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "modalidade_de_licitacao_sugerida.modalidade_de_licitacao_sugerida:dropdown"
+        },
+        "section": {
+          "confidence": 0.95,
+          "description": "Seção mais próxima no fluxo do documento.",
+          "source": "nearest_section",
+          "value": "1.2. Modalidade de licitação Sugerida"
+        }
+      },
+      "context_resolver_version": 3,
+      "detection_source": "native_word",
+      "label_source": "column_header",
+      "context_confidence": 0.91,
+      "auto_tagged": true
+    },
+    {
+      "id": "auto.justificativa_da_necessidade_da_contratacao_considerando_o_planejamento_",
+      "label": "Justificativa da necessidade da contratação, considerando o planejamento estratégico, as diretrizes de planejamento, se for o caso",
+      "type": "multiline",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_1",
+      "layout_group_label": "2. Justificativa da necessidade da contratação, considerando o planejamento estratégico, as diretrizes de planejamento, se for o caso",
+      "layout_column_span": 1,
+      "section_source": "document_context",
+      "layout_grid_columns": 1,
+      "layout": "form_grid",
+      "section": "2. Justificativa da necessidade da contratação, considerando o planejamento estratégico, as diretrizes de planejamento, se for o caso",
+      "default_value": "Explicitar a pertinência da contratação pretendida com as necessidades do órgão, evidenciando, assim, a importância de se concretizar a pretensão para melhor funcionamento do requisitante ou, então, a implementação das incumbências institucionais que a ele foram conferidas;",
+      "profile_identity": "justificativa_da_necessidade_da_contratacao_considerando_o_planejamento.justificativa_da_necessidade_da_contratacao_considerando_o_planejamento:multiline",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "justificativa_da_necessidade_da_contratacao_considerando_o_planejamento.justificativa_da_necessidade_da_contratacao_considerando_o_planejamento:multiline"
+        }
+      },
+      "layout_order": 1,
+      "layout_column_index": 0,
+      "layout_group": "doc_table_7_segment_1",
+      "detection_confidence": 1.0,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.notas",
+      "label": "Notas",
+      "type": "multiline",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_1",
+      "layout_group_label": "2. Justificativa da necessidade da contratação, considerando o planejamento estratégico, as diretrizes de planejamento, se for o caso",
+      "layout_column_span": 1,
+      "section_source": "document_context",
+      "layout_grid_columns": 1,
+      "layout": "form_grid",
+      "section": "2. Justificativa da necessidade da contratação, considerando o planejamento estratégico, as diretrizes de planejamento, se for o caso",
+      "profile_identity": "justificativa_da_necessidade_da_contratacao_considerando_o_planejamento.notas:multiline",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "justificativa_da_necessidade_da_contratacao_considerando_o_planejamento.notas:multiline"
+        }
+      },
+      "layout_order": 1,
+      "layout_column_index": 0,
+      "layout_group": "doc_table_7_segment_1",
+      "detection_confidence": 1.0,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.sim",
+      "label": "SIM",
+      "type": "text",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_2",
+      "layout_group_label": "3. Quantidade a ser contratada",
+      "layout_column_span": 2,
+      "section_source": "document_context",
+      "layout_grid_columns": 9,
+      "layout": "form_grid",
+      "section": "3. Quantidade a ser contratada",
+      "profile_identity": "quantidade_a_ser_contratada.sim:text",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "quantidade_a_ser_contratada.sim:text"
+        }
+      },
+      "layout_static_rows": [
+        {
+          "layout_row": "row_1",
+          "layout_order": 1,
+          "layout_column_index": 0,
+          "layout_column_span": 1,
+          "layout_grid_columns": 9,
+          "text": "Item"
+        },
+        {
+          "layout_row": "row_1",
+          "layout_order": 1,
+          "layout_column_index": 1,
+          "layout_column_span": 1,
+          "layout_grid_columns": 9,
+          "text": "Descrição"
+        },
+        {
+          "layout_row": "row_1",
+          "layout_order": 1,
+          "layout_column_index": 2,
+          "layout_column_span": 1,
+          "layout_grid_columns": 9,
+          "text": "UND"
+        },
+        {
+          "layout_row": "row_1",
+          "layout_order": 1,
+          "layout_column_index": 3,
+          "layout_column_span": 3,
+          "layout_grid_columns": 9,
+          "text": "Quantidade 2023 2024 2025"
+        },
+        {
+          "layout_row": "row_1",
+          "layout_order": 1,
+          "layout_column_index": 6,
+          "layout_column_span": 1,
+          "layout_grid_columns": 9,
+          "text": "Quantidade Solicitada"
+        },
+        {
+          "layout_row": "row_1",
+          "layout_order": 1,
+          "layout_column_index": 7,
+          "layout_column_span": 1,
+          "layout_grid_columns": 9,
+          "text": "Consta no PCA para 2026? SIM / NÃO"
+        },
+        {
+          "layout_row": "row_1",
+          "layout_order": 1,
+          "layout_column_index": 8,
+          "layout_column_span": 1,
+          "layout_grid_columns": 9,
+          "text": "Justificativa se for o caso"
+        }
+      ],
+      "layout_order": 2,
+      "layout_column_index": 7,
+      "layout_group": "doc_table_8_segment_1",
+      "detection_confidence": 0.9500000000000001,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9,
+      "layout_row_static_cells": [
+        {
+          "layout_row": "row_2",
+          "layout_order": 2,
+          "layout_column_index": 0,
+          "layout_column_span": 1,
+          "layout_grid_columns": 9,
+          "text": "01"
+        }
+      ]
+    },
+    {
+      "id": "auto.previsao_de_data_em_que_devem_ser_entregues_os_bens_ou_que_os_servicos_s",
+      "label": "Previsão de data em que devem ser entregues os bens ou que os serviços serão iniciados",
+      "type": "date",
+      "required": true,
+      "type_source": "identifier",
+      "layout_row": "row_1",
+      "layout_group_label": "4. Previsão de data em que devem ser entregues os bens ou que os serviços serão iniciados",
+      "layout_column_span": 1,
+      "section_source": "document_context",
+      "layout_grid_columns": 1,
+      "validation_hint": "Formato exibido: dia/mês/ano.",
+      "layout": "form_grid",
+      "automatic": true,
+      "section": "4. Previsão de data em que devem ser entregues os bens ou que os serviços serão iniciados",
+      "default_value": "1) Deve-se levar em conta o tempo ordinariamente gasto com um processo de contratação para se ponderar quando razoavelmente se espera a entrega dos bens, precavendo-se, assim, de possível solução de continuidade ou então demora que comprometa o funcionamento do órgão e/ou da entidade;",
+      "profile_identity": "previsao_de_data_em_que_devem_ser_entregues_os_bens_ou_que_os_servicos_s.previsao_de_data_em_que_devem_ser_entregues_os_bens_ou_que_os_servicos_s:date",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "previsao_de_data_em_que_devem_ser_entregues_os_bens_ou_que_os_servicos_s.previsao_de_data_em_que_devem_ser_entregues_os_bens_ou_que_os_servicos_s:date"
+        }
+      },
+      "layout_order": 1,
+      "layout_column_index": 0,
+      "layout_group": "doc_table_9_segment_1",
+      "detection_confidence": 0.94,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.utilizar_se_de_experiencias_anteriores_para_avaliar_o_lapso_temporal_nec",
+      "label": ") Utilizar-se de experiências anteriores para avaliar o lapso temporal necessário para se iniciar o procedimento no âmbito da requisitante.",
+      "type": "multiline",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_1",
+      "layout_group_label": "4. Previsão de data em que devem ser entregues os bens ou que os serviços serão iniciados",
+      "layout_column_span": 1,
+      "section_source": "document_context",
+      "layout_grid_columns": 1,
+      "layout": "form_grid",
+      "section": "4. Previsão de data em que devem ser entregues os bens ou que os serviços serão iniciados",
+      "default_value": "2) Utilizar-se de experiências anteriores para avaliar o lapso temporal necessário para se iniciar o procedimento no âmbito da requisitante.",
+      "profile_identity": "previsao_de_data_em_que_devem_ser_entregues_os_bens_ou_que_os_servicos_s.utilizar_se_de_experiencias_anteriores_para_avaliar_o_lapso_temporal_nec:multiline",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "previsao_de_data_em_que_devem_ser_entregues_os_bens_ou_que_os_servicos_s.utilizar_se_de_experiencias_anteriores_para_avaliar_o_lapso_temporal_nec:multiline"
+        }
+      },
+      "layout_order": 1,
+      "layout_column_index": 0,
+      "layout_group": "doc_table_9_segment_1",
+      "detection_confidence": 0.94,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "consta_m_no_plano_de_contratacoes_anual_pca",
+      "label": "Consta(m) no Plano de Contratações Anual – PCA.",
+      "type": "checkbox",
+      "required": false,
+      "type_source": "native_control",
+      "layout_group_label": "Declaramos que todos os itens indicados neste documento de formalização da demanda",
+      "choice_required": true,
+      "section_source": "document_context",
+      "layout": "choice",
+      "section": "5. Plano de Contratações Anual - PCA 2025",
+      "id_source": "context_resolver",
+      "profile_identity": "plano_de_contratacoes_anual_pca_2025.consta_m_no_plano_de_contratacoes_anual_pca:checkbox",
+      "context_evidence": {
+        "choice_group": {
+          "confidence": 0.94,
+          "description": "Caixas de seleção vizinhas com alternativas semanticamente exclusivas foram agrupadas.",
+          "source": "shared_native_checkbox_region",
+          "value": "native_choice.declaramos_que_todos_os_itens_indicados_neste_documento_de_formalizacao"
+        },
+        "label": {
+          "confidence": 0.995,
+          "description": "Texto imediatamente após a caixa de seleção.",
+          "source": "same_paragraph_after",
+          "value": "Consta(m) no Plano de Contratações Anual – PCA."
+        },
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "plano_de_contratacoes_anual_pca_2025.consta_m_no_plano_de_contratacoes_anual_pca:checkbox"
+        },
+        "section": {
+          "confidence": 0.95,
+          "description": "Seção mais próxima no fluxo do documento.",
+          "source": "nearest_section",
+          "value": "5. Plano de Contratações Anual - PCA 2025"
+        }
+      },
+      "layout_group": "native_choice.declaramos_que_todos_os_itens_indicados_neste_documento_de_formalizacao",
+      "group": "native_choice.declaramos_que_todos_os_itens_indicados_neste_documento_de_formalizacao",
+      "context_resolver_version": 3,
+      "detection_source": "native_word",
+      "label_source": "same_paragraph_after",
+      "context_confidence": 0.946,
+      "selection": "single",
+      "choice_group_label": "Declaramos que todos os itens indicados neste documento de formalização da demanda",
+      "auto_tagged": true
+    },
+    {
+      "id": "consta_m_parcialmente_no_plano_de_contratacoes_anual_pca",
+      "label": "Consta(m) parcialmente no Plano de Contratações Anual – PCA.",
+      "type": "checkbox",
+      "required": false,
+      "type_source": "native_control",
+      "layout_group_label": "Declaramos que todos os itens indicados neste documento de formalização da demanda",
+      "choice_required": true,
+      "section_source": "document_context",
+      "layout": "choice",
+      "section": "5. Plano de Contratações Anual - PCA 2025",
+      "id_source": "context_resolver",
+      "profile_identity": "plano_de_contratacoes_anual_pca_2025.consta_m_parcialmente_no_plano_de_contratacoes_anual_pca:checkbox",
+      "context_evidence": {
+        "choice_group": {
+          "confidence": 0.94,
+          "description": "Caixas de seleção vizinhas com alternativas semanticamente exclusivas foram agrupadas.",
+          "source": "shared_native_checkbox_region",
+          "value": "native_choice.declaramos_que_todos_os_itens_indicados_neste_documento_de_formalizacao"
+        },
+        "label": {
+          "confidence": 0.995,
+          "description": "Texto imediatamente após a caixa de seleção.",
+          "source": "same_paragraph_after",
+          "value": "Consta(m) parcialmente no Plano de Contratações Anual – PCA."
+        },
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "plano_de_contratacoes_anual_pca_2025.consta_m_parcialmente_no_plano_de_contratacoes_anual_pca:checkbox"
+        },
+        "section": {
+          "confidence": 0.95,
+          "description": "Seção mais próxima no fluxo do documento.",
+          "source": "nearest_section",
+          "value": "5. Plano de Contratações Anual - PCA 2025"
+        }
+      },
+      "layout_group": "native_choice.declaramos_que_todos_os_itens_indicados_neste_documento_de_formalizacao",
+      "group": "native_choice.declaramos_que_todos_os_itens_indicados_neste_documento_de_formalizacao",
+      "context_resolver_version": 3,
+      "detection_source": "native_word",
+      "label_source": "same_paragraph_after",
+      "context_confidence": 0.946,
+      "selection": "single",
+      "choice_group_label": "Declaramos que todos os itens indicados neste documento de formalização da demanda",
+      "auto_tagged": true
+    },
+    {
+      "id": "nao_consta_m_no_plano_de_contratacoes_anual_pca",
+      "label": "Não consta(m) no Plano de Contratações Anual – PCA.",
+      "type": "checkbox",
+      "required": false,
+      "type_source": "native_control",
+      "layout_group_label": "Declaramos que todos os itens indicados neste documento de formalização da demanda",
+      "choice_required": true,
+      "section_source": "document_context",
+      "layout": "choice",
+      "section": "5. Plano de Contratações Anual - PCA 2025",
+      "id_source": "context_resolver",
+      "profile_identity": "plano_de_contratacoes_anual_pca_2025.nao_consta_m_no_plano_de_contratacoes_anual_pca:checkbox",
+      "context_evidence": {
+        "choice_group": {
+          "confidence": 0.94,
+          "description": "Caixas de seleção vizinhas com alternativas semanticamente exclusivas foram agrupadas.",
+          "source": "shared_native_checkbox_region",
+          "value": "native_choice.declaramos_que_todos_os_itens_indicados_neste_documento_de_formalizacao"
+        },
+        "label": {
+          "confidence": 0.995,
+          "description": "Texto imediatamente após a caixa de seleção.",
+          "source": "same_paragraph_after",
+          "value": "Não consta(m) no Plano de Contratações Anual – PCA."
+        },
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "plano_de_contratacoes_anual_pca_2025.nao_consta_m_no_plano_de_contratacoes_anual_pca:checkbox"
+        },
+        "section": {
+          "confidence": 0.95,
+          "description": "Seção mais próxima no fluxo do documento.",
+          "source": "nearest_section",
+          "value": "5. Plano de Contratações Anual - PCA 2025"
+        }
+      },
+      "layout_group": "native_choice.declaramos_que_todos_os_itens_indicados_neste_documento_de_formalizacao",
+      "group": "native_choice.declaramos_que_todos_os_itens_indicados_neste_documento_de_formalizacao",
+      "context_resolver_version": 3,
+      "detection_source": "native_word",
+      "label_source": "same_paragraph_after",
+      "context_confidence": 0.946,
+      "selection": "single",
+      "choice_group_label": "Declaramos que todos os itens indicados neste documento de formalização da demanda",
+      "auto_tagged": true
+    },
+    {
+      "id": "auto.nao_se_aplica",
+      "label": "Não se aplica",
+      "type": "multiline",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_1",
+      "layout_group_label": "5.1. Justificativa em caso de ausência parcial ou total no PCA 2025",
+      "layout_column_span": 1,
+      "section_source": "document_context",
+      "layout_grid_columns": 1,
+      "layout": "form_grid",
+      "full_width": true,
+      "section": "5.1. Justificativa em caso de ausência parcial ou total no PCA 2025",
+      "default_value": "5.1.1. Nos termos do art. 13 do Decreto Estadual Nº 44.639/23, justificamos a não inclusão total ou parcial do(s) item(s) em questão no Plano de Contratações Anual (PCA) de 2025, devido a demandas supervenientes surgidas após sua elaboração, bem como a lacunas pontuais no levantamento de informações que comprometeram a previsão integral das necessidades. Reconhecemos a oportunidade de aprimoramento no processo de planejamento e destacamos que medidas estão sendo implementadas para garantir maior precisão em exercícios futuros. Ressaltamos, entretanto, que a presente demanda é essencial para a continuidade das atividades do órgão e para o cumprimento de suas finalidades institucionais.",
+      "profile_identity": "justificativa_em_caso_de_ausencia_parcial_ou_total_no_pca_2025.nao_se_aplica:multiline",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "justificativa_em_caso_de_ausencia_parcial_ou_total_no_pca_2025.nao_se_aplica:multiline"
+        }
+      },
+      "layout_order": 1,
+      "layout_column_index": 0,
+      "layout_group": "doc_table_11_segment_1",
+      "detection_confidence": 0.94,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.setor",
+      "label": "Setor",
+      "type": "text",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_1",
+      "layout_group_label": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "layout_column_span": 2,
+      "section_source": "document_context",
+      "layout_grid_columns": 5,
+      "layout": "form_grid",
+      "section": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "profile_identity": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.setor:text",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.setor:text"
+        }
+      },
+      "layout_order": 1,
+      "layout_column_index": 3,
+      "layout_group": "doc_table_12_segment_1",
+      "placeholder": "Ciência",
+      "detection_confidence": 1.0,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9,
+      "layout_row_static_cells": [
+        {
+          "layout_row": "row_1",
+          "layout_order": 1,
+          "layout_column_index": 0,
+          "layout_column_span": 1,
+          "layout_grid_columns": 5,
+          "text": "Função"
+        },
+        {
+          "layout_row": "row_1",
+          "layout_order": 1,
+          "layout_column_index": 1,
+          "layout_column_span": 1,
+          "layout_grid_columns": 5,
+          "text": "Nome completo"
+        },
+        {
+          "layout_row": "row_1",
+          "layout_order": 1,
+          "layout_column_index": 2,
+          "layout_column_span": 1,
+          "layout_grid_columns": 5,
+          "text": "Matrícula"
+        }
+      ]
+    },
+    {
+      "id": "auto.nome",
+      "label": "Nome",
+      "type": "text",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_2",
+      "layout_group_label": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "layout_column_span": 2,
+      "section_source": "document_context",
+      "layout_grid_columns": 5,
+      "layout": "form_grid",
+      "section": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "profile_identity": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.nome:text",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.nome:text"
+        }
+      },
+      "layout_order": 2,
+      "layout_column_index": 1,
+      "layout_group": "doc_table_12_segment_1",
+      "detection_confidence": 1.0,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9,
+      "layout_row_static_cells": [
+        {
+          "layout_row": "row_2",
+          "layout_order": 2,
+          "layout_column_index": 0,
+          "layout_column_span": 1,
+          "layout_grid_columns": 5,
+          "text": "Gestor do contrato"
+        },
+        {
+          "layout_row": "row_2",
+          "layout_order": 2,
+          "layout_column_index": 4,
+          "layout_column_span": 1,
+          "layout_grid_columns": 5,
+          "text": "Assinatura PBdoc"
+        }
+      ]
+    },
+    {
+      "id": "auto.gestor_do_contrato_setor",
+      "label": "Gestor do contrato — Setor",
+      "type": "text",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_2",
+      "layout_group_label": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "layout_column_span": 1,
+      "section_source": "document_context",
+      "layout_grid_columns": 5,
+      "layout": "form_grid",
+      "section": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "profile_identity": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.gestor_do_contrato_setor:text",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.gestor_do_contrato_setor:text"
+        }
+      },
+      "layout_order": 2,
+      "layout_column_index": 3,
+      "layout_group": "doc_table_12_segment_1",
+      "detection_confidence": 1.0,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.nome_2",
+      "label": "Nome",
+      "type": "text",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_3",
+      "layout_group_label": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "layout_column_span": 2,
+      "section_source": "document_context",
+      "layout_grid_columns": 5,
+      "layout": "form_grid",
+      "section": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "profile_identity": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.nome:text",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.nome:text"
+        }
+      },
+      "layout_order": 3,
+      "layout_column_index": 1,
+      "layout_group": "doc_table_12_segment_1",
+      "detection_confidence": 1.0,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9,
+      "layout_row_static_cells": [
+        {
+          "layout_row": "row_3",
+          "layout_order": 3,
+          "layout_column_index": 0,
+          "layout_column_span": 1,
+          "layout_grid_columns": 5,
+          "text": "Fiscal técnico"
+        },
+        {
+          "layout_row": "row_3",
+          "layout_order": 3,
+          "layout_column_index": 4,
+          "layout_column_span": 1,
+          "layout_grid_columns": 5,
+          "text": "Assinatura PBdoc"
+        }
+      ]
+    },
+    {
+      "id": "auto.fiscal_tecnico_setor",
+      "label": "Fiscal técnico — Setor",
+      "type": "text",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_3",
+      "layout_group_label": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "layout_column_span": 1,
+      "section_source": "document_context",
+      "layout_grid_columns": 5,
+      "layout": "form_grid",
+      "section": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "profile_identity": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.fiscal_tecnico_setor:text",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.fiscal_tecnico_setor:text"
+        }
+      },
+      "layout_order": 3,
+      "layout_column_index": 3,
+      "layout_group": "doc_table_12_segment_1",
+      "detection_confidence": 1.0,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp",
+      "label": "Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "type": "repeatable_table",
+      "required": true,
+      "columns": [
+        {
+          "id": "fiscal_administrativo",
+          "label": "Fiscal administrativo",
+          "type": "text",
+          "required": false,
+          "marker": "auto.sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.fiscal_administrativo"
+        },
+        {
+          "id": "a_definir_posteriormente",
+          "label": "A definir posteriormente",
+          "type": "text",
+          "required": false,
+          "marker": "auto.sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.a_definir_posteriormente"
+        },
+        {
+          "id": "xxxxxxx",
+          "label": "Xxxxxxx",
+          "type": "text",
+          "required": false,
+          "marker": "auto.sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.xxxxxxx"
+        },
+        {
+          "id": "xxxxxxx_2",
+          "label": "Xxxxxxx 2",
+          "type": "text",
+          "required": false,
+          "marker": "auto.sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.xxxxxxx_2"
+        },
+        {
+          "id": "assinatura_pbdoc",
+          "label": "Assinatura PBdoc",
+          "type": "text",
+          "required": false,
+          "marker": "auto.sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.assinatura_pbdoc"
+        }
+      ],
+      "minimum_rows": 1,
+      "numbering_padding": 2,
+      "type_source": "automatic_detection",
+      "validation_hint": "Adicione pelo menos 1 item(ns). É possível colar linhas copiadas do Excel.",
+      "layout": "full_width",
+      "full_width": true,
+      "section": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "profile_identity": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp:repeatable_table",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp:repeatable_table"
+        }
+      },
+      "detection_confidence": 1.0,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp_2",
+      "label": "Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "type": "multiline",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_6",
+      "layout_group_label": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "layout_column_span": 5,
+      "section_source": "document_context",
+      "layout_grid_columns": 5,
+      "layout": "form_grid",
+      "full_width": true,
+      "section": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "default_value": "(*) Poderão ser indicados outros integrantes que possuam conhecimentos sobre aspectos técnicos do objeto.",
+      "profile_identity": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp:multiline",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp.sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp:multiline"
+        }
+      },
+      "layout_order": 6,
+      "layout_column_index": 0,
+      "layout_group": "doc_table_12_segment_1",
+      "detection_confidence": 0.87,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.indicacao_do_membro_responsavel_pela_formalizacao_da_demanda",
+      "label": "Indicação do membro responsável pela formalização da demanda",
+      "type": "multiline",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_2",
+      "layout_group_label": "6. Indicação do membro responsável pela formalização da demanda",
+      "layout_column_span": 1,
+      "section_source": "document_context",
+      "layout_grid_columns": 1,
+      "layout": "form_grid",
+      "full_width": true,
+      "section": "6. Indicação do membro responsável pela formalização da demanda",
+      "default_value": "O responsável(s) pela demanda, ficará à disposição para dirimir eventuais dúvidas sobre esta requisição, bem como para acompanhar todo procedimento de contratação, fornecendo todas as informações técnicas necessárias junto ao setor contratante.",
+      "profile_identity": "indicacao_do_membro_responsavel_pela_formalizacao_da_demanda.indicacao_do_membro_responsavel_pela_formalizacao_da_demanda:multiline",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "indicacao_do_membro_responsavel_pela_formalizacao_da_demanda.indicacao_do_membro_responsavel_pela_formalizacao_da_demanda:multiline"
+        }
+      },
+      "layout_static_rows": [
+        {
+          "layout_row": "row_1",
+          "layout_order": 1,
+          "layout_column_index": 0,
+          "layout_column_span": 1,
+          "layout_grid_columns": 1,
+          "text": "Nome Cargo Matrícula Responsável pela Formalização de Demanda"
+        }
+      ],
+      "layout_order": 2,
+      "layout_column_index": 0,
+      "layout_group": "doc_table_13_segment_1",
+      "detection_confidence": 0.87,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    },
+    {
+      "id": "auto.despacho_de_encaminhamento_2",
+      "label": "Despacho de encaminhamento",
+      "type": "multiline",
+      "required": true,
+      "type_source": "automatic_detection",
+      "layout_row": "row_1",
+      "layout_group_label": "7. Despacho de encaminhamento",
+      "layout_column_span": 1,
+      "section_source": "document_context",
+      "layout_grid_columns": 1,
+      "layout": "form_grid",
+      "full_width": true,
+      "section": "7. Despacho de encaminhamento",
+      "default_value": "João Pessoa - PB, data da assinatura eletrônica via PBDOC.",
+      "profile_identity": "despacho_de_encaminhamento.despacho_de_encaminhamento:multiline",
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "despacho_de_encaminhamento.despacho_de_encaminhamento:multiline"
+        }
+      },
+      "layout_order": 1,
+      "layout_column_index": 0,
+      "layout_group": "doc_table_14_segment_1",
+      "detection_confidence": 0.94,
+      "context_resolver_version": 3,
+      "detection_source": "automatic",
+      "label_source": "automatic_detection",
+      "context_confidence": 0.9
+    }
+  ],
+  "sections": [
+    {
+      "title": "Dados do documento",
+      "fields": [
+        "unidade_gestora"
+      ]
+    },
+    {
+      "title": "1. Área Requisitante da Demanda",
+      "fields": [
+        "auto.area_requisitante_da_demanda",
+        "auto.setor_requisitante_unidade_setor_depto",
+        "auto.responsavel_pela_demanda",
+        "auto.matricula",
+        "auto.e_mail",
+        "auto.telefone"
+      ]
+    },
+    {
+      "title": "1.1 Identificação da Demanda",
+      "fields": [
+        "descricao.demanda"
+      ]
+    },
+    {
+      "title": "1.2. Modalidade de licitação Sugerida",
+      "fields": [
+        "modalidade_de_licitacao_sugerida"
+      ]
+    },
+    {
+      "title": "2. Justificativa da necessidade da contratação, considerando o planejamento estratégico, as diretrizes de planejamento, se for o caso",
+      "fields": [
+        "auto.justificativa_da_necessidade_da_contratacao_considerando_o_planejamento_",
+        "auto.notas"
+      ]
+    },
+    {
+      "title": "3. Quantidade a ser contratada",
+      "fields": [
+        "auto.sim"
+      ]
+    },
+    {
+      "title": "4. Previsão de data em que devem ser entregues os bens ou que os serviços serão iniciados",
+      "fields": [
+        "auto.previsao_de_data_em_que_devem_ser_entregues_os_bens_ou_que_os_servicos_s",
+        "auto.utilizar_se_de_experiencias_anteriores_para_avaliar_o_lapso_temporal_nec"
+      ]
+    },
+    {
+      "title": "5. Plano de Contratações Anual - PCA 2025",
+      "fields": [
+        "consta_m_no_plano_de_contratacoes_anual_pca",
+        "consta_m_parcialmente_no_plano_de_contratacoes_anual_pca",
+        "nao_consta_m_no_plano_de_contratacoes_anual_pca"
+      ]
+    },
+    {
+      "title": "5.1. Justificativa em caso de ausência parcial ou total no PCA 2025",
+      "fields": [
+        "auto.nao_se_aplica"
+      ]
+    },
+    {
+      "title": "5.2. Sugestão de designação de possíveis servidores para fiscalização e acompanhamento, em casos de elaboração de contrato para referida demanda",
+      "fields": [
+        "auto.setor",
+        "auto.nome",
+        "auto.gestor_do_contrato_setor",
+        "auto.nome_2",
+        "auto.fiscal_tecnico_setor",
+        "auto.sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp",
+        "auto.sugestao_de_designacao_de_possiveis_servidores_para_fiscalizacao_e_acomp_2"
+      ]
+    },
+    {
+      "title": "6. Indicação do membro responsável pela formalização da demanda",
+      "fields": [
+        "auto.indicacao_do_membro_responsavel_pela_formalizacao_da_demanda"
+      ]
+    },
+    {
+      "title": "7. Despacho de encaminhamento",
+      "fields": [
+        "auto.despacho_de_encaminhamento_2"
+      ]
+    }
+  ],
+  "output": {
+    "filename_pattern": "{{template.name}}.docx",
+    "folder_pattern": ""
+  },
+  "numbering": {
+    "enabled": false,
+    "key": "dfd-licitacao-tradicional-sedh-sia13tdr",
+    "padding": 4
+  },
+  "schema_version": 1
+}

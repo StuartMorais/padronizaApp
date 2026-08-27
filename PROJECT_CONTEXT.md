@@ -5,7 +5,7 @@
 > **Maintenance rule:** update this file after every meaningful architecture change, feature addition, bug fix that affects project assumptions, quality-gate change, or known limitation. Do not use it as a line-by-line changelog; keep it focused on the current state and decisions that a new developer/chat needs to continue safely.
 
 **Last updated:** 2026-08-27  
-**Current baseline:** Scanner V6 semantic/review-first detection + guided four-step Novo Modelo UX + dynamic inline/prose/list regions + learned template-family mappings + safe DOCM ingestion + automatic GitHub Releases  
+**Current baseline:** Scanner V6 semantic/review-first detection + unified four-step Novo/Editar authoring UX + optional official Timbrado for DOCX/PDF + dynamic inline/prose/list regions + learned template-family mappings + safe DOCM ingestion + automatic GitHub Releases  
 **Primary platform:** Windows / PySide6 desktop application  
 **Entry point:** `main.py`
 
@@ -164,6 +164,18 @@ The integrated converter is deliberately a fallback and is not expected to repro
 
 Runtime JSON, templates/settings/backups use explicit schema/version handling. Legacy data may be migrated when safe. Data from a newer unsupported schema must be rejected rather than silently reset or rewritten.
 
+### Optional official letterhead / Timbrado
+
+Each template config can contain:
+
+```json
+"letterhead": {"enabled": true, "source": "bundled_default"}
+```
+
+The bundled source of truth is `assets/Timbrado.docx`. It is **not** flattened into the template body. During DOCX generation, `app/document/letterhead.py` replaces header/footer references on every Word section with copied official header/footer parts while preserving body content, page size, margins, fields, and the original template source. PDF generation applies the same letterhead to the temporary generated DOCX before conversion. Microsoft Word/LibreOffice therefore render the native Word artwork; the integrated ReportLab fallback additionally renders anchored header/footer images and simple filled DrawingML shapes so the logo/red background/gray footer decoration are not lost.
+
+The option is per-model and defaults to disabled, allowing templates that already contain their own official stationery to avoid duplicated branding.
+
 ### Backups
 
 Restore operations must remain defensive and transactional: validate archive paths/sizes/schema/settings first, stage restored data, replace live data only when ready, and roll back on I/O failure.
@@ -180,22 +192,22 @@ The separate model-browser window is no longer part of the normal navigation flo
 
 Library mutations emit `library_changed`, allowing `MainWindow` to refresh the generation combo/favorites/archive state immediately. Do not reintroduce a duplicate model-list window unless there is a specific workflow that cannot be hosted on the main page.
 
-### Guided Novo Modelo workflow
+### Unified guided template authoring workflow
 
-Creating a new template intentionally uses a simpler experience than editing an existing template. `TemplateEditorDialog` keeps the same underlying editor/services, but new-template mode presents four guided stages:
+`TemplateEditorDialog` now uses the same user-facing authoring experience for both **Novo modelo** and **Editar**. Create-vs-update remains a persistence concern (`template_id`), not a different UI. Both paths present four guided stages:
 
 ```text
 Documento → Campos → Organizar → Concluir
 ```
 
-Normal creation behavior:
+Guided authoring behavior:
 
-- **Documento:** select/drag DOCX, DOCM, or PDF and provide a friendly model name/category. Selecting a file prepares it safely but does **not** start an implicit full scan; the single primary action is **Analisar documento**.
+- **Documento:** new models select/drag DOCX, DOCM, or PDF and use **Analisar documento** once. Existing models load the saved source and field map immediately, so the primary action is **Continuar**; replacing the source resets the scan state and makes analysis explicit again.
 - **Campos:** authoritative/native fields are synchronized and heuristic/semantic additions go through the review dialog. The main field table shows only label, type, required/configuration, and status. Technical IDs, profile/group/visibility/layout metadata are hidden by default.
 - **Organizar:** section cards/order are shown without exposing the technical tab system.
-- **Concluir:** form preview plus final model metadata/readiness. Output-pattern/numbering configuration stays behind **Opções avançadas**.
+- **Concluir:** form preview plus final model metadata/readiness and the normal-user **Papel timbrado** choice. Output-pattern/numbering configuration stays behind **Opções avançadas**.
 
-Existing-template editing retains the full advanced tabbed editor. The review dialog also defaults to user-facing states (`Identificado`, `Confira`, `Possível campo`) while source/origin IDs and confidence internals remain behind **Detalhes técnicos**. Advanced row mutation/tag tools are intentionally hidden in the normal guided path because changing field configuration without changing the source document can create unusable source/config mismatches.
+Existing-template editing no longer switches back to the old full tabbed layout; advanced controls remain available on demand inside the same guided steps. The review dialog also defaults to user-facing states (`Identificado`, `Confira`, `Possível campo`) while source/origin IDs and confidence internals remain behind **Detalhes técnicos**. Advanced row mutation/tag tools are intentionally hidden in the normal guided path because changing field configuration without changing the source document can create unusable source/config mismatches.
 
 Guided-creation layout wrappers (`templateCreationFieldWrapper` / `templateEditorTop`) must remain transparent. The application-wide `QWidget` surface color is intentionally non-white, so unstyled helper widgets can otherwise appear as wide gray bars behind form rows. Step 1 must also not reserve the hidden advanced output panel's minimum height. Its `QFormLayout`, `templateCreationGeneralGroup`, document/name wrappers, and top container are intentionally top-aligned/non-growing vertically so spare viewport height stays below the form instead of being distributed inside rows. Keep the identification form compact and let only real cards/inputs carry backgrounds.
 
@@ -457,9 +469,9 @@ Current coverage policy enforces a **75% minimum** over the non-UI core (`core`,
 At the Scanner V6 semantic baseline validation in the Linux review environment:
 
 ```text
-pytest:             237 passed, 3 skipped (single process)
+pytest:             248 passed, 3 skipped (single process)
 semantic benchmark: 13/13 required, 0 unexpected, 0 fresh semantic preselected
-core coverage:      81.3%
+core coverage:      80.16%
 dead modules:       none
 compileall:         pass
 ```
@@ -542,7 +554,7 @@ Template-editor work copies also have a conservative repeatable-marker migration
 
 ### Template authoring UX
 
-New-template authoring now uses the guided **Documento → Campos → Organizar → Concluir** flow described above. It deliberately hides technical field IDs, profile/group/visibility/layout automation, diagnostics, tag tools, output patterns, numbering, undo/history controls, and direct row mutation until **Opções avançadas** is enabled. Existing-template editing keeps the complete advanced editor.
+New and existing-template authoring now use the same guided **Documento → Campos → Organizar → Concluir** flow described above. It deliberately hides technical field IDs, profile/group/visibility/layout automation, diagnostics, tag tools, output patterns, numbering, undo/history controls, and direct row mutation until **Opções avançadas** is enabled.
 
 The field-review dialog now uses user-facing states (`✓ Identificado`, `⚠ Confira`, `? Possível campo`), keeps source context visible, and hides origin/internal ID plus confidence/structure internals behind **Detalhes técnicos**. The normal user should decide only whether a questionable source region is dynamic and whether the proposed label/type makes sense.
 
@@ -610,9 +622,11 @@ The normal template-editor scan UX now exposes one **Localizar campos** action e
 
 GitHub Windows releases are now versioned and published automatically. Manual workflow runs choose only the SemVer bump (`patch`, `minor`, or `major`); the workflow resolves the next version from Git tags, runs a single PyInstaller build, uses that same EXE for Inno Setup, and uploads the installer, portable EXE, and checksums directly to GitHub Releases. Semantic tag pushes are also supported, and the full quality workflow ignores release tags to avoid duplicate 30+ minute work.
 
-The semantic layer is implemented locally and measured with a committed narrative benchmark. Model management now lives directly on the main Modelos page; only focused create/edit authoring opens the editor dialog. The first major Novo Modelo UX pass is now complete: creation is a guided four-step flow and the semantic review dialog defaults to human-readable states while technical controls stay available on demand. Next product work should focus on document-side visual highlighting/manual span placement and broader real-document benchmark coverage. Keep deterministic structure/location logic authoritative: semantic assistance suggests meaning/scope, the author approves ambiguous content, and only deterministic OOXML/PDF code applies changes.
+The semantic layer is implemented locally and measured with a committed narrative benchmark. Model management now lives directly on the main Modelos page; only focused create/edit authoring opens the editor dialog. The authoring UX is now unified: Novo and Editar use the same guided four-step flow and the semantic review dialog defaults to human-readable states while technical controls stay available on demand. Next product work should focus on document-side visual highlighting/manual span placement and broader real-document benchmark coverage. Keep deterministic structure/location logic authoritative: semantic assistance suggests meaning/scope, the author approves ambiguous content, and only deterministic OOXML/PDF code applies changes.
 
 A real DFD regression on 2026-08-26 added two scanner contracts that were previously missing: (1) a 5.1-style block with exactly two alternatives separated by one `OU` is detected as a single-choice dropdown; and (2) a section-7-style sentence containing one red inline span such as `área técnica competente ou à equipe de planejamento da contratação` is detected as a two-option single choice while preserving the surrounding black sentence.
+
+A real SIA31003 declaration regression on 2026-08-27 adds two additional contracts: (1) PBDOC process identifiers such as `Processo Pbdoc : SDH-PRC-2026/04715` are semantic inline fields (`process.number`) even though the value begins with an alphanumeric agency/process prefix; and (2) one exclusive checkbox option per Word table row remains one UI-exclusive choice group. The generated DOCX must preserve the original three-row table and render exactly one selected marker (`☐ / ☑ / ☐` for the second option). The committed fixture is `tests/fixtures/regression/declaracao_inexistencia_contratos_sia31003.docx`.
 
 ---
 

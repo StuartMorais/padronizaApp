@@ -219,8 +219,7 @@ def test_dialog_and_widget_constructor_matrix(
     # Exercise live template-field validation/status without touching a real
     # document. This catches broken table-column assumptions and filter wiring.
     editor = next(widget for widget in widgets if isinstance(widget, TemplateEditorDialog))
-    # New-model creation is intentionally guided instead of exposing the full
-    # technical editor at once. Existing-model editing keeps the advanced tabs.
+    # New and existing models intentionally share the same guided authoring flow.
     assert editor._creation_flow is True
     assert editor._creation_step == 0
     assert editor.fields_group.isHidden() is True
@@ -367,6 +366,10 @@ def test_existing_template_editor_constructor(
     template_id = str(summary["id"])
     editor = TemplateEditorDialog(repository, template_id)
     assert editor.template_id == template_id
+    assert editor._creation_flow is True
+    assert editor._editing_existing is True
+    assert editor._creation_has_scanned is True
+    assert editor.fields_tabs.tabBar().isHidden() is True
     assert editor.selected_docx is not None
     _close(editor, qt_app)
 

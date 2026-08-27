@@ -44,7 +44,12 @@ BUILTIN_CONCEPTS: tuple[SemanticConcept, ...] = (
         "process.number",
         "Número do processo",
         "text",
-        ("número do processo", "processo nº", "nº do processo administrativo"),
+        (
+            "número do processo",
+            "processo nº",
+            "nº do processo administrativo",
+            "processo pbdoc",
+        ),
         0.96,
         "inline",
     ),

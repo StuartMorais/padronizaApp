@@ -165,7 +165,7 @@ def test_generated_field_shell_keeps_assisted_action_and_dropdown_responsive() -
     assert 'card = FieldContainer(' in form_source
 
 
-def test_new_template_creation_is_a_guided_four_step_flow() -> None:
+def test_template_authoring_uses_one_guided_four_step_flow_for_create_and_edit() -> None:
     editor_source = (
         ROOT / "app/ui/template_manager/template_editor_dialog.py"
     ).read_text(encoding="utf-8")
@@ -173,11 +173,14 @@ def test_new_template_creation_is_a_guided_four_step_flow() -> None:
         ROOT / "app/ui/widgets/creation_stepper.py"
     ).read_text(encoding="utf-8")
 
-    assert 'self._creation_flow = template_id is None' in editor_source
+    assert 'self._creation_flow = True' in editor_source
+    assert 'self._editing_existing = template_id is not None' in editor_source
     assert "'Escolha o documento'" in editor_source
     assert "'Confira os campos'" in editor_source
     assert "'Organize o formulário'" in editor_source
     assert "'Revise e crie'" in editor_source
+    assert "'Revise e salve'" in editor_source
+    assert "'Salvar alterações' if self._editing_existing else 'Criar modelo'" in editor_source
     assert "'Analisar documento →'" in editor_source
     assert 'self.fields_tabs.tabBar().hide()' in editor_source
     assert "'Opções avançadas'" in editor_source
@@ -185,7 +188,23 @@ def test_new_template_creation_is_a_guided_four_step_flow() -> None:
     assert '("Documento", "Escolher arquivo")' in stepper_source
     assert '("Campos", "Conferir o que muda")' in stepper_source
     assert '("Organizar", "Ajustar o formulário")' in stepper_source
-    assert '("Concluir", "Revisar e criar")' in stepper_source
+    assert '("Concluir", "Revisar e salvar")' in stepper_source
+
+
+
+
+def test_guided_authoring_exposes_optional_official_letterhead() -> None:
+    editor_source = (
+        ROOT / "app/ui/template_manager/template_editor_dialog.py"
+    ).read_text(encoding="utf-8")
+    generation_source = (ROOT / "app/services/generation.py").read_text(encoding="utf-8")
+
+    assert "Aplicar o papel timbrado oficial aos documentos gerados" in editor_source
+    assert "self.letterhead_group.show()" in editor_source
+    assert '"enabled": self.letterhead_checkbox.isChecked()' in editor_source
+    assert "apply_letterhead(package" not in generation_source
+    assert "self._apply_letterhead_if_enabled(package, staged)" in generation_source
+    assert "self._apply_letterhead_if_enabled(package, temporary_docx)" in generation_source
 
 
 def test_guided_creation_does_not_expose_global_widget_background_as_row_bars() -> None:
@@ -252,3 +271,10 @@ def test_models_page_embeds_full_library_manager() -> None:
     assert "self._navigate_to_target(\"templates\")" in mixin_source
     assert "if self.embedded:" in manager_source
     assert "'Usar no Gerar'" in manager_source
+
+
+def test_form_grid_row_separated_exclusive_choices_share_one_qt_button_group() -> None:
+    source = Path("app/ui/widgets/document_form.py").read_text(encoding="utf-8")
+    assert "self.form_grid_button_groups: dict[str, QButtonGroup]" in source
+    assert "self._register_form_grid_exclusive_checkbox(field, widget)" in source
+    assert "button_group.addButton(widget)" in source

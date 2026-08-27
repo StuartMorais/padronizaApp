@@ -12,7 +12,7 @@ Scanner V6 and the deterministic document engine remain unchanged in authority. 
 
 ## New-template workflow
 
-`TemplateEditorDialog` uses a guided mode when `template_id is None`:
+`TemplateEditorDialog` uses the guided mode for both creation and editing. `template_id` only decides whether saving creates or updates the repository entry:
 
 ```text
 Documento → Campos → Organizar → Concluir
@@ -109,3 +109,10 @@ Padroniza creates field + robust source anchor together
 ```
 
 Do not implement a simple “add field” button in the normal workflow until the source placement/anchoring part is solved as part of the same interaction.
+
+
+## Papel timbrado
+
+The final **Concluir** step exposes one normal-user option: **Aplicar o papel timbrado oficial aos documentos gerados**. It defaults to off, persists with the model, applies to both DOCX and PDF generation, and remains independent of scanner/field configuration.
+
+Existing models load their saved choice. Editing does not force a rescan: the saved field map is authoritative until the source is replaced or the author explicitly runs **Analisar novamente**.

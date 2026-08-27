@@ -11,7 +11,7 @@ class CreationStepper(QFrame):
         ("Documento", "Escolher arquivo"),
         ("Campos", "Conferir o que muda"),
         ("Organizar", "Ajustar o formulário"),
-        ("Concluir", "Revisar e criar"),
+        ("Concluir", "Revisar e salvar"),
     )
 
     def __init__(self, parent=None) -> None:

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from app.document.docx.generator import DocumentGenerationError, generate_docx
+from app.document.letterhead import apply_letterhead, letterhead_enabled
 from app.document.diagnostics import diagnose_template
 from app.repositories.local_data import LocalDataStore
 from app.services.output_planner import OutputPlanner
@@ -53,6 +54,7 @@ class GenerationService:
         try:
             with staged_output(output_path, suffix=".docx") as staged:
                 generate_docx(package.source_path, staged, values)
+                self._apply_letterhead_if_enabled(package, staged)
                 self._validate_docx(staged)
                 with reversible_publish(staged, output_path):
                     document_id = self._record_generation(
@@ -91,8 +93,15 @@ class GenerationService:
         backend = self.converter.available_backend()
         with tempfile.TemporaryDirectory(prefix="padroniza-pdf-") as temporary_folder:
             temporary_docx = Path(temporary_folder) / f"{output_path.stem}.docx"
-            generate_docx(package.source_path, temporary_docx, values)
-            self._validate_docx(temporary_docx)
+            try:
+                generate_docx(package.source_path, temporary_docx, values)
+                self._apply_letterhead_if_enabled(package, temporary_docx)
+                self._validate_docx(temporary_docx)
+            except Exception as exc:
+                raise PdfConversionError(
+                    "Não foi possível preparar o DOCX temporário para a geração do PDF: "
+                    f"{exc}"
+                ) from exc
             try:
                 with staged_output(output_path, suffix=".pdf") as staged_pdf:
                     self.converter.docx_to_pdf(temporary_docx, staged_pdf, warnings=warnings)
@@ -121,6 +130,11 @@ class GenerationService:
         return GenerationResult(
             document_id, output_path, "pdf", tuple(warnings), backend
         )
+
+    @staticmethod
+    def _apply_letterhead_if_enabled(package: TemplatePackage, path: Path) -> None:
+        if letterhead_enabled(package.config):
+            apply_letterhead(path)
 
     @staticmethod
     def _preflight(package: TemplatePackage) -> None:

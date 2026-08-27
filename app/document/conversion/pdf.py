@@ -123,9 +123,19 @@ def convert_docx_to_pdf(
 
     header_lines = _container_text_lines(section.header.paragraphs)
     footer_lines = _container_text_lines(section.footer.paragraphs)
+    page_graphics = _page_anchor_graphics(
+        section,
+        page_width=page_width,
+        page_height=page_height,
+        left_margin=left_margin,
+        top_margin=top_margin,
+        warning_list=warning_list,
+        qn=qn,
+    )
 
     def page_decoration(canvas, _doc) -> None:
         canvas.saveState()
+        _draw_page_anchor_graphics(canvas, page_graphics, colors, ImageReader)
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(colors.HexColor("#555555"))
 
@@ -516,6 +526,185 @@ def _iter_docx_blocks(document, paragraph_class, table_class) -> Iterable[Any]:
             yield paragraph_class(child, document)
         elif tag == "tbl":
             yield table_class(child, document)
+
+
+def _page_anchor_graphics(
+    section: Any,
+    *,
+    page_width: float,
+    page_height: float,
+    left_margin: float,
+    top_margin: float,
+    warning_list: list[str],
+    qn: Any,
+) -> list[dict[str, Any]]:
+    """Extract anchored header/footer pictures and simple filled shapes.
+
+    The integrated PDF backend cannot ask Word to render floating DrawingML.
+    This small bridge preserves the official Padroniza letterhead (and similar
+    anchored page decorations) using the same Word positions on every page.
+    """
+
+    graphics: list[dict[str, Any]] = []
+    containers = (
+        (section.header, "header"),
+        (section.footer, "footer"),
+    )
+    header_distance = _length_points(getattr(section, "header_distance", None), 36.0)
+
+    for container, kind in containers:
+        try:
+            anchors = container._element.xpath(".//wp:anchor")
+        except Exception:
+            anchors = []
+        for anchor in anchors:
+            try:
+                extent = anchor.xpath("./*[local-name()='extent']")
+                if not extent:
+                    continue
+                width = float(extent[0].get("cx", 0) or 0) / 12700.0
+                height = float(extent[0].get("cy", 0) or 0) / 12700.0
+                if width <= 0 or height <= 0:
+                    continue
+
+                x = _anchor_position_points(
+                    anchor,
+                    axis="H",
+                    page_extent=page_width,
+                    margin_start=left_margin,
+                    paragraph_base=left_margin,
+                )
+                y_top = _anchor_position_points(
+                    anchor,
+                    axis="V",
+                    page_extent=page_height,
+                    margin_start=top_margin,
+                    paragraph_base=header_distance if kind == "header" else 0.0,
+                )
+
+                blips = anchor.xpath(".//*[local-name()='blip']")
+                if blips:
+                    relationship_id = blips[0].get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed")
+                    if relationship_id:
+                        related = container.part.related_parts[relationship_id]
+                        graphics.append(
+                            {
+                                "kind": "image",
+                                "blob": related.blob,
+                                "x": x,
+                                "y": page_height - y_top - height,
+                                "width": width,
+                                "height": height,
+                            }
+                        )
+                        continue
+
+                fill_nodes = anchor.xpath(
+                    ".//*[local-name()='spPr']/*[local-name()='solidFill']/*[local-name()='srgbClr']"
+                )
+                path_nodes = anchor.xpath(
+                    ".//*[local-name()='spPr']/*[local-name()='custGeom']/*[local-name()='pathLst']/*[local-name()='path']"
+                )
+                if fill_nodes and path_nodes:
+                    color = str(fill_nodes[0].get("val", "808080") or "808080")
+                    path_node = path_nodes[0]
+                    path_width = float(path_node.get("w", 0) or 0)
+                    path_height = float(path_node.get("h", 0) or 0)
+                    if path_width <= 0 or path_height <= 0:
+                        continue
+                    points: list[tuple[float, float]] = []
+                    for command in list(path_node):
+                        point_nodes = command.xpath("./*[local-name()='pt']")
+                        if not point_nodes:
+                            continue
+                        px = float(point_nodes[0].get("x", 0) or 0)
+                        py = float(point_nodes[0].get("y", 0) or 0)
+                        points.append(
+                            (
+                                x + (px / path_width) * width,
+                                page_height - y_top - (py / path_height) * height,
+                            )
+                        )
+                    if len(points) >= 3:
+                        graphics.append(
+                            {
+                                "kind": "polygon",
+                                "points": points,
+                                "color": color,
+                            }
+                        )
+            except Exception as exc:
+                warning_list.append(f"Uma decoração de cabeçalho/rodapé foi simplificada: {exc}")
+
+    return graphics
+
+
+def _anchor_position_points(
+    anchor: Any,
+    *,
+    axis: str,
+    page_extent: float,
+    margin_start: float,
+    paragraph_base: float,
+) -> float:
+    position = anchor.xpath(f"./*[local-name()='position{axis}']")
+    if not position:
+        return margin_start
+    node = position[0]
+    relative = str(node.get("relativeFrom", "page") or "page").casefold()
+    offset_nodes = node.xpath("./*[local-name()='posOffset']")
+    offset = 0.0
+    if offset_nodes and offset_nodes[0].text:
+        try:
+            offset = float(offset_nodes[0].text) / 12700.0
+        except (TypeError, ValueError):
+            offset = 0.0
+
+    if relative == "page":
+        base = 0.0
+    elif relative in {"margin", "column"}:
+        base = margin_start
+    elif relative in {"paragraph", "line", "character"}:
+        base = paragraph_base
+    else:
+        base = margin_start
+    return max(-page_extent, min(page_extent * 2.0, base + offset))
+
+
+def _draw_page_anchor_graphics(
+    canvas: Any,
+    graphics: list[dict[str, Any]],
+    colors_module: Any,
+    image_reader: Any,
+) -> None:
+    for item in graphics:
+        if item.get("kind") == "image":
+            try:
+                canvas.drawImage(
+                    image_reader(BytesIO(item["blob"])),
+                    float(item["x"]),
+                    float(item["y"]),
+                    width=float(item["width"]),
+                    height=float(item["height"]),
+                    preserveAspectRatio=True,
+                    mask="auto",
+                )
+            except Exception:
+                continue
+        elif item.get("kind") == "polygon":
+            points = list(item.get("points", []))
+            if len(points) < 3:
+                continue
+            try:
+                canvas.setFillColor(colors_module.HexColor(f"#{item.get('color', '808080')}"))
+                path = canvas.beginPath()
+                path.moveTo(*points[0])
+                for point in points[1:]:
+                    path.lineTo(*point)
+                path.close()
+                canvas.drawPath(path, stroke=0, fill=1)
+            except Exception:
+                continue
 
 
 def _length_points(value: Any, default: float) -> float:

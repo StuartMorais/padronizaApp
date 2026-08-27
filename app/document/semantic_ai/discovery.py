@@ -14,8 +14,14 @@ _ATA_NUMBER_RE = re.compile(
     r"(?:n(?:[º°o.]|úmero)?\s*)?(?P<value>\d{1,8}/\d{4})"
 )
 _PROCESS_NUMBER_RE = re.compile(
-    r"(?i)\bprocesso(?:\s+(?:administrativo|licitat[oó]rio))?\s*"
-    r"(?:n(?:[º°o.]|úmero)?\s*)?(?P<value>\d[\d./-]{3,})"
+    # Government/administrative documents do not always print a purely
+    # numeric process identifier. PBDOC, for example, commonly uses values
+    # such as ``SDH-PRC-2026/04715``. Keep the label side deliberately strict
+    # (it must still start with "Processo") while accepting either the legacy
+    # numeric form or a structured alphanumeric process code.
+    r"(?i)\bprocesso(?:\s+(?:administrativo|licitat[oó]rio|pbdoc))?\s*"
+    r"(?:n(?:[º°o.]|úmero)?\s*)?[:\-]?\s*"
+    r"(?P<value>(?:[A-Z]{2,}(?:-[A-Z0-9]{2,})*-\d{4}/\d+|\d[\d./-]{3,}))"
 )
 _CONTRACT_NUMBER_RE = re.compile(
     r"(?i)\bcontrato\s*(?:n(?:[º°o.]|úmero)?\s*)?(?P<value>\d[\d./-]{2,})"
