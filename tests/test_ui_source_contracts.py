@@ -163,3 +163,92 @@ def test_generated_field_shell_keeps_assisted_action_and_dropdown_responsive() -
     assert 'action_layout.addStretch(1)' in container_source
     assert 'QSizePolicy.Policy.Expanding' in dropdown_source
     assert 'card = FieldContainer(' in form_source
+
+
+def test_new_template_creation_is_a_guided_four_step_flow() -> None:
+    editor_source = (
+        ROOT / "app/ui/template_manager/template_editor_dialog.py"
+    ).read_text(encoding="utf-8")
+    stepper_source = (
+        ROOT / "app/ui/widgets/creation_stepper.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'self._creation_flow = template_id is None' in editor_source
+    assert "'Escolha o documento'" in editor_source
+    assert "'Confira os campos'" in editor_source
+    assert "'Organize o formulário'" in editor_source
+    assert "'Revise e crie'" in editor_source
+    assert "'Analisar documento →'" in editor_source
+    assert 'self.fields_tabs.tabBar().hide()' in editor_source
+    assert "'Opções avançadas'" in editor_source
+
+    assert '("Documento", "Escolher arquivo")' in stepper_source
+    assert '("Campos", "Conferir o que muda")' in stepper_source
+    assert '("Organizar", "Ajustar o formulário")' in stepper_source
+    assert '("Concluir", "Revisar e criar")' in stepper_source
+
+
+def test_guided_creation_does_not_expose_global_widget_background_as_row_bars() -> None:
+    editor_source = (
+        ROOT / "app/ui/template_manager/template_editor_dialog.py"
+    ).read_text(encoding="utf-8")
+    light_style = (ROOT / "app/ui/styles/light.qss").read_text(encoding="utf-8")
+    dark_style = (ROOT / "app/ui/styles/dark.qss").read_text(encoding="utf-8")
+
+    assert "templateCreationFieldWrapper" in editor_source
+    assert "self.top_widget.setMinimumHeight(0)" in editor_source
+    assert "QWidget#templateCreationFieldWrapper" in light_style
+    assert "QWidget#templateCreationFieldWrapper" in dark_style
+    assert "QGroupBox#templateCreationGeneralGroup" in light_style
+    assert "QGroupBox#templateCreationGeneralGroup" in dark_style
+    # The guided form must not absorb spare viewport height into individual
+    # rows. These policies keep the document/name wrappers at their natural
+    # height and anchor the page content to the top.
+    assert "QSizePolicy.Policy.Maximum" in editor_source
+    assert "QSizePolicy.Policy.Fixed" in editor_source
+    assert "form.setFormAlignment(" in editor_source
+    assert "content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)" in editor_source
+
+
+def test_creation_flow_does_not_scan_just_because_a_file_was_selected() -> None:
+    source = (
+        ROOT / "app/ui/template_manager/template_editor_dialog.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'if self._creation_flow:' in source
+    assert 'self._creation_has_scanned = False' in source
+    assert 'self._creation_pending_advance = True' in source
+    assert 'self._start_field_localization()' in source
+    assert 'self.creation_next_button.setText(\'Analisando…\')' in source
+
+
+def test_field_review_defaults_to_user_language_and_hides_technical_columns() -> None:
+    source = (
+        ROOT / "app/ui/dialogs/automatic_detection_dialog.py"
+    ).read_text(encoding="utf-8")
+
+    assert '"Confira o que o Padroniza encontrou"' in source
+    assert '"✓ Identificado"' in source
+    assert '"⚠ Confira"' in source
+    assert '"? Possível campo"' in source
+    assert 'self.table.setColumnHidden(2, True)' in source
+    assert 'self.table.setColumnHidden(3, True)' in source
+    assert '"Detalhes técnicos"' in source
+
+
+def test_models_page_embeds_full_library_manager() -> None:
+    """Model management belongs to the main Modelos page, not a second browser window."""
+
+    main_source = (ROOT / "app/ui/main_window.py").read_text(encoding="utf-8")
+    manager_source = (
+        ROOT / "app/ui/template_manager/template_manager_dialog.py"
+    ).read_text(encoding="utf-8")
+    mixin_source = (ROOT / "app/ui/mixins/templates.py").read_text(encoding="utf-8")
+
+    assert "self.template_manager_panel = TemplateManagerDialog(" in main_source
+    assert "embedded=True" in main_source
+    assert "template_use_requested.connect" in main_source
+    assert "library_changed.connect" in main_source
+    assert "self._navigate_to_target(\"templates\")" in mixin_source
+    assert "if self.embedded:" in manager_source
+    assert "'Usar no Gerar'" in manager_source

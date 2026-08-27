@@ -1540,3 +1540,128 @@ QToolButton#fieldCorrectionButton:hover {
     background: transparent;
     border: none;
 }
+
+/* Guided template creation ------------------------------------------------- */
+/* Guided creation layout wrappers must remain visually neutral.
+   QWidget has a global surface color, so plain helper widgets need an
+   explicit transparent background or they appear as wide grey bars. */
+QWidget#templateEditorTop,
+QWidget#templateCreationFieldWrapper {
+    background: transparent;
+    border: none;
+}
+
+QGroupBox#templateCreationGeneralGroup {
+    background-color: transparent;
+    border: none;
+    margin-top: 0px;
+    padding-top: 0px;
+}
+
+QGroupBox#templateCreationGeneralGroup::title {
+    color: transparent;
+    background: transparent;
+    padding: 0px;
+}
+
+QFrame#templateCreationHeader {
+    background-color: #ffffff;
+    border: 1px solid #d4dce5;
+    border-radius: 10px;
+}
+
+QLabel#templateCreationTitle {
+    color: #162433;
+    font-size: 16pt;
+    font-weight: 750;
+    background: transparent;
+}
+
+QLabel#templateCreationDescription {
+    color: #536577;
+    font-size: 10.5pt;
+    background: transparent;
+}
+
+QLabel#templateCreationSummary {
+    color: #0d5cab;
+    font-size: 9.5pt;
+    font-weight: 650;
+    background: transparent;
+}
+
+QFrame#templateCreationStepper {
+    background: transparent;
+    border: none;
+}
+
+QFrame#templateCreationStep {
+    background-color: #f6f8fa;
+    border: 1px solid #d8e0e8;
+    border-radius: 9px;
+}
+
+QFrame#templateCreationStep[stepState="current"] {
+    background-color: #eef6ff;
+    border: 1px solid #7db3ea;
+}
+
+QFrame#templateCreationStep[stepState="done"] {
+    background-color: #f1faf4;
+    border: 1px solid #a8d5b6;
+}
+
+QLabel#templateCreationStepNumber {
+    color: #5a6b7c;
+    background-color: #e7ebef;
+    border-radius: 14px;
+    font-weight: 750;
+}
+
+QFrame#templateCreationStep[stepState="current"] QLabel#templateCreationStepNumber {
+    color: #ffffff;
+    background-color: #0969da;
+}
+
+QFrame#templateCreationStep[stepState="done"] QLabel#templateCreationStepNumber {
+    color: #ffffff;
+    background-color: #2f8a50;
+}
+
+QLabel#templateCreationStepTitle {
+    color: #273747;
+    font-weight: 700;
+    background: transparent;
+}
+
+QLabel#templateCreationStepSubtitle {
+    color: #718194;
+    font-size: 8.5pt;
+    background: transparent;
+}
+
+QFrame#templateCreationStep[stepState="current"] QLabel#templateCreationStepTitle {
+    color: #0a579f;
+}
+
+QFrame#templateCreationStep[stepState="done"] QLabel#templateCreationStepTitle {
+    color: #286b3d;
+}
+
+/* Field review ------------------------------------------------------------- */
+QLabel#detectionSummary {
+    background-color: #eef6ff;
+    color: #1d4f7c;
+    border: 1px solid #bfd7ef;
+    border-radius: 7px;
+    padding: 8px 10px;
+    font-weight: 650;
+}
+
+QLabel#sourceContextPreview {
+    background-color: #fbfcfd;
+    color: #2c3d4d;
+    border: 1px solid #d7dfe8;
+    border-radius: 7px;
+    padding: 10px 12px;
+}

@@ -210,10 +210,36 @@ def test_dialog_and_widget_constructor_matrix(
     detection_dialog.table.selectRow(0)
     detection_dialog._update_details()
     assert "Nome" in detection_dialog.details_text.toPlainText()
+    assert detection_dialog.table.isColumnHidden(2) is True
+    assert detection_dialog.table.isColumnHidden(3) is True
+    detection_dialog.technical_details_button.setChecked(True)
+    assert detection_dialog.table.isColumnHidden(2) is False
+    assert detection_dialog.table.isColumnHidden(3) is False
 
     # Exercise live template-field validation/status without touching a real
     # document. This catches broken table-column assumptions and filter wiring.
     editor = next(widget for widget in widgets if isinstance(widget, TemplateEditorDialog))
+    # New-model creation is intentionally guided instead of exposing the full
+    # technical editor at once. Existing-model editing keeps the advanced tabs.
+    assert editor._creation_flow is True
+    assert editor._creation_step == 0
+    assert editor.fields_group.isHidden() is True
+    assert editor.output_group.isHidden() is True
+    editor._set_creation_step(1)
+    assert editor.fields_group.isHidden() is False
+    assert editor.fields_tabs.currentIndex() == 0
+    assert editor.fields_tabs.tabBar().isHidden() is True
+    assert editor.fields_table.isColumnHidden(0) is True
+    editor.creation_advanced_button.setChecked(True)
+    assert editor.simple_fields_checkbox.isHidden() is False
+    editor.simple_fields_checkbox.setChecked(True)
+    assert editor.fields_table.isColumnHidden(0) is False
+    editor._set_creation_step(3)
+    assert editor.fields_tabs.currentIndex() == 2
+    assert editor.output_group.isHidden() is False
+    editor.creation_advanced_button.setChecked(False)
+    assert editor.output_group.isHidden() is True
+
     editor._load_fields_into_table(
         [
             {"id": "cliente.nome", "label": "Nome", "type": "text"},

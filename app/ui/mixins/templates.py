@@ -6,7 +6,6 @@ from PySide6.QtWidgets import QDialog, QTableWidgetItem
 from app.domain.field_metadata import uses_assisted_detection
 from app.services.templates import TemplatePackage, discover_templates_with_issues
 from app.ui.template_manager.template_editor_dialog import TemplateEditorDialog
-from app.ui.template_manager.template_manager_dialog import TemplateManagerDialog
 from app.ui.widgets.toast import show_toast
 
 class TemplateActionsMixin:
@@ -89,7 +88,7 @@ class TemplateActionsMixin:
             self.template_header.set_template(
                 name='Nenhum modelo instalado',
                 version="—",
-                description='Use Gerenciar modelos para importar ou criar um modelo.',
+                description='Abra Modelos para importar ou criar um modelo.',
                 category="",
             )
             self._pending_draft = None
@@ -145,47 +144,28 @@ class TemplateActionsMixin:
         )
 
     def _refresh_template_overview(self) -> None:
-        table = self.template_overview_table
-        table.setRowCount(0)
-        for package in self.templates:
-            row = table.rowCount()
-            table.insertRow(row)
-            values = [package.name, package.category, package.version, str(len(package.fields)), str(package.source_path)]
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                item.setToolTip(value)
-                if column == 0:
-                    item.setData(
-                        Qt.ItemDataRole.UserRole,
-                        package.template_id,
-                    )
-                table.setItem(row, column, item)
-        has_templates = bool(self.templates)
-        self.templates_empty_state.setVisible(not has_templates)
-        self.template_overview_table.setVisible(has_templates)
-        if has_templates:
-            self.template_overview_table.selectRow(0)
-
-    def _open_template_from_overview(
-        self,
-        item: QTableWidgetItem,
-    ) -> None:
-        template_item = self.template_overview_table.item(
-            item.row(),
-            0,
-        )
-        template_id = (
-            template_item.data(Qt.ItemDataRole.UserRole)
-            if template_item is not None
+        panel = getattr(self, "template_manager_panel", None)
+        if panel is None:
+            return
+        selected_id = (
+            self._selected_template().template_id
+            if self._selected_template() is not None
             else None
         )
-        if template_id and self._select_template_by_id(str(template_id)):
+        panel._reload(selected_id)
+
+    def _use_template_from_library(self, template_id: str) -> None:
+        if self._select_template_by_id(str(template_id)):
             self._navigate_to_target("generate")
 
     def _open_template_manager(self) -> None:
-        dialog = TemplateManagerDialog(self.templates_dir, self.favorite_store, self)
-        dialog.exec()
-        self._load_templates()
+        # Model management now lives directly on the Modelos page.  Keep this
+        # compatibility action for menus, empty states and global commands.
+        self._navigate_to_target("templates")
+        panel = getattr(self, "template_manager_panel", None)
+        if panel is not None:
+            panel._reload()
+            panel.search_input.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _edit_active_template_field(self, field_id: str) -> None:
         self._edit_active_template(field_id)

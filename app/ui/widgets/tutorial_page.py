@@ -730,7 +730,7 @@ class TutorialPage(QWidget):
 
         layout.addWidget(
             self._guide_group(
-                'Gerenciador de Modelos',
+                'Biblioteca de Modelos',
                 'Um pacote de modelo contém um DOCX de origem e a configuração de seus campos.',
                 [
                     ('Novo modelo', 'Cria um novo pacote de modelo.'),

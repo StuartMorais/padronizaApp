@@ -52,7 +52,7 @@ class NavigationMixin:
     def _global_search_records(self) -> list[dict[str, Any]]:
         records: list[dict[str, Any]] = [
             {"kind": "Comando", "name": 'Criar documento', "details": "Abrir a página Gerar", "action": "generate"},
-            {"kind": "Comando", "name": 'Gerenciar modelos', "details": "Abrir a biblioteca de modelos", "action": "templates"},
+            {"kind": "Comando", "name": 'Gerenciar modelos', "details": "Ir para a biblioteca de modelos", "action": "templates"},
             {"kind": "Comando", "name": 'Converter arquivos', "details": "Abrir a conversão de DOCX e PDF", "action": "converter"},
             {"kind": "Comando", "name": 'Configurações do aplicativo', "details": "Abrir as configurações", "action": "settings"},
             {"kind": "Comando", "name": 'Tutorial', "details": "Abrir o tutorial do aplicativo", "action": "tutorial"},

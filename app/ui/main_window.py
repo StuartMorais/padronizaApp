@@ -39,6 +39,7 @@ from app.ui.mixins.profiles import ProfileDraftMixin
 from app.ui.mixins.recent import RecentArchiveMixin
 from app.ui.mixins.settings import SettingsMixin
 from app.ui.mixins.templates import TemplateActionsMixin
+from app.ui.template_manager.template_manager_dialog import TemplateManagerDialog
 from app.ui.widgets.context_help import HelpIconButton, HelpLabel
 from app.ui.widgets.document_form import DocumentForm
 from app.ui.widgets.empty_state import EmptyState
@@ -854,61 +855,27 @@ class MainWindow(
     def _create_templates_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
-        row = QHBoxLayout()
-        heading = QLabel('Modelos')
-        heading.setObjectName("pageTitle")
-        row.addWidget(heading)
-        row.addWidget(
-            HelpIconButton(
-                'Biblioteca de modelos',
-                (
-                    '<p>Clique duas vezes em um modelo para selecioná-lo e '
-                    'abri-lo diretamente na página <b>Gerar</b>.</p>'
-                    '<p>Use o Gerenciador para criar, editar, importar, exportar, '
-                    'diagnosticar, arquivar ou excluir modelos.</p>'
-                ),
-            )
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # The model library is the single management hub.  It is the same
+        # library UI that used to live in a separate modal dialog, embedded
+        # directly in the main Modelos page.  Creation/editing still opens the
+        # dedicated TemplateEditorDialog because those are focused authoring
+        # tasks rather than library navigation.
+        self.template_manager_panel = TemplateManagerDialog(
+            self.templates_dir,
+            self.favorite_store,
+            page,
+            embedded=True,
         )
-        row.addStretch()
-        manage = QPushButton('Abrir Gerenciador de Modelos')
-        manage.setObjectName("primaryButton")
-        manage.clicked.connect(self._open_template_manager)
-        row.addWidget(manage)
-        self.template_overview_table = self._make_table(
-            ['Nome', 'Categoria', 'Versão', 'Campos', 'DOCX de origem'],
-            [300, 180, 90, 90, 420],
+        self.template_manager_panel.library_changed.connect(
+            self._load_templates
         )
-        self.template_overview_table.itemDoubleClicked.connect(
-            self._open_template_from_overview
+        self.template_manager_panel.template_use_requested.connect(
+            self._use_template_from_library
         )
-        layout.addLayout(row)
-        layout.addWidget(
-            QLabel(
-                'Clique duas vezes em um modelo para usá-lo na página Gerar. '
-                'Use o Gerenciador de Modelos para editar, importar ou diagnosticar modelos.'
-            )
-        )
-        self.templates_empty_state = EmptyState(
-            'Sua biblioteca de modelos está vazia',
-            (
-                'Importe um DOCX existente ou crie um modelo para começar. '
-                'O Padroniza analisará os marcadores e ajudará a configurar os campos.'
-            ),
-            icon='▦',
-        )
-        self.templates_empty_state.add_action(
-            'Criar ou importar modelo',
-            self._open_template_manager,
-            primary=True,
-        )
-        self.templates_empty_state.add_action(
-            'Aprender sobre modelos',
-            self._show_tutorial_page,
-        )
-        layout.addWidget(self.templates_empty_state, 1)
-        layout.addWidget(self.template_overview_table, 1)
+        layout.addWidget(self.template_manager_panel, 1)
         return page
 
     def _create_recent_page(self) -> QWidget:
@@ -1042,7 +1009,7 @@ class MainWindow(
                     '<p>Arquivar remove o modelo da biblioteca ativa sem apagar seus '
                     'arquivos.</p>'
                     '<p>Use <b>Restaurar modelo selecionado</b> para devolvê-lo à '
-                    'biblioteca. A exclusão permanente é feita no Gerenciador de Modelos.</p>'
+                    'biblioteca. A exclusão permanente está disponível na página <b>Modelos</b>.</p>'
                 ),
             )
         )
@@ -1060,7 +1027,7 @@ class MainWindow(
             icon='▣',
         )
         self.archive_empty_state.add_action(
-            'Abrir Gerenciador de Modelos',
+            'Ir para Modelos',
             self._open_template_manager,
             primary=True,
         )

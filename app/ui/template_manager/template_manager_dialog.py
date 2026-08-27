@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -42,21 +42,31 @@ from app.repositories.templates import (
 
 
 class TemplateManagerDialog(QDialog):
+    library_changed = Signal()
+    template_use_requested = Signal(str)
+
     def __init__(
         self,
         templates_dir: Path,
         favorite_store: FavoriteStore | None = None,
         parent=None,
+        *,
+        embedded: bool = False,
     ) -> None:
         super().__init__(parent)
         self.repository = TemplateRepository(templates_dir)
+        self.embedded = bool(embedded)
         self.favorite_store = favorite_store or FavoriteStore()
         self.project_root = Path(templates_dir).parent
         self.settings = QSettings(ORGANIZATION, APPLICATION)
 
-        self.setWindowTitle('Gerenciar modelos')
-        self.resize(1380, 720)
-        self.setMinimumSize(1120, 600)
+        if self.embedded:
+            self.setWindowFlags(Qt.WindowType.Widget)
+            self.setObjectName('templateLibraryPanel')
+        else:
+            self.setWindowTitle('Gerenciar modelos')
+            self.resize(1380, 720)
+            self.setMinimumSize(1120, 600)
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText('Pesquisar modelos...')
@@ -126,6 +136,9 @@ class TemplateManagerDialog(QDialog):
         self.edit_button = QPushButton(
             'Editar'
         )
+        self.use_button = QPushButton(
+            'Usar no Gerar'
+        )
         self.duplicate_button = QPushButton(
             'Duplicar'
         )
@@ -141,6 +154,9 @@ class TemplateManagerDialog(QDialog):
         )
         self.edit_button.clicked.connect(
             self._edit_selected
+        )
+        self.use_button.clicked.connect(
+            self._use_selected
         )
         self.duplicate_button.clicked.connect(
             self._duplicate_selected
@@ -290,6 +306,9 @@ class TemplateManagerDialog(QDialog):
             self.edit_button
         )
         actions.addWidget(
+            self.use_button
+        )
+        actions.addWidget(
             self.duplicate_button
         )
         actions.addWidget(
@@ -339,12 +358,14 @@ class TemplateManagerDialog(QDialog):
             primary=True,
         )
 
-        close_buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Close
-        )
-        close_buttons.rejected.connect(
-            self.reject
-        )
+        close_buttons = None
+        if not self.embedded:
+            close_buttons = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Close
+            )
+            close_buttons.rejected.connect(
+                self.reject
+            )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(
@@ -372,9 +393,8 @@ class TemplateManagerDialog(QDialog):
         layout.addLayout(
             actions
         )
-        layout.addWidget(
-            close_buttons
-        )
+        if close_buttons is not None:
+            layout.addWidget(close_buttons)
 
         self._reload()
         # The search field is the natural starting point when this dialog opens.
@@ -509,6 +529,9 @@ class TemplateManagerDialog(QDialog):
         self.edit_button.setEnabled(
             selected
         )
+        self.use_button.setEnabled(
+            selected
+        )
         self.duplicate_button.setEnabled(
             selected
         )
@@ -540,10 +563,19 @@ class TemplateManagerDialog(QDialog):
             else 'Adicionar aos favoritos'
         )
 
+    def _use_selected(self) -> None:
+        template_id = self._selected_template_id()
+        if template_id:
+            self.template_use_requested.emit(template_id)
+
+    def _notify_library_changed(self) -> None:
+        self.library_changed.emit()
+
     def _create_template(self) -> None:
         dialog = TemplateEditorDialog(self.repository, parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._reload(dialog.saved_template_id)
+            self._notify_library_changed()
             show_toast(
                 self,
                 'Modelo criado',
@@ -557,6 +589,7 @@ class TemplateManagerDialog(QDialog):
         dialog = TemplateEditorDialog(self.repository, template_id, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._reload(template_id)
+            self._notify_library_changed()
             show_toast(
                 self,
                 'Modelo atualizado',
@@ -624,6 +657,7 @@ class TemplateManagerDialog(QDialog):
             )
             return
         self._reload(new_id)
+        self._notify_library_changed()
         show_toast(
             self,
             'Modelo duplicado',
@@ -636,6 +670,7 @@ class TemplateManagerDialog(QDialog):
             name = self._selected_name()
             favorite = self.favorite_store.toggle(template_id)
             self._reload(template_id)
+            self._notify_library_changed()
             show_toast(
                 self,
                 'Favoritos atualizados',
@@ -714,6 +749,7 @@ class TemplateManagerDialog(QDialog):
                 return
 
         self._reload(template_id)
+        self._notify_library_changed()
         show_toast(
             self,
             'Modelo importado',
@@ -838,6 +874,7 @@ class TemplateManagerDialog(QDialog):
         dialog.exec()
         if dialog.restored:
             self._reload(template_id)
+            self._notify_library_changed()
             show_toast(
                 self,
                 'Versão restaurada',
@@ -899,6 +936,7 @@ class TemplateManagerDialog(QDialog):
             return
         archived_name = self._selected_name() or template_id
         self._reload()
+        self._notify_library_changed()
         show_toast(
             self,
             'Modelo arquivado',
@@ -935,6 +973,7 @@ class TemplateManagerDialog(QDialog):
             )
             return
         self._reload()
+        self._notify_library_changed()
         show_toast(
             self,
             'Modelo excluído',
@@ -976,6 +1015,7 @@ class TemplateManagerDialog(QDialog):
         actions = [
             ('Remover dos favoritos' if favorite else 'Adicionar aos favoritos', self._toggle_favorite),
             ('Editar', self._edit_selected),
+            ('Usar no Gerar', self._use_selected),
             ('Duplicar', self._duplicate_selected),
             ("Diagnóstico", self._diagnose_selected),
             ('Histórico de versões', self._show_versions),

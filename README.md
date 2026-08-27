@@ -15,17 +15,19 @@ The source tree is organized by responsibility:
 - `assets/`, `docs/`, `examples/` — runtime resources and examples.
 - `tests/` — automated regression tests.
 
-See `docs/ARCHITECTURE.md` for dependency rules and the document pipeline; `docs/SCANNER_V6_SEMANTIC_2026-08.md` for the current local semantic/dynamic-region architecture; `docs/SCANNER_V5_2026-08.md` and `docs/SCANNER_V4_2026-08.md` for the review-first and structure-first foundations; `docs/STRUCTURAL_TABLE_INTELLIGENCE_2026-08.md` for Word-table preservation; and `docs/DOCM_AND_RELEASE_2026-08.md` for macro-safe DOCM ingestion and automatic GitHub Releases.
+See `docs/ARCHITECTURE.md` for dependency rules and the document pipeline; `docs/UI_UX_GUIDED_CREATION_2026-08.md` for the guided Novo Modelo/review UX; `docs/SCANNER_V6_SEMANTIC_2026-08.md` for the current local semantic/dynamic-region architecture; `docs/SCANNER_V5_2026-08.md` and `docs/SCANNER_V4_2026-08.md` for the review-first and structure-first foundations; `docs/STRUCTURAL_TABLE_INTELLIGENCE_2026-08.md` for Word-table preservation; and `docs/DOCM_AND_RELEASE_2026-08.md` for macro-safe DOCM ingestion and automatic GitHub Releases.
 
 For continuity across development sessions or a new ChatGPT conversation, read **`PROJECT_CONTEXT.md`** first. It records the current architecture, quality baseline, important regressions, known limitations, and handoff instructions.
 
 
 ## Template authoring and assisted detection
 
+- **Novo Modelo is guided:** `Documento → Campos → Organizar → Concluir`. Selecting a source prepares it safely; the user starts the complete scanner with one `Analisar documento` action. Technical IDs, profile/visibility/layout rules, diagnostics, tag tools, output patterns, and numbering stay hidden unless `Opções avançadas` is enabled. Existing-model editing retains the full advanced editor.
 - Scanner V6 keeps Scanner V5/V4 structural authority and adds a local semantic layer for inline values, dynamic paragraphs, repeatable lists, and learned template-family mappings. Fresh semantic discoveries are review-only; accepted tags must still pass a strict detect → apply → re-scan round trip before publication.
-- The template editor exposes one primary `Localizar campos` action. `app/services/template_scanning.py` orchestrates deterministic tags/native controls plus untagged candidates, while the internal detector stages remain separate and independently testable.
-- Assisted detection exposes multidimensional confidence plus `ready` / `recommended` / `required` review priority and evidence.
-- The detection review dialog supports search plus confidence, review-priority, and type filters.
+- Existing-template editing exposes one primary `Localizar campos` action. `app/services/template_scanning.py` orchestrates deterministic tags/native controls plus untagged candidates, while the internal detector stages remain separate and independently testable.
+- Candidate review defaults to `Identificado` / `Confira` / `Possível campo`; source context stays visible while internal origin/IDs/confidence details are opt-in.
+- Assisted detection preserves multidimensional confidence plus `ready` / `recommended` / `required` evidence internally, while the normal review UI translates that into `Identificado` / `Confira` / `Possível campo`.
+- The detection review dialog defaults to search, review-state, and type filters; technical confidence/origin/IDs are available on demand.
 - Template fields receive live `OK` / `Erro` / `Revisar` status with type/status filtering.
 - The preview tab can fill deterministic sample values and generate an atomically-published test DOCX after preflight.
 - Expensive DOCX assisted detection is cached and runs off the UI thread with cooperative cancellation.
@@ -94,3 +96,8 @@ This runs compilation, dead-module detection, Ruff, Pyright, pytest with coverag
 ### Generated form layout
 
 Generated form fields share a reusable visual container. Labels, assisted-detection actions, input controls, hints and validation messages remain attached to the same field, and searchable dropdowns expand with their field column. This prevents correction actions and compact editors from appearing visually detached on wide windows.
+
+
+## Interface de modelos
+
+A página **Modelos** é a central única da biblioteca: pesquisa, favoritos, duplicação, importação/exportação, diagnóstico, histórico de versões, arquivamento e exclusão ficam na própria janela principal. **Novo modelo** e **Editar** abrem somente o editor dedicado; **Usar no Gerar** seleciona o modelo e leva ao formulário.

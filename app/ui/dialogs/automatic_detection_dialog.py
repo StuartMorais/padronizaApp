@@ -66,7 +66,7 @@ class AutomaticDetectionDialog(QDialog):
         self._candidates = [deepcopy(item) for item in candidates]
         self._scan_report = dict(scan_report or {})
         self._known_field_count = max(0, int(known_field_count or 0))
-        self.setWindowTitle("Revisar campos encontrados")
+        self.setWindowTitle("Confira os campos encontrados")
         self.resize(1180, 720)
         self.setMinimumSize(820, 520)
 
@@ -74,7 +74,7 @@ class AutomaticDetectionDialog(QDialog):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(10)
 
-        title = QLabel("Revise os campos adicionais encontrados")
+        title = QLabel("Confira o que o Padroniza encontrou")
         title.setObjectName("dialogTitle")
         root.addWidget(title)
 
@@ -85,41 +85,43 @@ class AutomaticDetectionDialog(QDialog):
         )
         description = QLabel(
             known_prefix
-            + "Abaixo estão áreas adicionais encontradas por estrutura, texto, posição, tabelas e "
-            "consistência visual. Sugestões fortes podem vir marcadas; interpretações ambíguas ficam "
-            "desmarcadas para confirmação. Somente as opções marcadas serão inseridas no DOCX."
+            + "Confira principalmente os itens marcados como ‘Confira’ ou ‘Possível campo’. "
+            "Os itens já marcados serão usados; os desmarcados permanecem como texto fixo."
         )
         description.setWordWrap(True)
         root.addWidget(description)
 
         self.summary_label = QLabel()
+        self.summary_label.setObjectName("detectionSummary")
         self.summary_label.setWordWrap(True)
         root.addWidget(self.summary_label)
 
         self.structure_summary_label = QLabel(self._format_structure_summary())
         self.structure_summary_label.setWordWrap(True)
         self.structure_summary_label.setObjectName("mutedText")
+        self.structure_summary_label.hide()
         root.addWidget(self.structure_summary_label)
 
         filters = QHBoxLayout()
         filters.setSpacing(7)
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Pesquisar por ID, rótulo, origem ou trecho…")
+        self.search_input.setPlaceholderText("Pesquisar campos ou trechos…")
         self.search_input.setClearButtonEnabled(True)
         filters.addWidget(self.search_input, 1)
 
         self.confidence_filter = QComboBox()
-        self.confidence_filter.addItem("Todas as confianças", "all")
-        self.confidence_filter.addItem("Alta confiança", "high")
-        self.confidence_filter.addItem("Média confiança", "medium")
-        self.confidence_filter.addItem("Baixa confiança", "low")
+        self.confidence_filter.addItem("Todos os níveis", "all")
+        self.confidence_filter.addItem("Identificados", "high")
+        self.confidence_filter.addItem("Confira", "medium")
+        self.confidence_filter.addItem("Possíveis campos", "low")
+        self.confidence_filter.hide()
         filters.addWidget(self.confidence_filter)
 
         self.review_filter = QComboBox()
-        self.review_filter.addItem("Todos os estados", "all")
-        self.review_filter.addItem("Prontas para aplicar", "ready")
-        self.review_filter.addItem("Revisão recomendada", "recommended")
-        self.review_filter.addItem("Revisão necessária", "required")
+        self.review_filter.addItem("Todos", "all")
+        self.review_filter.addItem("Prontos", "ready")
+        self.review_filter.addItem("Vale conferir", "recommended")
+        self.review_filter.addItem("Precisa de decisão", "required")
         filters.addWidget(self.review_filter)
 
         self.type_filter = QComboBox()
@@ -131,18 +133,23 @@ class AutomaticDetectionDialog(QDialog):
             )
         self.type_filter.addItem("Grupo de caixas", "checkbox_group")
         filters.addWidget(self.type_filter)
+
+        self.technical_details_button = QPushButton("Detalhes técnicos")
+        self.technical_details_button.setCheckable(True)
+        self.technical_details_button.toggled.connect(self._toggle_technical_details)
+        filters.addWidget(self.technical_details_button)
         root.addLayout(filters)
 
         self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(
             [
                 "Usar",
-                "Confiança",
+                "Status",
                 "Origem",
-                "ID do campo",
-                "Rótulo",
+                "ID técnico",
+                "Campo",
                 "Tipo",
-                "Trecho encontrado",
+                "Trecho no documento",
             ]
         )
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -164,7 +171,9 @@ class AutomaticDetectionDialog(QDialog):
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
         self.table.setColumnWidth(3, 235)
-        self.table.setColumnWidth(4, 260)
+        self.table.setColumnWidth(4, 300)
+        self.table.setColumnHidden(2, True)
+        self.table.setColumnHidden(3, True)
         root.addWidget(self.table, 1)
 
         context_title = QLabel("Onde isso aparece no documento?")
@@ -178,31 +187,31 @@ class AutomaticDetectionDialog(QDialog):
         self.source_context_label.setMaximumHeight(110)
         root.addWidget(self.source_context_label)
 
-        details_title = QLabel("Por que esta sugestão foi criada?")
+        details_title = QLabel("Por que o Padroniza sugeriu isso?")
         details_title.setObjectName("mutedText")
         root.addWidget(details_title)
         self.details_text = QPlainTextEdit()
         self.details_text.setReadOnly(True)
         self.details_text.setMaximumHeight(118)
         self.details_text.setPlaceholderText(
-            "Selecione uma sugestão para ver confiança, contexto e motivos de revisão."
+            "Selecione um campo para ver os sinais encontrados e os motivos para conferir."
         )
         root.addWidget(self.details_text)
 
         tools = QHBoxLayout()
-        self.high_confidence_button = QPushButton("Marcar recomendadas")
+        self.high_confidence_button = QPushButton("Usar recomendados")
         self.high_confidence_button.clicked.connect(self._select_high_confidence)
         tools.addWidget(self.high_confidence_button)
 
-        self.select_visible_button = QPushButton("Marcar visíveis")
+        self.select_visible_button = QPushButton("Usar exibidos")
         self.select_visible_button.clicked.connect(self._select_visible)
         tools.addWidget(self.select_visible_button)
 
-        self.clear_button = QPushButton("Desmarcar todas")
+        self.clear_button = QPushButton("Não usar nenhum")
         self.clear_button.clicked.connect(self._clear_selection)
         tools.addWidget(self.clear_button)
 
-        self.edit_button = QPushButton("Editar sugestão...")
+        self.edit_button = QPushButton("Editar campo...")
         self.edit_button.clicked.connect(self._edit_selected)
         tools.addWidget(self.edit_button)
         tools.addStretch()
@@ -213,13 +222,19 @@ class AutomaticDetectionDialog(QDialog):
             | QDialogButtonBox.StandardButton.Cancel
         )
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setText(
-            "Aplicar sugestões marcadas"
+            "Usar campos marcados"
         )
         self.buttons.accepted.connect(self._accept_checked)
         self.buttons.rejected.connect(self.reject)
         root.addWidget(self.buttons)
 
         self._load_rows()
+
+    def _toggle_technical_details(self, enabled: bool) -> None:
+        self.table.setColumnHidden(2, not enabled)
+        self.table.setColumnHidden(3, not enabled)
+        self.confidence_filter.setVisible(bool(enabled))
+        self.structure_summary_label.setVisible(bool(enabled) and bool(self.structure_summary_label.text()))
 
     def reviewed_candidates(self) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
@@ -278,13 +293,13 @@ class AutomaticDetectionDialog(QDialog):
 
             confidence_value = float(candidate.get("confidence", 0.0))
             confidence = int(round(confidence_value * 100))
-            band = str(candidate.get("confidence_band", "")) or confidence_band(confidence_value)
-            band_label = {"high": "Alta", "medium": "Média", "low": "Baixa"}.get(band, "")
-            confidence_item = QTableWidgetItem(f"{band_label} {confidence}%".strip())
+            confidence_item = QTableWidgetItem(self._candidate_status_label(candidate))
             confidence_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             explanation = candidate_explanation(candidate)
+            tooltip = f"Confiança técnica: {confidence}%"
             if explanation:
-                confidence_item.setToolTip(explanation)
+                tooltip += "\n" + explanation
+            confidence_item.setToolTip(tooltip)
             self.table.setItem(row, 1, confidence_item)
 
             self.table.setItem(
@@ -325,6 +340,9 @@ class AutomaticDetectionDialog(QDialog):
         self.table.item(row, 5).setText(
             self._candidate_type_label(candidate)
         )
+        status_item = self.table.item(row, 1)
+        if status_item is not None:
+            status_item.setText(self._candidate_status_label(candidate))
         use_item = self.table.item(row, 0)
         if candidate.get("requires_configuration"):
             use_item.setCheckState(Qt.CheckState.Unchecked)
@@ -345,6 +363,15 @@ class AutomaticDetectionDialog(QDialog):
         self._update_summary()
         self._update_details()
 
+    @classmethod
+    def _candidate_status_label(cls, candidate: dict[str, Any]) -> str:
+        priority = str(candidate.get("review_priority", "")) or cls._review_priority(candidate)
+        return {
+            "ready": "✓ Identificado",
+            "recommended": "⚠ Confira",
+            "required": "? Possível campo",
+        }.get(priority, "Confira")
+
     def _candidate_type_label(self, candidate: dict[str, Any]) -> str:
         field_type = str(candidate.get("type", "text"))
         if field_type == "checkbox_group":
@@ -354,39 +381,33 @@ class AutomaticDetectionDialog(QDialog):
         return self.TYPE_LABELS.get(field_type, field_type)
 
     def _update_summary(self) -> None:
-        bands = {"high": 0, "medium": 0, "low": 0}
         priorities = {"ready": 0, "recommended": 0, "required": 0}
         checked = 0
-        auto_eligible = 0
         visible = 0
         for row, item in enumerate(self._candidates):
-            band = str(item.get("confidence_band", "")) or confidence_band(float(item.get("confidence", 0.0)))
-            if band in bands:
-                bands[band] += 1
             priority = str(item.get("review_priority", "")) or self._review_priority(item)
             if priority in priorities:
                 priorities[priority] += 1
-            if item.get("auto_apply_eligible") is True:
-                auto_eligible += 1
             use_item = self.table.item(row, 0)
             if use_item is not None and use_item.checkState() == Qt.CheckState.Checked:
                 checked += 1
             if row < self.table.rowCount() and not self.table.isRowHidden(row):
                 visible += 1
-        prefix = (
-            f"{self._known_field_count} campo(s) já reconhecido(s). "
-            if self._known_field_count
-            else ""
+        parts = []
+        if self._known_field_count:
+            parts.append(f"{self._known_field_count} já reconhecido(s)")
+        parts.extend(
+            [
+                f"{len(self._candidates)} campo(s) adicional(is)",
+                f"{priorities['ready']} identificado(s)",
+                f"{priorities['recommended']} para conferir",
+                f"{priorities['required']} precisam de decisão",
+                f"{checked} selecionado(s)",
+            ]
         )
-        text = (
-            prefix
-            + f"{len(self._candidates)} sugestão(ões) adicional(is): "
-            f"{bands['high']} alta, {bands['medium']} média e {bands['low']} baixa confiança. "
-            f"{priorities['required']} exigem revisão e {priorities['recommended']} recomendam revisão. "
-            f"{auto_eligible} passaram pela política de pré-aplicação. "
-            f"Exibindo {visible}; {checked} marcada(s) para aplicar."
-        )
-        self.summary_label.setText(text)
+        if visible != len(self._candidates):
+            parts.append(f"{visible} exibido(s)")
+        self.summary_label.setText("  •  ".join(parts))
 
     def _apply_filters(self, *_args) -> None:
         query = self.search_input.text().strip().casefold() if hasattr(self, "search_input") else ""

@@ -88,6 +88,7 @@ from app.ui.widgets.document_form import DocumentForm
 from app.ui.widgets.field_layout_editor import FieldLayoutEditor
 from app.ui.widgets.repeatable_table import FieldConfigurationEditor
 from app.ui.widgets.template_section_card import TemplateSectionCard
+from app.ui.widgets.creation_stepper import CreationStepper
 
 
 class _TemplateFileDropZone(ClickableDropZone):
@@ -135,7 +136,7 @@ class _TemplateFileDropZone(ClickableDropZone):
         )
 
         self.subtitle_label = QLabel(
-            'DOCX ou PDF'
+            'DOCX, DOCM ou PDF'
         )
         self.subtitle_label.setObjectName(
             "templateDocxDropText"
@@ -259,6 +260,11 @@ class TemplateEditorDialog(QDialog):
         super().__init__(parent)
         self.repository = repository
         self.template_id = template_id
+        self._creation_flow = template_id is None
+        self._creation_step = 0
+        self._creation_pending_advance = False
+        self._creation_has_scanned = False
+        self._creation_advanced = False
         self.saved_template_id: str | None = template_id
         self.selected_docx: Path | None = None
         self.selected_input_file: Path | None = None
@@ -333,6 +339,14 @@ class TemplateEditorDialog(QDialog):
         self.browse_button = (
             self.docx_drop_zone.browse_button
         )
+        if self._creation_flow:
+            self.docx_drop_zone.setMinimumHeight(168)
+            self.docx_drop_zone.setMaximumHeight(168)
+            self.docx_drop_zone.title_label.setText('Arraste seu documento aqui')
+            self.docx_drop_zone.subtitle_label.setText(
+                'DOCX, DOCM ou PDF • o Padroniza cuida da análise'
+            )
+            self.browse_button.setText('Escolher documento')
         # One normal user action locates every supported field kind. The
         # scanner remains multi-stage internally; the UI no longer asks users
         # to understand the distinction between tagged/native and untagged
@@ -402,8 +416,12 @@ class TemplateEditorDialog(QDialog):
             if header_item is not None:
                 header_item.setToolTip(help_text)
 
-        self.add_field_button = QPushButton('Adicionar campo')
-        self.remove_field_button = QPushButton('Remover selecionado')
+        self.add_field_button = QPushButton(
+            '+ Adicionar campo manualmente' if self._creation_flow else 'Adicionar campo'
+        )
+        self.remove_field_button = QPushButton(
+            'Remover campo' if self._creation_flow else 'Remover selecionado'
+        )
         self.move_up_button = QPushButton('Mover para cima')
         self.move_down_button = QPushButton('Mover para baixo')
         self.insert_group_button = QPushButton('Inserir grupo de campos')
@@ -416,7 +434,9 @@ class TemplateEditorDialog(QDialog):
         self.cancel_button = QPushButton('Cancelar')
 
         self.field_search_input = QLineEdit()
-        self.field_search_input.setPlaceholderText('Filtrar por ID, rótulo ou seção…')
+        self.field_search_input.setPlaceholderText(
+            'Pesquisar campos…' if self._creation_flow else 'Filtrar por ID, rótulo ou seção…'
+        )
         self.field_search_input.setClearButtonEnabled(True)
 
         self.field_type_filter = QComboBox()
@@ -429,16 +449,16 @@ class TemplateEditorDialog(QDialog):
 
         self.field_status_filter = QComboBox()
         self.field_status_filter.addItem('Todos os status', 'all')
-        self.field_status_filter.addItem('Somente OK', 'ok')
-        self.field_status_filter.addItem('Com erro', 'error')
+        self.field_status_filter.addItem('Prontos', 'ok')
+        self.field_status_filter.addItem('Com problema', 'error')
         self.field_status_filter.addItem('Revisar', 'warning')
 
         self.field_validation_summary_label = QLabel()
         self.field_validation_summary_label.setObjectName('mutedText')
         self.field_validation_summary_label.setWordWrap(True)
 
-        self.simple_fields_checkbox = QCheckBox('Modo simples')
-        self.simple_fields_checkbox.setChecked(True)
+        self.simple_fields_checkbox = QCheckBox('Mostrar detalhes técnicos')
+        self.simple_fields_checkbox.setChecked(False)
         self.tag_guide_button = QPushButton('Abrir guia de tags')
 
         self.section_search_input = QLineEdit()
@@ -511,7 +531,9 @@ class TemplateEditorDialog(QDialog):
         self.field_search_input.textChanged.connect(self._filter_field_rows)
         self.field_type_filter.currentIndexChanged.connect(self._apply_field_filters)
         self.field_status_filter.currentIndexChanged.connect(self._apply_field_filters)
-        self.simple_fields_checkbox.toggled.connect(self._set_simple_fields_mode)
+        self.simple_fields_checkbox.toggled.connect(
+            lambda checked: self._set_simple_fields_mode(not checked)
+        )
         self.tag_guide_button.clicked.connect(self._open_tag_guide)
         self.new_section_button.clicked.connect(self._create_section)
         self.rename_section_button.clicked.connect(self._rename_section)
@@ -526,25 +548,40 @@ class TemplateEditorDialog(QDialog):
         QShortcut(QKeySequence.StandardKey.Undo, self).activated.connect(self._undo_editor_change)
         QShortcut(QKeySequence.StandardKey.Redo, self).activated.connect(self._redo_editor_change)
 
-        general_group = self._create_general_group()
-        output_group = self._create_output_group()
+        self.general_group = self._create_general_group()
+        self.output_group = self._create_output_group()
+        self.readiness_group = self._create_readiness_group()
+        self.fields_group = self._create_fields_group()
 
-        top_widget = QWidget()
-        top_widget.setSizePolicy(
+        self.top_widget = QWidget()
+        self.top_widget.setObjectName("templateEditorTop")
+        self.top_widget.setSizePolicy(
             QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Minimum,
+            (
+                QSizePolicy.Policy.Maximum
+                if self._creation_flow
+                else QSizePolicy.Policy.Minimum
+            ),
         )
-        top_row = QHBoxLayout(top_widget)
+        top_row = QHBoxLayout(self.top_widget)
         top_row.setContentsMargins(0, 0, 0, 0)
         top_row.setSpacing(12)
-        top_row.addWidget(general_group, 3)
-        top_row.addWidget(output_group, 2)
-        top_widget.setMinimumHeight(
-            max(
-                general_group.minimumSizeHint().height(),
-                output_group.minimumSizeHint().height(),
+        top_row.setAlignment(Qt.AlignmentFlag.AlignTop)
+        top_row.addWidget(self.general_group, 3)
+        top_row.addWidget(self.output_group, 2)
+        # During guided creation the output group is intentionally hidden on
+        # the first step. Do not reserve its (much taller) minimum height: that
+        # stretched the compact identification form and exposed the global
+        # QWidget background as large grey bars behind row wrapper widgets.
+        if self._creation_flow:
+            self.top_widget.setMinimumHeight(0)
+        else:
+            self.top_widget.setMinimumHeight(
+                max(
+                    self.general_group.minimumSizeHint().height(),
+                    self.output_group.minimumSizeHint().height(),
+                )
             )
-        )
 
         content_widget = QWidget()
         content_widget.setObjectName("templateEditorContent")
@@ -554,9 +591,11 @@ class TemplateEditorDialog(QDialog):
         content_layout.setSizeConstraint(
             QLayout.SizeConstraint.SetMinimumSize
         )
-        content_layout.addWidget(top_widget)
-        content_layout.addWidget(self._create_readiness_group())
-        content_layout.addWidget(self._create_fields_group(), 1)
+        if self._creation_flow:
+            content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        content_layout.addWidget(self.top_widget)
+        content_layout.addWidget(self.readiness_group)
+        content_layout.addWidget(self.fields_group, 1)
 
         self.editor_scroll = QScrollArea()
         self.editor_scroll.setObjectName("templateEditorScroll")
@@ -570,16 +609,38 @@ class TemplateEditorDialog(QDialog):
         )
         self.editor_scroll.setWidget(content_widget)
 
-        bottom = QHBoxLayout()
-        bottom.addStretch()
-        bottom.addWidget(self.save_button)
-        bottom.addWidget(self.cancel_button)
-
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
+
+        if self._creation_flow:
+            self.creation_header = self._create_creation_header()
+            self.creation_stepper = CreationStepper()
+            layout.addWidget(self.creation_header)
+            layout.addWidget(self.creation_stepper)
+
         layout.addWidget(self.editor_scroll, 1)
+
+        bottom = QHBoxLayout()
+        if self._creation_flow:
+            self.creation_back_button = QPushButton('← Voltar')
+            self.creation_back_button.clicked.connect(self._creation_back)
+            self.creation_next_button = QPushButton('Analisar documento →')
+            self.creation_next_button.setObjectName('primaryButton')
+            self.creation_next_button.clicked.connect(self._creation_next)
+            bottom.addWidget(self.creation_back_button)
+            bottom.addStretch()
+            bottom.addWidget(self.cancel_button)
+            bottom.addWidget(self.creation_next_button)
+            self.save_button.hide()
+        else:
+            bottom.addStretch()
+            bottom.addWidget(self.save_button)
+            bottom.addWidget(self.cancel_button)
         layout.addLayout(bottom)
+
+        if self._creation_flow:
+            self._configure_creation_flow()
 
         if self.template_id is not None:
             self._applying_snapshot = True
@@ -600,6 +661,208 @@ class TemplateEditorDialog(QDialog):
             0,
             self._fit_to_available_screen,
         )
+
+    def _create_creation_header(self) -> QFrame:
+        header = QFrame()
+        header.setObjectName("templateCreationHeader")
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(16, 13, 16, 13)
+        layout.setSpacing(10)
+
+        text_layout = QVBoxLayout()
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(2)
+        self.creation_title_label = QLabel('Criar novo modelo')
+        self.creation_title_label.setObjectName('templateCreationTitle')
+        self.creation_description_label = QLabel(
+            'Escolha o documento. O Padroniza encontra os campos e guia você pelo restante.'
+        )
+        self.creation_description_label.setObjectName('templateCreationDescription')
+        self.creation_description_label.setWordWrap(True)
+        self.creation_summary_label = QLabel()
+        self.creation_summary_label.setObjectName('templateCreationSummary')
+        self.creation_summary_label.setWordWrap(True)
+        text_layout.addWidget(self.creation_title_label)
+        text_layout.addWidget(self.creation_description_label)
+        text_layout.addWidget(self.creation_summary_label)
+        layout.addLayout(text_layout, 1)
+
+        self.creation_rescan_button = QPushButton('Analisar novamente')
+        self.creation_rescan_button.clicked.connect(self._scan_fields)
+        self.creation_rescan_button.hide()
+        layout.addWidget(self.creation_rescan_button)
+
+        self.creation_advanced_button = QPushButton('Opções avançadas')
+        self.creation_advanced_button.setCheckable(True)
+        self.creation_advanced_button.toggled.connect(self._toggle_creation_advanced)
+        layout.addWidget(self.creation_advanced_button)
+
+        # Diagnostics remains available, but not as a primary decision in the
+        # normal creation path. It appears only when advanced tools are shown.
+        self.diagnostics_button.hide()
+        layout.addWidget(self.diagnostics_button)
+        return header
+
+    def _configure_creation_flow(self) -> None:
+        self.fields_tabs.tabBar().hide()
+        self.simple_fields_checkbox.hide()
+        self.tag_guide_button.hide()
+        self.add_field_button.hide()
+        self.remove_field_button.hide()
+        self.move_up_button.hide()
+        self.move_down_button.hide()
+        self.insert_group_button.hide()
+        self.save_group_button.hide()
+        self.undo_button.hide()
+        self.redo_button.hide()
+        self.revert_button.hide()
+        self._set_simple_fields_mode(True)
+        self._set_creation_step(0)
+
+    def _toggle_creation_advanced(self, enabled: bool) -> None:
+        self._creation_advanced = bool(enabled)
+        self.diagnostics_button.setVisible(bool(enabled) and self.selected_docx is not None)
+        if hasattr(self, 'output_group'):
+            self.output_group.setVisible(bool(enabled) and self._creation_step == 3)
+        self.simple_fields_checkbox.setVisible(bool(enabled) and self._creation_step == 1)
+        self.tag_guide_button.setVisible(bool(enabled) and self._creation_step == 1)
+        self.add_field_button.setVisible(bool(enabled) and self._creation_step == 1)
+        self.remove_field_button.setVisible(bool(enabled) and self._creation_step == 1)
+        self.move_up_button.setVisible(bool(enabled) and self._creation_step == 1)
+        self.move_down_button.setVisible(bool(enabled) and self._creation_step == 1)
+        self.insert_group_button.setVisible(bool(enabled) and self._creation_step == 1)
+        self.save_group_button.setVisible(bool(enabled) and self._creation_step == 1)
+        self.undo_button.setVisible(bool(enabled) and self._creation_step in {1, 2, 3})
+        self.redo_button.setVisible(bool(enabled) and self._creation_step in {1, 2, 3})
+        self.revert_button.setVisible(bool(enabled) and self._creation_step in {1, 2, 3})
+        if not enabled:
+            self.simple_fields_checkbox.setChecked(False)
+            self._set_simple_fields_mode(True)
+
+    def _set_creation_step(self, step: int) -> None:
+        if not self._creation_flow:
+            return
+        self._creation_step = max(0, min(int(step), 3))
+        self.creation_stepper.set_step(self._creation_step)
+
+        copies = {
+            0: (
+                'Escolha o documento',
+                'Arraste um DOCX, DOCM ou PDF. Não é necessário configurar o scanner.',
+                'Analisar documento →',
+            ),
+            1: (
+                'Confira os campos',
+                'Revise nomes e tipos. O que o Padroniza não tiver certeza fica para sua confirmação.',
+                'Continuar →',
+            ),
+            2: (
+                'Organize o formulário',
+                'Agrupe os campos em seções e ajuste a ordem somente se precisar.',
+                'Continuar →',
+            ),
+            3: (
+                'Revise e crie',
+                'Confira a prévia e os dados do modelo. Depois é só criar.',
+                'Criar modelo',
+            ),
+        }
+        title, description, next_text = copies[self._creation_step]
+        self.fields_group.setTitle(
+            {
+                0: 'Campos encontrados',
+                1: 'Campos encontrados',
+                2: 'Organização do formulário',
+                3: 'Prévia do formulário',
+            }[self._creation_step]
+        )
+        self.creation_title_label.setText(title)
+        self.creation_description_label.setText(description)
+        self.creation_next_button.setText(next_text)
+        self.creation_back_button.setVisible(self._creation_step > 0)
+        self.creation_rescan_button.setVisible(
+            self._creation_step in {1, 2} and self.selected_docx is not None
+        )
+
+        if self._creation_step == 0:
+            self.top_widget.show()
+            self.general_group.show()
+            self.output_group.hide()
+            self.readiness_group.hide()
+            self.fields_group.hide()
+        elif self._creation_step == 1:
+            self.top_widget.hide()
+            self.readiness_group.show()
+            self.fields_group.show()
+            self.fields_tabs.setCurrentIndex(0)
+        elif self._creation_step == 2:
+            self.top_widget.hide()
+            self.readiness_group.show()
+            self.fields_group.show()
+            self.fields_tabs.setCurrentIndex(1)
+            self._refresh_section_tree()
+        else:
+            self.top_widget.show()
+            self.general_group.show()
+            self.output_group.setVisible(self._creation_advanced)
+            self.readiness_group.show()
+            self.fields_group.show()
+            self.fields_tabs.setCurrentIndex(2)
+            self._refresh_form_preview()
+
+        self._toggle_creation_advanced(self._creation_advanced)
+        self._update_creation_header_summary()
+        QTimer.singleShot(0, lambda: self.editor_scroll.verticalScrollBar().setValue(0))
+
+    def _creation_next(self) -> None:
+        if self._creation_step == 0:
+            if self.selected_docx is None:
+                QMessageBox.information(
+                    self,
+                    'Escolha um documento',
+                    'Arraste ou selecione primeiro um arquivo DOCX, DOCM ou PDF.',
+                )
+                return
+            if self._creation_has_scanned:
+                self._set_creation_step(1)
+                return
+            self._creation_pending_advance = True
+            self._start_field_localization()
+            return
+
+        if self._creation_step == 1:
+            self._set_creation_step(2)
+            return
+        if self._creation_step == 2:
+            self._set_creation_step(3)
+            return
+        self._save_template()
+
+    def _creation_back(self) -> None:
+        if self._creation_step <= 0:
+            return
+        self._set_creation_step(self._creation_step - 1)
+
+    def _creation_scan_completed(self) -> None:
+        if not self._creation_flow:
+            return
+        self._creation_has_scanned = True
+        self._update_creation_header_summary()
+        if self._creation_pending_advance:
+            self._creation_pending_advance = False
+            self._set_creation_step(1)
+
+    def _update_creation_header_summary(self) -> None:
+        if not self._creation_flow or not hasattr(self, 'creation_summary_label'):
+            return
+        parts: list[str] = []
+        display_path = self.selected_input_file or self.selected_docx
+        if display_path is not None:
+            parts.append(display_path.name)
+        field_count = self.fields_table.rowCount()
+        if self._creation_has_scanned or field_count:
+            parts.append(f'{field_count} campo(s) no modelo')
+        self.creation_summary_label.setText('  •  '.join(parts))
 
     def _fit_to_available_screen(self) -> None:
         screen = self.screen()
@@ -663,27 +926,96 @@ class TemplateEditorDialog(QDialog):
 
     def _create_general_group(self) -> QGroupBox:
         form_group, form = self._create_form_group(
-            'Informações do modelo'
+            'Documento e identificação' if self._creation_flow else 'Informações do modelo'
         )
+        if self._creation_flow:
+            form_group.setObjectName('templateCreationGeneralGroup')
+            # The first wizard page is a compact form, not a vertically
+            # stretchable panel. Keep every row at its natural height and
+            # leave any spare viewport space below the form.
+            form_group.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Maximum,
+            )
+            form.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+            form.setFieldGrowthPolicy(
+                QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
+            )
+            form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
+            form.setFormAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+            )
+            form.setLabelAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+            )
+            form.setContentsMargins(12, 6, 12, 8)
+            form.setHorizontalSpacing(14)
+            form.setVerticalSpacing(10)
 
         name_widget = QWidget()
+        name_widget.setObjectName('templateCreationFieldWrapper' if self._creation_flow else '')
+        if self._creation_flow:
+            name_widget.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
         name_layout = QVBoxLayout(name_widget)
         name_layout.setContentsMargins(0, 0, 0, 0)
         name_layout.setSpacing(5)
+        if self._creation_flow:
+            self.name_input.setPlaceholderText('Ex.: Justificativa de Vantajosidade')
+            self.category_input.setPlaceholderText('Ex.: Compras, Contratos, Declarações')
+            self.description_input.setPlaceholderText('Opcional: explique quando este modelo deve ser usado.')
         name_layout.addWidget(self.name_input)
-        name_layout.addWidget(
-            self.similar_name_warning_label
+        name_layout.addWidget(self.similar_name_warning_label)
+
+        docx_widget = QWidget()
+        docx_widget.setObjectName('templateCreationFieldWrapper' if self._creation_flow else '')
+        if self._creation_flow:
+            docx_widget.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
+        docx_layout = QVBoxLayout(docx_widget)
+        docx_layout.setContentsMargins(0, 0, 0, 0)
+        docx_layout.setSpacing(7)
+        docx_layout.addWidget(self.docx_drop_zone)
+
+        if not self._creation_flow:
+            selected_row = QHBoxLayout()
+            selected_row.setSpacing(6)
+            selected_row.addWidget(self.docx_input, 1)
+            selected_row.addWidget(self.locate_fields_button)
+            selected_row.addWidget(self.diagnostics_button)
+            docx_layout.addLayout(selected_row)
+        docx_layout.addWidget(self.duplicate_warning_label)
+
+        document_label = HelpLabel(
+            'Documento:',
+            'Documento de origem',
+            (
+                '<p>Selecione um arquivo <b>DOCX, DOCM ou PDF</b>. O Padroniza preserva '
+                'o documento e cria uma cópia de trabalho segura quando necessário.</p>'
+                '<p>Na criação guiada, basta escolher o arquivo. A análise completa acontece '
+                'automaticamente na próxima etapa.</p>'
+                if self._creation_flow
+                else
+                '<p>Selecione um DOCX, DOCM ou PDF. O arquivo contém o texto e a estrutura '
+                'que serão preenchidos durante a geração.</p><p>O Padroniza também avisa quando '
+                'o mesmo conteúdo já está sendo usado por outro modelo.</p>'
+            ),
         )
+
+        # In the creation wizard the document is the first decision. Metadata
+        # comes afterwards and technical versioning stays at its safe default.
+        if self._creation_flow:
+            form.addRow(document_label, docx_widget)
 
         form.addRow(
             HelpLabel(
                 'Nome do modelo:',
                 'Nome do modelo',
-                (
-                    '<p>Use um nome curto e fácil de reconhecer na biblioteca.</p>'
-                    '<p>O Padroniza compara o nome com os modelos existentes e '
-                    'avisa quando encontra nomes muito semelhantes.</p>'
-                ),
+                '<p>Use um nome curto e fácil de reconhecer na biblioteca.</p>',
             ),
             name_widget,
         )
@@ -691,91 +1023,40 @@ class TemplateEditorDialog(QDialog):
             HelpLabel(
                 'Categoria:',
                 'Categoria do modelo',
-                (
-                    '<p>Use uma categoria curta para organizar e localizar modelos, '
-                    'como <b>Compras</b>, <b>Contratos</b> ou <b>Declarações</b>.</p>'
-                ),
+                '<p>Ajuda a organizar e pesquisar modelos. Pode deixar em branco.</p>',
             ),
             self.category_input,
         )
-        form.addRow(
-            HelpLabel(
-                'Versão:',
-                'Versão do modelo',
-                (
-                    '<p>É uma identificação informativa, como <b>1.0</b> ou <b>2.1</b>.</p>'
-                    '<p>O histórico de versões guarda cópias anteriores quando o modelo '
-                    'é atualizado.</p>'
+
+        if not self._creation_flow:
+            form.addRow(
+                HelpLabel(
+                    'Versão:',
+                    'Versão do modelo',
+                    (
+                        '<p>É uma identificação informativa, como <b>1.0</b> ou <b>2.1</b>.</p>'
+                        '<p>O histórico de versões guarda cópias anteriores quando o modelo '
+                        'é atualizado.</p>'
+                    ),
                 ),
-            ),
-            self.version_input,
-        )
+                self.version_input,
+            )
+
         form.addRow(
             HelpLabel(
                 'Descrição:',
                 'Descrição do modelo',
-                (
-                    '<p>Explique quando o modelo deve ser usado e qual documento ele gera.</p>'
-                    '<p>A descrição ajuda outros usuários a escolher o modelo correto.</p>'
-                ),
+                '<p>Opcional. Explique quando o modelo deve ser usado.</p>',
             ),
             self.description_input,
         )
 
-        docx_widget = QWidget()
-        docx_layout = QVBoxLayout(
-            docx_widget
-        )
-        docx_layout.setContentsMargins(
-            0,
-            0,
-            0,
-            0,
-        )
-        docx_layout.setSpacing(7)
-        docx_layout.addWidget(
-            self.docx_drop_zone
-        )
-
-        selected_row = QHBoxLayout()
-        selected_row.setSpacing(6)
-        selected_row.addWidget(
-            self.docx_input,
-            1,
-        )
-        selected_row.addWidget(
-            self.locate_fields_button
-        )
-        selected_row.addWidget(
-            self.diagnostics_button
-        )
-        docx_layout.addLayout(
-            selected_row
-        )
-        docx_layout.addWidget(
-            self.duplicate_warning_label
-        )
-
-        form.addRow(
-            HelpLabel(
-                'Arquivo do modelo:',
-                'Documento DOCX ou PDF de origem',
-                (
-                    '<p>Selecione um DOCX ou PDF. O arquivo contém o texto e a estrutura '
-                    'que serão preenchidos durante a geração.</p>'
-                    '<p>Exemplo de marcador: <b>{{company.legal_name}}</b>.</p>'
-                    '<p>PDFs são reconstruídos internamente como DOCX antes da análise. '
-                    'A aparência pode ser simplificada em PDFs complexos.</p>'
-                    '<p>O Padroniza também avisa quando o mesmo conteúdo do modelo já '
-                    'está sendo usado por outro modelo.</p>'
-                ),
-            ),
-            docx_widget,
-        )
+        if not self._creation_flow:
+            form.addRow(document_label, docx_widget)
         return form_group
 
     def _create_readiness_group(self) -> QGroupBox:
-        group = QGroupBox('Verificação do modelo')
+        group = QGroupBox('Verificação final' if self._creation_flow else 'Verificação do modelo')
         layout = QHBoxLayout(group)
         layout.setContentsMargins(12, 12, 12, 12)
 
@@ -789,7 +1070,9 @@ class TemplateEditorDialog(QDialog):
         text_layout.addWidget(self.readiness_label)
         text_layout.addWidget(self.readiness_details)
 
-        self.safe_fix_button = QPushButton('Aplicar correções seguras')
+        self.safe_fix_button = QPushButton(
+            'Corrigir automaticamente' if self._creation_flow else 'Aplicar correções seguras'
+        )
         self.safe_fix_button.clicked.connect(self._apply_safe_fixes)
 
         layout.addLayout(text_layout, 1)
@@ -808,21 +1091,27 @@ class TemplateEditorDialog(QDialog):
         return group
 
     def _create_fields_group(self) -> QGroupBox:
-        group = QGroupBox('Campos e seções')
+        group = QGroupBox('Campos encontrados' if self._creation_flow else 'Campos e seções')
 
         help_text = HelpLabel(
-            'Configuração dos campos',
+            (
+                'Revise somente o necessário'
+                if self._creation_flow
+                else 'Configuração dos campos'
+            ),
             'Campos, seções e regras',
             (
+                '<p>O Padroniza já fez a parte técnica. Confira principalmente o <b>nome</b> e o <b>tipo</b> de cada campo.</p>'
+                '<p>Se algo parecer faltar, use <b>Analisar novamente</b>. Ferramentas técnicas ficam escondidas por padrão.</p>'
+                if self._creation_flow
+                else
                 '<p><b>Campos</b> define o tipo, o rótulo e a validação.</p>'
                 '<p><b>Seções e layout</b> organiza o formulário em cartões de seção. '
                 'Use o layout <b>Grupo de escolha</b> para alternativas exclusivas exibidas como '
                 'caixas grandes e clicáveis, e <b>Tabela</b> para responsáveis organizados '
                 'por linha e coluna.</p>'
                 '<p><b>Prévia do formulário</b> permite revisar a organização antes de salvar.</p>'
-                '<p>Em <b>Visível quando</b>, use '
-                '<b>campo.id=conteudo_esperado</b>. Exemplo: '
-                '<b>declaracao.tipo=Integral</b>.</p>'
+                '<p>Em <b>Visível quando</b>, use <b>campo.id=conteudo_esperado</b>.</p>'
             ),
         )
         help_text.label.setObjectName("mutedText")
@@ -862,8 +1151,13 @@ class TemplateEditorDialog(QDialog):
         sections_layout.setContentsMargins(8, 8, 8, 8)
         sections_layout.setSpacing(9)
         section_hint = QLabel(
-            'Cada cartão representa uma seção do formulário. Use as setas no cartão para '
-            'mover a seção, o lápis para renomeá-la e “Editar” para abrir um campo na aba Campos.'
+            (
+                'Organize o formulário do jeito que o usuário final verá. Se já estiver bom, apenas continue.'
+                if self._creation_flow
+                else
+                'Cada cartão representa uma seção do formulário. Use as setas no cartão para '
+                'mover a seção, o lápis para renomeá-la e “Editar” para abrir um campo na aba Campos.'
+            )
         )
         section_hint.setWordWrap(True)
         section_hint.setObjectName('mutedText')
@@ -886,7 +1180,12 @@ class TemplateEditorDialog(QDialog):
         preview_layout = QVBoxLayout(preview_tab)
         preview_layout.setContentsMargins(0, 0, 0, 0)
         preview_hint = QLabel(
-            'Prévia interativa para revisar a organização. Os valores digitados aqui não são salvos.'
+            (
+                'É assim que o formulário será apresentado. Teste alguns valores se quiser antes de criar o modelo.'
+                if self._creation_flow
+                else
+                'Prévia interativa para revisar a organização. Os valores digitados aqui não são salvos.'
+            )
         )
         preview_hint.setObjectName('mutedText')
         preview_hint.setWordWrap(True)
@@ -914,18 +1213,25 @@ class TemplateEditorDialog(QDialog):
         return group
 
     def _set_simple_fields_mode(self, enabled: bool) -> None:
-        # Essential columns stay visible; advanced automation rules are one click away.
-        for column in (6, 7, 8, 9):
-            self.fields_table.setColumnHidden(column, bool(enabled))
-        self.fields_table.setColumnHidden(10, False)
-        self.fields_table.setColumnHidden(11, False)
-        widths = (
-            [175, 185, 145, 82, 220, 150, 170, 130, 100, 190, 210, 100]
-            if enabled
-            else [210, 210, 150, 80, 245, 170, 170, 130, 100, 190, 250, 105]
-        )
+        """Keep normal users focused on the five columns they actually need."""
+
+        if enabled:
+            # ID, section/profile/group/visibility/layout are implementation
+            # details for most template authors. They remain available behind
+            # "Mostrar detalhes técnicos" without being the default view.
+            for column in (0, 5, 6, 7, 8, 9, 10):
+                self.fields_table.setColumnHidden(column, True)
+            for column in (1, 2, 3, 4, 11):
+                self.fields_table.setColumnHidden(column, False)
+            widths = [0, 300, 175, 95, 300, 0, 0, 0, 0, 0, 0, 115]
+        else:
+            for column in range(self.fields_table.columnCount()):
+                self.fields_table.setColumnHidden(column, False)
+            widths = [210, 210, 150, 80, 245, 170, 170, 130, 100, 190, 250, 105]
+
         for column, width in enumerate(widths):
-            self.fields_table.setColumnWidth(column, width)
+            if width:
+                self.fields_table.setColumnWidth(column, width)
 
     def _filter_field_rows(self, _text: str = "") -> None:
         self._apply_field_filters()
@@ -1625,11 +1931,20 @@ class TemplateEditorDialog(QDialog):
                 duration=7000,
             )
 
-        found_fields = True
-        if self.template_id is None or self.fields_table.rowCount() == 0:
-            found_fields = self._smart_scan_fields(show_message=False)
-        if prepared.converted_from_pdf and not found_fields:
-            QTimer.singleShot(0, self._scan_fields)
+        if self._creation_flow:
+            # The guided workflow keeps file selection predictable: selecting a
+            # document prepares it, but scanning starts only when the user
+            # clicks the single primary action "Analisar documento".
+            self._creation_has_scanned = False
+            self._creation_pending_advance = False
+            self._load_fields_into_table([])
+            self._update_creation_header_summary()
+        else:
+            found_fields = True
+            if self.template_id is None or self.fields_table.rowCount() == 0:
+                found_fields = self._smart_scan_fields(show_message=False)
+            if prepared.converted_from_pdf and not found_fields:
+                QTimer.singleShot(0, self._scan_fields)
         self._schedule_editor_change()
         self._update_readiness()
 
@@ -1932,6 +2247,10 @@ class TemplateEditorDialog(QDialog):
         self._detection_worker = worker
         self._detection_progress = progress
         self.locate_fields_button.setEnabled(False)
+        if self._creation_flow and hasattr(self, 'creation_next_button'):
+            self.creation_next_button.setEnabled(False)
+            if self._creation_step == 0:
+                self.creation_next_button.setText('Analisando…')
         progress.show()
         thread.start()
 
@@ -1954,8 +2273,12 @@ class TemplateEditorDialog(QDialog):
         self._detection_worker = None
         self._detection_thread = None
         self.locate_fields_button.setEnabled(True)
+        if self._creation_flow and hasattr(self, 'creation_next_button'):
+            self.creation_next_button.setEnabled(True)
+            self._set_creation_step(self._creation_step)
 
     def _field_localization_failed(self, exc: object) -> None:
+        self._creation_pending_advance = False
         if self._detection_progress is not None:
             self._detection_progress.close()
         error = exc if isinstance(exc, Exception) else RuntimeError(str(exc))
@@ -1969,6 +2292,7 @@ class TemplateEditorDialog(QDialog):
         )
 
     def _field_localization_canceled(self) -> None:
+        self._creation_pending_advance = False
         if self._detection_progress is not None:
             self._detection_progress.close()
         show_toast(
@@ -2006,11 +2330,11 @@ class TemplateEditorDialog(QDialog):
                     self,
                     'Nenhum campo encontrado',
                     (
-                        'Nenhuma tag, controle ou área preenchível reconhecida foi encontrada. '
-                        'Você ainda pode adicionar campos manualmente e usar o diagnóstico para '
-                        'investigar a estrutura do documento.'
+                        'Não encontramos campos com segurança neste documento. '
+                        'Você pode continuar e adicionar somente os campos que precisar manualmente.'
                     ),
                 )
+                self._creation_scan_completed()
                 return
 
             details = (
@@ -2023,6 +2347,7 @@ class TemplateEditorDialog(QDialog):
                     'foram corrigidos automaticamente.'
                 )
             show_toast(self, 'Campos localizados', details)
+            self._creation_scan_completed()
             return
 
         applied = self._review_detected_candidates(
@@ -2048,6 +2373,8 @@ class TemplateEditorDialog(QDialog):
                 kind='info',
                 duration=6200,
             )
+
+        self._creation_scan_completed()
 
     def _write_scanner_telemetry(
         self,
@@ -2216,7 +2543,7 @@ class TemplateEditorDialog(QDialog):
         if hasattr(self, "readiness_label"):
             self._update_readiness()
         if hasattr(self, "simple_fields_checkbox"):
-            self._set_simple_fields_mode(self.simple_fields_checkbox.isChecked())
+            self._set_simple_fields_mode(not self.simple_fields_checkbox.isChecked())
         if hasattr(self, "field_search_input"):
             self._refresh_field_validation()
             self._apply_field_filters()
