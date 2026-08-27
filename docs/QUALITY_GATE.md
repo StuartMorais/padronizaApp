@@ -16,9 +16,10 @@ The command performs, in order:
 2. Production-module reachability (`tools/check_dead_code.py`).
 3. Ruff correctness checks.
 4. Pyright type checks for the typed core/domain/service boundary.
-5. The complete pytest suite with core coverage and a 75% minimum baseline.
-6. Offscreen PySide6 smoke tests for the main pages, dialogs, template editor and widgets.
-7. A real `main.py --smoke-test` startup using isolated temporary storage.
+5. Scanner V6 semantic benchmark (`tools/check_semantic_benchmark.py`): required real-document regions, zero unexpected regions, and no fresh semantic auto-selection.
+6. The complete pytest suite with core coverage and a 75% minimum baseline.
+7. Offscreen PySide6 smoke tests for the main pages, dialogs, template editor and widgets.
+8. A real `main.py --smoke-test` startup using isolated temporary storage.
 
 ## Coverage policy
 
@@ -48,4 +49,4 @@ Pyright runs in `basic` mode over the most stable typed boundaries first: domain
 
 `.github/workflows/quality.yml` runs the full quality gate on Windows for normal pushes, pull requests, and manual quality runs. Semantic release tags (`v*.*.*`) are ignored by that workflow so packaging does not launch the same expensive test/type/UI suite a second time.
 
-`.github/workflows/build-windows.yml` is intentionally a fast packaging/release workflow: it installs runtime/build dependencies once, runs bytecode compilation plus the dead-module check, invokes PyInstaller once, builds the Inno Setup installer from that same executable, and publishes the resulting assets directly to GitHub Releases. Manual runs calculate the next semantic version from existing Git tags (`patch`, `minor`, or `major`); tag-triggered runs use the pushed version. Repository branch protection/normal CI should therefore remain the authoritative full-quality gate before merging code that will be released.
+`.github/workflows/build-windows.yml` is intentionally a fast packaging/release workflow: it installs runtime/build dependencies once, runs bytecode compilation, the dead-module check and the fast semantic benchmark, invokes PyInstaller once, builds the Inno Setup installer from that same executable, and publishes the resulting assets directly to GitHub Releases. Manual runs calculate the next semantic version from existing Git tags (`patch`, `minor`, or `major`); tag-triggered runs use the pushed version. Repository branch protection/normal CI should therefore remain the authoritative full-quality gate before merging code that will be released.

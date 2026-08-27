@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import html
 from typing import Any
 
 from PySide6.QtCore import Qt
@@ -50,6 +51,7 @@ class AutomaticDetectionDialog(QDialog):
         "email": "E-mail",
         "checkbox_group": "Grupo de caixas de seleção",
         "repeatable_table": "Tabela repetível",
+        "repeatable_list": "Lista repetível",
     }
 
     def __init__(
@@ -165,6 +167,17 @@ class AutomaticDetectionDialog(QDialog):
         self.table.setColumnWidth(4, 260)
         root.addWidget(self.table, 1)
 
+        context_title = QLabel("Onde isso aparece no documento?")
+        context_title.setObjectName("mutedText")
+        root.addWidget(context_title)
+        self.source_context_label = QLabel()
+        self.source_context_label.setWordWrap(True)
+        self.source_context_label.setTextFormat(Qt.TextFormat.RichText)
+        self.source_context_label.setObjectName("sourceContextPreview")
+        self.source_context_label.setMinimumHeight(48)
+        self.source_context_label.setMaximumHeight(110)
+        root.addWidget(self.source_context_label)
+
         details_title = QLabel("Por que esta sugestão foi criada?")
         details_title.setObjectName("mutedText")
         root.addWidget(details_title)
@@ -208,15 +221,24 @@ class AutomaticDetectionDialog(QDialog):
 
         self._load_rows()
 
-    def accepted_candidates(self) -> list[dict[str, Any]]:
+    def reviewed_candidates(self) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         for row, candidate in enumerate(self._candidates):
             item = self.table.item(row, 0)
-            if item is not None and item.checkState() == Qt.CheckState.Checked:
-                approved = deepcopy(candidate)
-                approved["reviewed_by_user"] = True
-                result.append(approved)
+            reviewed = deepcopy(candidate)
+            reviewed["reviewed_by_user"] = True
+            reviewed["accepted_by_user"] = bool(
+                item is not None and item.checkState() == Qt.CheckState.Checked
+            )
+            result.append(reviewed)
         return result
+
+    def accepted_candidates(self) -> list[dict[str, Any]]:
+        return [
+            candidate
+            for candidate in self.reviewed_candidates()
+            if bool(candidate.get("accepted_by_user", False))
+        ]
 
     def _load_rows(self) -> None:
         self.table.setRowCount(0)
@@ -421,8 +443,23 @@ class AutomaticDetectionDialog(QDialog):
         row = self._selected_row()
         if row < 0 or row >= len(self._candidates):
             self.details_text.clear()
+            if hasattr(self, "source_context_label"):
+                self.source_context_label.clear()
             return
         candidate = self._candidates[row]
+        if hasattr(self, "source_context_label"):
+            context = dict(candidate.get("source_context", {}) or {})
+            before = html.escape(str(context.get("before", "") or ""))
+            target = html.escape(str(context.get("target", "") or candidate.get("preview", "") or ""))
+            after = html.escape(str(context.get("after", "") or ""))
+            if target:
+                self.source_context_label.setText(
+                    f"<span style='color:#8a949e'>{before}</span>"
+                    f"<span style='background:#f5c542;color:#111;padding:2px 4px'><b>{target}</b></span>"
+                    f"<span style='color:#8a949e'>{after}</span>"
+                )
+            else:
+                self.source_context_label.setText("Contexto exato não disponível para esta sugestão.")
         confidence = int(round(float(candidate.get("confidence", 0.0)) * 100))
         priority = str(candidate.get("review_priority", "")) or self._review_priority(candidate)
         priority_label = {
@@ -608,11 +645,17 @@ class _CandidateEditorDialog(QDialog):
 
         self.type_input = QComboBox()
         source = str(candidate.get("source", ""))
-        allowed_types = [field_type for field_type in FIELD_TYPE_ORDER if field_type != "repeatable_table"]
+        allowed_types = [
+            field_type
+            for field_type in FIELD_TYPE_ORDER
+            if field_type not in {"repeatable_table", "repeatable_list"}
+        ]
         if source == "checkbox_choice":
             allowed_types = ["checkbox_group"]
         elif source == "repeatable_table":
             allowed_types = ["repeatable_table"]
+        elif source == "repeatable_list":
+            allowed_types = ["repeatable_list"]
         for field_type in allowed_types:
             self.type_input.addItem(
                 AutomaticDetectionDialog.TYPE_LABELS.get(field_type, field_type),

@@ -94,5 +94,9 @@ _SOURCE_LABELS = {
     "terminal_prompt": "Prompt final após bloco de instruções",
     "colored_prompt": "Placeholder textual destacado por formatação",
     "colored_inline_choice": "Alternativas coloridas dentro do texto",
+    "semantic_inline": "Campo semântico dentro do texto",
+    "semantic_prose": "Bloco de texto semanticamente editável",
+    "repeatable_list": "Lista repetível",
+    "learned_mapping": "Mapeamento aprendido de modelo revisado",
 }
 

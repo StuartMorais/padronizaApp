@@ -166,6 +166,17 @@ def _scan_docx_fields_uncached(docx_path: Path) -> list[FieldDefinition]:
                     if key in metadata:
                         existing[key] = metadata[key]
 
+            if field_type == "repeatable_list":
+                for key, fallback in (
+                    ("list_style", "bullet"),
+                    ("list_punctuation", "semicolon"),
+                    ("minimum_items", 1),
+                    ("maximum_items", None),
+                ):
+                    value = metadata.get(key, fallback)
+                    if value not in (None, ""):
+                        existing[key] = value
+
             for key in (
                 "layout",
                 "layout_group",
@@ -188,6 +199,20 @@ def _scan_docx_fields_uncached(docx_path: Path) -> list[FieldDefinition]:
                 "context_needs_review",
                 "context_review_reason",
                 "default_value",
+                "dynamic_scope",
+                "semantic_concept_id",
+                "semantic_prediction",
+                "semantic_model_version",
+                "semantic_fillable_probability",
+                "semantic_concept_confidence",
+                "semantic_learned_similarity",
+                "source_anchor",
+                "source_context",
+                "family_fingerprint",
+                "list_style",
+                "list_punctuation",
+                "minimum_items",
+                "maximum_items",
             ):
                 value = metadata.get(key)
                 if value in (None, "", False):
@@ -235,6 +260,21 @@ def _scan_docx_fields_uncached(docx_path: Path) -> list[FieldDefinition]:
                 metadata.get("marker", f"repeat:{field_id}")
             )
 
+        if field_type == "repeatable_list":
+            field["list_style"] = str(
+                metadata.get("list_style", "bullet") or "bullet"
+            ).casefold()
+            field["list_punctuation"] = str(
+                metadata.get("list_punctuation", "semicolon") or "semicolon"
+            ).casefold()
+            field["minimum_items"] = max(
+                0,
+                int(metadata.get("minimum_items", 1) or 0),
+            )
+            maximum_items = metadata.get("maximum_items")
+            if maximum_items not in (None, ""):
+                field["maximum_items"] = max(1, int(maximum_items))
+
         for key in (
             "layout",
             "layout_group",
@@ -257,6 +297,20 @@ def _scan_docx_fields_uncached(docx_path: Path) -> list[FieldDefinition]:
             "context_needs_review",
             "context_review_reason",
             "default_value",
+            "dynamic_scope",
+            "semantic_concept_id",
+            "semantic_prediction",
+            "semantic_model_version",
+            "semantic_fillable_probability",
+            "semantic_concept_confidence",
+            "semantic_learned_similarity",
+            "source_anchor",
+            "source_context",
+            "family_fingerprint",
+            "list_style",
+            "list_punctuation",
+            "minimum_items",
+            "maximum_items",
         ):
             value = metadata.get(key)
             if value not in (None, "", False):
@@ -1172,6 +1226,13 @@ def create_default_fields(
                     "context_needs_review",
                     "context_review_reason",
                     "default_value",
+                    "list_style",
+                    "list_punctuation",
+                    "minimum_items",
+                    "maximum_items",
+                    "dynamic_scope",
+                    "semantic_concept_id",
+                    "source_anchor",
                 )
                 if key in scanned and scanned[key] not in (None, "", False)
             }

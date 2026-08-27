@@ -15,14 +15,14 @@ The source tree is organized by responsibility:
 - `assets/`, `docs/`, `examples/` — runtime resources and examples.
 - `tests/` — automated regression tests.
 
-See `docs/ARCHITECTURE.md` for the dependency rules and document pipeline, `docs/IMPROVEMENTS_2026-08.md` for the reliability pass, `docs/USER_FACING_CAPABILITIES_2026-08.md` for the template-authoring/detection UX milestone, `docs/STRUCTURAL_TABLE_INTELLIGENCE_2026-08.md` for Word-table preservation rules, and `docs/SCANNER_V5_2026-08.md` for the current review-first scanner contract, and `docs/SCANNER_V4_2026-08.md` for the underlying structure-first architecture, and `docs/DOCM_AND_RELEASE_2026-08.md` for macro-safe DOCM ingestion and automatic GitHub Releases.
+See `docs/ARCHITECTURE.md` for dependency rules and the document pipeline; `docs/SCANNER_V6_SEMANTIC_2026-08.md` for the current local semantic/dynamic-region architecture; `docs/SCANNER_V5_2026-08.md` and `docs/SCANNER_V4_2026-08.md` for the review-first and structure-first foundations; `docs/STRUCTURAL_TABLE_INTELLIGENCE_2026-08.md` for Word-table preservation; and `docs/DOCM_AND_RELEASE_2026-08.md` for macro-safe DOCM ingestion and automatic GitHub Releases.
 
 For continuity across development sessions or a new ChatGPT conversation, read **`PROJECT_CONTEXT.md`** first. It records the current architecture, quality baseline, important regressions, known limitations, and handoff instructions.
 
 
 ## Template authoring and assisted detection
 
-- Scanner V5 keeps Scanner V4 structural intelligence but separates candidate discovery from automatic application: strong candidates may be preselected, while ambiguous detections stay review-only; accepted tags must still pass a strict detect → apply → re-scan round trip before publication.
+- Scanner V6 keeps Scanner V5/V4 structural authority and adds a local semantic layer for inline values, dynamic paragraphs, repeatable lists, and learned template-family mappings. Fresh semantic discoveries are review-only; accepted tags must still pass a strict detect → apply → re-scan round trip before publication.
 - The template editor exposes one primary `Localizar campos` action. `app/services/template_scanning.py` orchestrates deterministic tags/native controls plus untagged candidates, while the internal detector stages remain separate and independently testable.
 - Assisted detection exposes multidimensional confidence plus `ready` / `recommended` / `required` review priority and evidence.
 - The detection review dialog supports search plus confidence, review-priority, and type filters.
@@ -36,6 +36,8 @@ For continuity across development sessions or a new ChatGPT conversation, read *
 ## Reliability highlights
 
 - DOCX/DOCM → PDF automatically prefers Microsoft Word, then LibreOffice, then the integrated fallback. DOCM input is first normalized to a macro-free DOCX working copy, so VBA is never executed by Padroniza.
+- Semantic assistance is local-only: no cloud API or document upload is required. It contributes meaning/type/label evidence but never directly edits OOXML/PDF structures.
+- `repeatable_list` is a first-class field type for editable bullet/numbered lists and remains separate from repeatable tables.
 - Template preflight catches malformed tags/configuration before installation or generation.
 - Generated/conversion outputs are staged before final publication so failures do not leave partial final files.
 - Runtime JSON/templates/settings/backups use explicit schema versions and reject newer incompatible data safely. Template source/config updates, generation metadata commits, and backup data/settings restoration are rollback-capable.

@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import OrderedDict
 from copy import deepcopy
 from pathlib import Path
+import hashlib
+import json
 from typing import Any, Callable, Iterable
 
 from docx import Document
@@ -22,6 +24,9 @@ from app.document.detection.selection_policy import apply_review_first_policy
 from app.document.detection.structure import StoryZone, TableKind, extract_document_structure
 from app.document.docx.scanner import scan_docx_fields
 from app.document.understanding.semantic import annotate_document_records, postprocess_candidates
+from app.document.semantic_ai.discovery import discover_semantic_regions
+from app.document.semantic_ai.engine import LocalSemanticEngine, SEMANTIC_MODEL_VERSION
+from app.document.semantic_ai.integration import enrich_candidates_with_semantic_ai
 
 
 _DETECTION_CACHE_MAXSIZE = 16
@@ -38,6 +43,8 @@ def _detection_cache_key(
     path: Path,
     existing_field_ids: Iterable[str] | None,
     existing_fields: Iterable[dict[str, Any]] | None,
+    semantic_memory: dict[str, Any] | None = None,
+    semantic_enabled: bool = True,
 ) -> tuple[Any, ...]:
     stat = path.stat()
     ids = tuple(
@@ -61,12 +68,17 @@ def _detection_cache_key(
             if isinstance(field, dict)
         )
     )
+    memory_payload = json.dumps(semantic_memory or {}, ensure_ascii=False, sort_keys=True, default=str)
+    memory_signature = hashlib.sha256(memory_payload.encode("utf-8")).hexdigest()[:20]
     return (
         str(path.resolve()),
         int(stat.st_mtime_ns),
         int(stat.st_size),
         ids,
         field_context,
+        bool(semantic_enabled),
+        SEMANTIC_MODEL_VERSION if semantic_enabled else 0,
+        memory_signature if semantic_enabled else "",
     )
 
 
@@ -99,6 +111,8 @@ def detect_docx_field_candidates(
     existing_field_ids: Iterable[str] | None = None,
     existing_fields: Iterable[dict[str, Any]] | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    semantic_memory: dict[str, Any] | None = None,
+    semantic_enabled: bool = True,
 ) -> list[dict[str, Any]]:
     """Return conservative fill-field suggestions for an untagged DOCX.
 
@@ -122,7 +136,9 @@ def detect_docx_field_candidates(
         for field in (existing_fields or [])
         if isinstance(field, dict)
     )
-    cache_key = _detection_cache_key(path, provided_ids, provided_fields)
+    cache_key = _detection_cache_key(
+        path, provided_ids, provided_fields, semantic_memory, semantic_enabled
+    )
     cached = _cached_detection(cache_key)
     if cached is not None:
         _raise_if_cancelled(cancel_check)
@@ -132,6 +148,7 @@ def detect_docx_field_candidates(
     records = _collect_paragraph_records(document)
     structure = extract_document_structure(document, records)
     normalized_document = build_normalized_document(path, records, structure)
+    semantic_engine = LocalSemanticEngine(semantic_memory) if semantic_enabled else None
     annotate_document_records(records, structure)
     _raise_if_cancelled(cancel_check)
     existing_field_list = [dict(field) for field in provided_fields]
@@ -210,6 +227,17 @@ def detect_docx_field_candidates(
     run_structural_detector_passes(workspace, check_cancel)
     run_record_detector_passes(workspace, check_cancel)
     run_fallback_detector_passes(workspace, check_cancel)
+    if semantic_engine is not None:
+        check_cancel()
+        workspace.candidates.extend(
+            discover_semantic_regions(
+                records,
+                known_ids,
+                engine=semantic_engine,
+                family_fingerprint=normalized_document.family_fingerprint,
+                reserved_ordinals=reserved_ordinals,
+            )
+        )
     candidates = workspace.candidates
 
     source_kind = (
@@ -224,11 +252,19 @@ def detect_docx_field_candidates(
         candidates,
         existing_field_list,
     )
-    candidates, invariant_issues = apply_candidate_invariants(candidates, structure)
     for candidate in candidates:
         location = dict(candidate.get("location", {}) or {})
         candidate["document_fingerprint"] = normalized_document.source_fingerprint
+        candidate["family_fingerprint"] = normalized_document.family_fingerprint
         candidate["location_signature"] = location_signature(location)
+    if semantic_engine is not None:
+        candidates = enrich_candidates_with_semantic_ai(
+            candidates,
+            records,
+            engine=semantic_engine,
+            family_fingerprint=normalized_document.family_fingerprint,
+        )
+    candidates, invariant_issues = apply_candidate_invariants(candidates, structure)
     if invariant_issues:
         issue_payload = [
             {
@@ -361,7 +397,13 @@ def _candidate_first_ordinal(candidate: dict[str, Any]) -> int:
             return int(location["paragraph"])
         except (TypeError, ValueError):
             return 10**9
-    paragraphs = location.get("paragraphs", []) or []
+    paragraphs = list(location.get("paragraphs", []) or [])
+    if not paragraphs and str(location.get("kind", "")) == "text_spans":
+        paragraphs = [
+            span.get("paragraph")
+            for span in location.get("spans", []) or []
+            if isinstance(span, dict)
+        ]
     try:
         return min(int(value) for value in paragraphs)
     except (TypeError, ValueError):
@@ -376,6 +418,8 @@ def detect_docx_with_report(
     existing_field_ids: Iterable[str] | None = None,
     existing_fields: Iterable[dict[str, Any]] | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    semantic_memory: dict[str, Any] | None = None,
+    semantic_enabled: bool = True,
 ):
     """Return candidates plus a structural review report for the UI."""
 
@@ -386,6 +430,8 @@ def detect_docx_with_report(
         existing_field_ids=existing_field_ids,
         existing_fields=existing_fields,
         cancel_check=cancel_check,
+        semantic_memory=semantic_memory,
+        semantic_enabled=semantic_enabled,
     )
     _raise_if_cancelled(cancel_check)
     report = build_detection_report(Path(docx_path), candidates)

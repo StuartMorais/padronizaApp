@@ -15,7 +15,14 @@ from pathlib import Path
 from typing import Any
 
 from app.domain.fields import FieldDefinition
-from app.domain.field_metadata import compact_dropdown_options, normalize_repeatable_columns
+from app.domain.field_metadata import (
+    DYNAMIC_SCOPES,
+    REPEATABLE_LIST_PUNCTUATIONS,
+    REPEATABLE_LIST_STYLES,
+    compact_dropdown_options,
+    normalize_repeatable_columns,
+    source_anchor_errors,
+)
 from app.domain.field_types import FIELD_TYPE_ALIASES, SUPPORTED_FIELD_TYPES
 from app.domain.validation import infer_field_type
 from app.core.json_io import atomic_write_json
@@ -1181,6 +1188,20 @@ class TemplateRepository:
             "profile_identity",
             "context_needs_review",
             "context_review_reason",
+            "dynamic_scope",
+            "semantic_concept_id",
+            "semantic_prediction",
+            "semantic_model_version",
+            "semantic_fillable_probability",
+            "semantic_concept_confidence",
+            "semantic_learned_similarity",
+            "source_anchor",
+            "source_context",
+            "family_fingerprint",
+            "list_style",
+            "list_punctuation",
+            "minimum_items",
+            "maximum_items",
         }
 
         for index, raw_field in enumerate(fields, start=1):
@@ -1258,9 +1279,82 @@ class TemplateRepository:
                         int(raw_field.get("numbering_padding", 2) or 2),
                     )
 
+            if field_type == "repeatable_list":
+                default_items = raw_field.get("default_value", raw_field.get("items", []))
+                if default_items not in (None, "") and not isinstance(default_items, list):
+                    if strict:
+                        raise ValueError(
+                            f"A lista repetível '{field_id}' deve possuir uma lista de valores padrão."
+                        )
+                    default_items = [str(default_items)]
+                if isinstance(default_items, list):
+                    field["default_value"] = [
+                        str(item).strip() for item in default_items if str(item).strip()
+                    ]
+                try:
+                    minimum_items = int(raw_field.get("minimum_items", 1) or 0)
+                except (TypeError, ValueError):
+                    if strict:
+                        raise ValueError(
+                            f"A quantidade mínima da lista repetível '{field_id}' é inválida."
+                        )
+                    minimum_items = 1
+                field["minimum_items"] = max(0, minimum_items)
+                maximum_items = raw_field.get("maximum_items")
+                if maximum_items not in (None, ""):
+                    try:
+                        maximum_value = int(maximum_items)
+                    except (TypeError, ValueError):
+                        if strict:
+                            raise ValueError(
+                                f"A quantidade máxima da lista repetível '{field_id}' é inválida."
+                            )
+                        maximum_value = 0
+                    if maximum_value > 0:
+                        if strict and maximum_value < field["minimum_items"]:
+                            raise ValueError(
+                                f"A quantidade máxima da lista repetível '{field_id}' é menor que a mínima."
+                            )
+                        field["maximum_items"] = max(field["minimum_items"], maximum_value)
+                list_style = str(raw_field.get("list_style", "bullet") or "bullet").casefold()
+                if list_style not in REPEATABLE_LIST_STYLES:
+                    if strict:
+                        raise ValueError(
+                            f"O estilo da lista repetível '{field_id}' não é compatível: {list_style}."
+                        )
+                    list_style = "bullet"
+                punctuation = str(
+                    raw_field.get("list_punctuation", "semicolon") or "semicolon"
+                ).casefold()
+                if punctuation not in REPEATABLE_LIST_PUNCTUATIONS:
+                    if strict:
+                        raise ValueError(
+                            f"A pontuação da lista repetível '{field_id}' não é compatível: {punctuation}."
+                        )
+                    punctuation = "semicolon"
+                field["list_style"] = list_style
+                field["list_punctuation"] = punctuation
+
             for key in preserved_keys:
                 if key in raw_field and raw_field[key] not in (None, "", [], {}):
                     field[key] = deepcopy(raw_field[key])
+
+            dynamic_scope = str(field.get("dynamic_scope", "") or "").casefold()
+            if dynamic_scope and dynamic_scope not in DYNAMIC_SCOPES:
+                if strict:
+                    raise ValueError(
+                        f"O campo '{field_id}' possui escopo dinâmico inválido: {dynamic_scope}."
+                    )
+                field.pop("dynamic_scope", None)
+                dynamic_scope = ""
+            anchor_problems = source_anchor_errors(
+                field.get("source_anchor"), expected_scope=dynamic_scope
+            )
+            if anchor_problems and strict:
+                raise ValueError(
+                    f"A âncora semântica do campo '{field_id}' é inválida: "
+                    + "; ".join(anchor_problems)
+                )
 
             if field_type == "date" and "automatic" not in field:
                 field["automatic"] = True

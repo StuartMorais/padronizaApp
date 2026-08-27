@@ -76,7 +76,11 @@ from app.document.source import (
     prepare_template_source,
 )
 from app.repositories.templates import TemplateRepository
-from app.services.template_scanning import TemplateScanResult, locate_template_fields
+from app.services.template_scanning import (
+    TemplateScanResult,
+    locate_template_fields,
+    record_semantic_reviews,
+)
 from app.ui.widgets.clickable_drop_zone import ClickableDropZone
 from app.ui.widgets.context_help import HelpIconButton, HelpLabel
 from app.ui.widgets.toast import show_toast
@@ -186,6 +190,7 @@ class _FieldLocalizationWorker(QObject):
         source: Path,
         existing_fields: list[dict[str, Any]],
         source_field_hints: list[dict[str, Any]],
+        data_dir: Path,
     ) -> None:
         super().__init__()
         self.source = Path(source)
@@ -193,6 +198,7 @@ class _FieldLocalizationWorker(QObject):
         self.source_field_hints = [
             deepcopy(field) for field in source_field_hints
         ]
+        self.data_dir = Path(data_dir)
         self._cancel_event = Event()
 
     def request_cancel(self) -> None:
@@ -205,6 +211,8 @@ class _FieldLocalizationWorker(QObject):
                 existing_fields=self.existing_fields,
                 source_field_hints=self.source_field_hints,
                 cancel_check=self._cancel_event.is_set,
+                semantic_data_dir=self.data_dir,
+                semantic_enabled=True,
             )
         except AutomaticDetectionCancelled:
             self.canceled.emit()
@@ -239,6 +247,7 @@ class TemplateEditorDialog(QDialog):
         "phone": "Telefone",
         "email": "E-mail",
         "repeatable_table": "Tabela repetível",
+        "repeatable_list": "Lista repetível",
     }
 
     def __init__(
@@ -1904,6 +1913,7 @@ class TemplateEditorDialog(QDialog):
             self.selected_docx,
             existing,
             self._source_field_hints,
+            self.data_dir,
         )
         worker.moveToThread(thread)
 
@@ -2088,6 +2098,12 @@ class TemplateEditorDialog(QDialog):
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return 0
+        reviewed = dialog.reviewed_candidates()
+        try:
+            record_semantic_reviews(self.data_dir, reviewed)
+        except Exception:
+            # Learning is optional metadata and must never block document editing.
+            pass
         accepted = dialog.accepted_candidates()
         if not accepted:
             return 0

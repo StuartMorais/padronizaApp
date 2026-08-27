@@ -641,6 +641,15 @@ def _replace_placeholder(
             list(definition.options),
         )
 
+    if definition.field_type == "repeatable_list":
+        if field_id not in values:
+            return match.group(0)
+        return _format_repeatable_list(
+            values.get(field_id),
+            list_style=str(definition.metadata.get("list_style", "bullet") or "bullet"),
+            punctuation=str(definition.metadata.get("list_punctuation", "semicolon") or "semicolon"),
+        )
+
     if definition.default_value is not None:
         value = values.get(field_id)
         if value is None or (isinstance(value, str) and not value.strip()):
@@ -656,6 +665,37 @@ def _replace_placeholder(
     if value is None:
         return ""
     return str(value)
+
+
+def _format_repeatable_list(
+    raw_value: Any,
+    *,
+    list_style: str = "bullet",
+    punctuation: str = "semicolon",
+) -> str:
+    if not isinstance(raw_value, list):
+        raise DocumentGenerationError("Uma lista repetível recebeu dados em formato inválido.")
+    items = [str(value or "").strip() for value in raw_value if str(value or "").strip()]
+    if not items:
+        return ""
+    style = str(list_style or "bullet").casefold()
+    punctuation = str(punctuation or "semicolon").casefold()
+    lines: list[str] = []
+    for index, item in enumerate(items, start=1):
+        if style == "numbered":
+            prefix = f"{index}. "
+        elif style == "plain":
+            prefix = ""
+        else:
+            prefix = "• "
+        if punctuation == "semicolon":
+            suffix = "." if index == len(items) else ";"
+        elif punctuation == "period":
+            suffix = "."
+        else:
+            suffix = ""
+        lines.append(prefix + item.rstrip(";,. ") + suffix)
+    return "\n".join(lines)
 
 
 def _validate_dropdown_selection(

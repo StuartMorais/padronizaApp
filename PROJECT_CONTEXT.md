@@ -4,8 +4,8 @@
 >
 > **Maintenance rule:** update this file after every meaningful architecture change, feature addition, bug fix that affects project assumptions, quality-gate change, or known limitation. Do not use it as a line-by-line changelog; keep it focused on the current state and decisions that a new developer/chat needs to continue safely.
 
-**Last updated:** 2026-08-26  
-**Current baseline:** Scanner V5.3 review-first detection + unified field localization + safe DOCM ingestion + automatic GitHub Releases  
+**Last updated:** 2026-08-27  
+**Current baseline:** Scanner V6 semantic/review-first detection + dynamic inline/prose/list regions + learned template-family mappings + safe DOCM ingestion + automatic GitHub Releases  
 **Primary platform:** Windows / PySide6 desktop application  
 **Entry point:** `main.py`
 
@@ -45,7 +45,7 @@ Important capabilities include:
 - DOCX generation with user-provided values.
 - DOCX/DOCM → PDF and PDF → DOCX conversion. DOCM is normalized to a macro-free DOCX working copy before any scanner/converter backend opens it.
 - Native Word/content-control handling where supported.
-- Dates, text, checkboxes, dropdowns, single-choice fields, repeatable tables, and `default_or_text` fields.
+- Dates, text, checkboxes, dropdowns, single-choice fields, repeatable tables, repeatable lists, and `default_or_text` fields.
 - Template creation/editing/import/update and diagnostics.
 - Profiles, drafts, favorites, recent documents, audit/history, numbering/sequences, backups, and template versions.
 - Automatic/assisted field detection and document-understanding heuristics.
@@ -118,7 +118,7 @@ Field-specific formatting, validation, hints, samples, and behavior should be ce
 
 DOCX tag interpretation is centralized under the DOCX document layer. Scanner and generator should not independently invent different syntax rules.
 
-Supported concepts include normal text fields and specialized tags such as date, checkbox, dropdown, single-choice, repeatable structures, and `default_or_text`.
+Supported concepts include normal text fields and specialized tags such as date, checkbox, dropdown, single-choice, repeatable tables, repeatable lists (`{{repeat_list:id|style|punctuation}}`), and `default_or_text`.
 
 ### Generation orchestration
 
@@ -207,9 +207,9 @@ confidence/evidence/review priority
 application of accepted detections
 ```
 
-### Scanner V5 review-first model
+### Scanner V6 semantic + review-first model
 
-The current scanner baseline is **Scanner V5**. It preserves the proven Scanner V4 structure-first heuristics, but changes the contract: detection is allowed to find broadly while only candidates supported by strong structural/evidence rules are preselected for automatic application. Ambiguous candidates remain visible for human review instead of silently modifying the template.
+The current scanner baseline is **Scanner V6**. It preserves Scanner V5 review-first behavior and the proven Scanner V4 structure-first heuristics, then adds a local semantic-assistance layer for dynamic content embedded in otherwise ordinary prose. Deterministic structure remains authoritative; fresh semantic discoveries are suggestions and are never silently selected merely because semantic confidence is high.
 
 ```text
 DOCX/DOCM/PDF source
@@ -222,9 +222,11 @@ section/table/content ownership
 ↓
 independent detector passes
 ↓
-candidate evidence + semantic/type inference
+candidate evidence + deterministic semantic/type inference
 ↓
-selection policy (preselected vs review-only)
+local semantic concepts / inline-prose-list discovery / learned family mappings
+↓
+evidence authority + selection policy (preselected vs review-only)
 ↓
 user review / acceptance
 ↓
@@ -233,7 +235,7 @@ transactional tag application
 strict re-scan round-trip validation
 ```
 
-Key Scanner V5 implementation pieces live under `app/document/detection/`, including `extraction.py`, `passes.py`, and `selection_policy.py`. `app/services/template_scanning.py` is the application-level orchestration boundary for the editor: one call locates authoritative tags/native controls and additional untagged review candidates while the detector layers remain independently testable. Candidate metadata preserves source/location/evidence and document fingerprint information so future per-template learning can be added without letting heuristics directly mutate documents.
+Key Scanner V6 implementation pieces live under `app/document/detection/` plus `app/document/semantic_ai/`. `app/services/template_scanning.py` remains the application-level orchestration boundary for the editor: one call locates authoritative tags/native controls and additional review candidates while detector/semantic layers remain independently testable. Candidate metadata preserves source/location/evidence, versioned source anchors, document/family fingerprints, semantic concepts and dynamic scope. `app/repositories/semantic_learning.py` stores compact local accepted/rejected review memory; no semantic document content is sent to a cloud service.
 
 Important structure-first rules retained from Scanner V4:
 
@@ -250,7 +252,7 @@ Important structure-first rules retained from Scanner V4:
 - automatically written tags are staged and must pass the strict normal DOCX scanner before publication;
 - real scanner bugs should become permanent regression fixtures/contracts.
 
-See `docs/SCANNER_V5_2026-08.md` for the current contract and `docs/SCANNER_V4_2026-08.md` for the underlying structure-first rules.
+See `docs/SCANNER_V6_SEMANTIC_2026-08.md` for the current semantic contract, `docs/SCANNER_V5_2026-08.md` for the review-first foundation, and `docs/SCANNER_V4_2026-08.md` for the underlying structure-first rules.
 
 ### Assisted-detection review model
 
@@ -290,6 +292,38 @@ The real regression fixture `tests/fixtures/dfd_licitacao_tradicional_sia13tdr.d
 
 ---
 
+## 5A. Scanner V6 semantic document understanding
+
+Scanner V6 adds local semantic assistance without replacing the structural scanner. The authority order is:
+
+```text
+authoritative Padroniza/native fields
+> strong structural evidence
+> semantic evidence
+> weak visual hints
+```
+
+The semantic implementation under `app/document/semantic_ai/` is deliberately CPU-only/offline. It uses curated Portuguese administrative/procurement concepts, a deterministic 384-dimensional hashed word/bigram/character representation, cosine similarity, and locally reviewed examples. There is no API key, network request, PyTorch/sentence-transformers dependency, or LLM that rewrites the document.
+
+Supported semantic/dynamic concepts now include:
+
+- **inline dynamic spans**, such as the number inside `Ata de Registro de Preços nº 0006/2026`;
+- **dynamic paragraph bodies**, exposed as multiline fields while surrounding structure remains fixed;
+- **`repeatable_list`**, a canonical field type for bullet/numbered lists with style/punctuation/min/max metadata;
+- **template-family review memory**, where accepted mappings can relocate to changed values and rejected regions are suppressed from repeated suggestions.
+
+Every semantic region receives a versioned `source_anchor` plus context/location/family metadata. Anchors use structural ownership, paragraph fingerprints and left/right context rather than depending only on fragile Word run indexes. Repository normalization and preflight reject malformed or scope-inconsistent anchors.
+
+Fresh `semantic_inline`, `semantic_prose`, and `repeatable_list` candidates are always review-only. A `learned_mapping` is the only semantic source that may be preselected, and only because the author previously approved that location in the same template family. Rejected memory also owns its region so the scanner does not repeatedly ask about content explicitly kept fixed.
+
+The first permanent semantic fixture is `tests/fixtures/semantic_v6/justificativa_vantajosidade_adesao_ata.docx`. `tools/check_semantic_benchmark.py` currently requires 13/13 expected dynamic regions, zero unexpected candidates and zero fresh semantic preselection. The benchmark is part of the local quality gate and fast release preflight.
+
+Template schema is now **2** to carry semantic/list metadata. Schema-1 templates still normalize forward; future/newer schemas are rejected safely.
+
+See `docs/SCANNER_V6_SEMANTIC_2026-08.md`.
+
+---
+
 ## 6. Template diagnostics and preflight
 
 Templates have structured diagnostics and preflight checks. Current checks include, where applicable:
@@ -300,6 +334,8 @@ Templates have structured diagnostics and preflight checks. Current checks inclu
 - field-type inconsistencies;
 - invalid/empty dropdown configuration and duplicate options;
 - repeatable-table column problems;
+- repeatable-list metadata/default/style/punctuation problems;
+- invalid semantic dynamic scopes and stale/malformed source anchors;
 - invalid/circular conditions;
 - unknown output filename tokens;
 - source locations for issues.
@@ -362,7 +398,7 @@ These bugs were found during the refactor and are important regression cases:
 16. **Future-schema/corrupt templates could silently disappear during discovery.** Discovery now preserves/report compatibility failures instead of treating them as absent templates.
 17. **Template package imports lacked resource limits.** ZIP imports now enforce path safety, member count, individual-member size, and total uncompressed-size limits.
 18. **DOCM was invisible to the application and cannot be passed directly to python-docx safely.** Word input now accepts `.docm`, strips VBA into an inert canonical DOCX working copy, preserves the original macro-enabled file untouched, and uses the normal scanner/converter pipeline. The converter never hands an original DOCM to Word COM/LibreOffice, preventing an `AutoOpen` macro from being executed by Padroniza's conversion path.
-19. **The GitHub release workflow repeated dependency installation, the full quality gate, and two PyInstaller builds, then only uploaded Actions artifacts.** Release packaging now installs dependencies once, runs a fast compile/dead-module preflight, runs one PyInstaller `--onefile` build, feeds that exact EXE to Inno Setup, calculates SHA-256 hashes, and publishes the installer/portable EXEs directly to GitHub Releases. Manual releases auto-increment SemVer from existing tags (`patch`/`minor`/`major`), while semantic tag pushes use their explicit version.
+19. **The GitHub release workflow repeated dependency installation, the full quality gate, and two PyInstaller builds, then only uploaded Actions artifacts.** Release packaging now installs dependencies once, runs a fast compile/dead-module/semantic-benchmark preflight, runs one PyInstaller `--onefile` build, feeds that exact EXE to Inno Setup, calculates SHA-256 hashes, and publishes the installer/portable EXEs directly to GitHub Releases. Manual releases auto-increment SemVer from existing tags (`patch`/`minor`/`major`), while semantic tag pushes use their explicit version.
 
 Any future cleanup should keep tests around these scenarios rather than assuming the problem cannot return.
 
@@ -384,20 +420,21 @@ It currently performs:
 2. Production-module reachability/dead-module check.
 3. Ruff correctness checks.
 4. Pyright checks over the typed/stable application boundaries.
-5. Complete pytest suite with coverage.
-6. Offscreen PySide6 UI smoke matrix.
-7. Real isolated `main.py --smoke-test` startup.
+5. Scanner V6 real-document semantic benchmark.
+6. Complete pytest suite with coverage.
+7. Offscreen PySide6 UI smoke matrix.
+8. Real isolated `main.py --smoke-test` startup.
 
 Current coverage policy enforces a **75% minimum** over the non-UI core (`core`, `domain`, `document`, `repositories`, `services`). UI correctness relies more heavily on constructor/navigation/startup smoke coverage than line coverage.
 
-At the Scanner V5.3/DOCM/release baseline validation in the Linux review environment:
+At the Scanner V6 semantic baseline validation in the Linux review environment:
 
 ```text
-pytest:         224 passed, 3 skipped (single process)
-core coverage: 79.42%
-dead modules:   none
-compileall:     pass
-workflow YAML: parsed successfully
+pytest:             234 passed, 3 skipped (single process)
+semantic benchmark: 13/13 required, 0 unexpected, 0 fresh semantic preselected
+core coverage:      79.99%
+dead modules:       none
+compileall:         pass
 ```
 
 Ruff, Pyright, PySide6 UI smoke tests, a real Windows executable build, and the real GUI startup remain authoritative Windows CI gates and should be rerun in the normal Windows/GitHub environment.
@@ -450,7 +487,7 @@ Build dependencies are separate in `requirements-build.txt`.
 
 The normal release path is **Actions → Gerar release do Padroniza para Windows → Run workflow**. Choose `patch`, `minor`, or `major`; do not type a version manually. `tools/resolve_release_version.py` reads existing semantic Git tags and computes the next version (first semantic release defaults to `v1.0.0`). The workflow uses `contents: write` and `gh release` to publish `Padroniza-Setup-vX.Y.Z.exe`, `Padroniza-vX.Y.Z.exe`, and `SHA256SUMS.txt` directly on the GitHub Releases page.
 
-The full quality workflow intentionally ignores semantic release tags so a release does not rerun the expensive quality suite while packaging. Full Windows quality remains the pre-merge acceptance gate; the release workflow performs only fast compile/dead-module checks before building. `build_github.ps1` must not install dependencies or invoke PyInstaller more than once.
+The full quality workflow intentionally ignores semantic release tags so a release does not rerun the expensive quality suite while packaging. Full Windows quality remains the pre-merge acceptance gate; the release workflow performs fast compile/dead-module checks plus the Scanner V6 semantic benchmark before building. `build_github.ps1` must not install dependencies or invoke PyInstaller more than once.
 
 Do not carry `.venv/`, `__pycache__/`, `.pytest_cache/`, `build/`, or `dist/` between clean replacements. `.git/` is local Git metadata and should be preserved separately if the working folder must remain attached to the existing checkout.
 
@@ -464,9 +501,9 @@ These are not necessarily bugs; they are the main future product-development are
 
 The internal DOCX/DOCM → PDF converter cannot perfectly reproduce all Microsoft Word layout features. DOCM macros are intentionally removed before conversion; macro preservation is not a Padroniza feature. Prefer Word COM when available, then LibreOffice. Continue improving backend reporting/fallback behavior rather than attempting to make the UI depend on a specific converter.
 
-### Automatic detection quality
+### Automatic/semantic detection quality
 
-Scanner V5 uses structure-first ownership, section/table analysis, content-role classification, multidimensional confidence, review evidence, caching, cooperative cancellation, invariants, and transactional tag round-trip validation. It is still heuristic: unusual legal/government layouts can produce false positives/negatives or imperfect type/label inference. Future work should improve detection quality using real failure documents and committed structure contracts rather than broad score tuning without fixtures.
+Scanner V6 uses structure-first ownership, section/table analysis, content-role classification, multidimensional confidence, local semantic concepts, versioned anchors, learned template-family mappings, review evidence, caching, cooperative cancellation, invariants, and transactional tag round-trip validation. It is still inference: unusual legal/government layouts can produce false positives/negatives or imperfect semantic scope/type/label suggestions. Fresh semantic inline/prose/list regions intentionally remain review-only. Improve quality through committed real-document benchmark contracts rather than broad score tuning without fixtures.
 
 ### Generated filling-form layout
 
@@ -535,14 +572,14 @@ For the assistant/developer continuing the project:
 
 ## 15. Current handoff summary
 
-Padroniza now uses a **Scanner V5 review-first contract** on top of the proven Scanner V4 structure-first/table intelligence. DOCM is now a supported Word input alongside DOCX: it is converted into a macro-free canonical DOCX working copy before scanning or conversion, and VBA is never executed/preserved by Padroniza. The scanner separates discovery from automatic application: strong, structurally consistent candidates can be preselected, while ambiguous candidates remain review-only with evidence and source metadata. The reliability pass also makes template replacement/config updates, generated-output metadata persistence, and backup data/settings restoration rollback-capable; incompatible template discovery is surfaced; and template-package imports are resource-limited. The obsolete preview/batch modules were removed so the dead-code gate is green.
+Padroniza now uses a **Scanner V6 semantic + review-first contract** on top of the proven Scanner V5/V4 structure-first/table intelligence. DOCM is now a supported Word input alongside DOCX: it is converted into a macro-free canonical DOCX working copy before scanning or conversion, and VBA is never executed/preserved by Padroniza. The scanner separates discovery from automatic application: strong, structurally consistent candidates can be preselected, while ambiguous candidates remain review-only with evidence and source metadata. The reliability pass also makes template replacement/config updates, generated-output metadata persistence, and backup data/settings restoration rollback-capable; incompatible template discovery is surfaced; and template-package imports are resource-limited. The obsolete preview/batch modules were removed so the dead-code gate is green.
 
 The normal template-editor scan UX now exposes one **Localizar campos** action even though the backend remains multi-stage. `app/services/template_scanning.py` coordinates authoritative tag/native-control discovery plus untagged candidate discovery and returns a single `TemplateScanResult`; the UI synchronizes deterministic fields immediately and reviews only the heuristic additions. Diagnostics remains separate.
 
 
 GitHub Windows releases are now versioned and published automatically. Manual workflow runs choose only the SemVer bump (`patch`, `minor`, or `major`); the workflow resolves the next version from Git tags, runs a single PyInstaller build, uses that same EXE for Inno Setup, and uploads the installer, portable EXE, and checksums directly to GitHub Releases. Semantic tag pushes are also supported, and the full quality workflow ignores release tags to avoid duplicate 30+ minute work.
 
-The next phase should focus on **measured detector quality**, not another language rewrite: add troublesome real documents as fixtures, calibrate the selection policy from observed false positives/negatives, add richer source-location highlighting, and then build per-template learned mappings/fingerprints on top of the V5 candidate metadata. Keep deterministic structure/location logic authoritative and use semantic/AI assistance only as evidence, never as a direct OOXML editor.
+The semantic layer is now implemented locally and measured with a committed narrative benchmark. Next product work should focus on the major Novo Modelo UI/UX redesign and broader real-document benchmark coverage. Keep deterministic structure/location logic authoritative: semantic assistance suggests meaning/scope, the author approves ambiguous content, and only deterministic OOXML/PDF code applies changes.
 
 A real DFD regression on 2026-08-26 added two scanner contracts that were previously missing: (1) a 5.1-style block with exactly two alternatives separated by one `OU` is detected as a single-choice dropdown; and (2) a section-7-style sentence containing one red inline span such as `área técnica competente ou à equipe de planejamento da contratação` is detected as a two-option single choice while preserving the surrounding black sentence.
 

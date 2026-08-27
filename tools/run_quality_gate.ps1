@@ -1,18 +1,21 @@
 $ErrorActionPreference = "Stop"
 
-Write-Host "[1/7] Compilando Python..."
+Write-Host "[1/8] Compilando Python..."
 python -m compileall -q app tests tools
 
-Write-Host "[2/7] Verificando módulos órfãos..."
+Write-Host "[2/8] Verificando módulos órfãos..."
 python tools/check_dead_code.py
 
-Write-Host "[3/7] Ruff..."
+Write-Host "[3/8] Ruff..."
 ruff check .
 
-Write-Host "[4/7] Pyright..."
+Write-Host "[4/8] Pyright..."
 pyright
 
-Write-Host "[5/7] Testes + cobertura do núcleo..."
+Write-Host "[5/8] Benchmark semântico Scanner V6..."
+python tools/check_semantic_benchmark.py
+
+Write-Host "[6/8] Testes + cobertura do núcleo..."
 pytest -q `
   --cov=app.core `
   --cov=app.domain `
@@ -24,11 +27,11 @@ pytest -q `
   --cov-report=xml:coverage.xml `
   --cov-fail-under=75
 
-Write-Host "[6/7] Smoke tests das telas e diálogos..."
+Write-Host "[7/8] Smoke tests das telas e diálogos..."
 $env:QT_QPA_PLATFORM = "offscreen"
 pytest -q tests/test_gui_startup_smoke.py tests/test_ui_smoke_matrix.py
 
-Write-Host "[7/7] Inicialização completa pelo main.py..."
+Write-Host "[8/8] Inicialização completa pelo main.py..."
 $previousDataDir = $env:PADRONIZA_DATA_DIR
 $smokeRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("padroniza-quality-" + [guid]::NewGuid().ToString("N"))
 try {

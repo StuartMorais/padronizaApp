@@ -111,7 +111,13 @@ def _first_ordinal(location: dict[str, Any]) -> int:
             return int(location.get("paragraph", -1))
         except (TypeError, ValueError):
             return -1
-    values = location.get("paragraphs", []) or location.get("owned_paragraphs", []) or []
+    values = list(location.get("paragraphs", []) or location.get("owned_paragraphs", []) or [])
+    if not values and str(location.get("kind", "")) == "text_spans":
+        values = [
+            span.get("paragraph")
+            for span in location.get("spans", []) or []
+            if isinstance(span, dict)
+        ]
     try:
         return min(int(value) for value in values)
     except (TypeError, ValueError):

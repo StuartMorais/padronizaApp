@@ -78,6 +78,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/check_dead_code.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/check_semantic_benchmark.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compilar uma única vez
         id: build

@@ -1,0 +1,21 @@
+{
+  "benchmark_version": 1,
+  "document_family": "justificativa_vantajosidade_adesao_ata",
+  "required_candidates": [
+    {"field_id": "procurement.items", "type": "repeatable_list", "source": "repeatable_list"},
+    {"field_id": "procurement.ata_number", "type": "text", "source": "semantic_inline", "default_value": "0006/2026"},
+    {"field_id": "procurement.managing_agency", "type": "text", "source": "semantic_inline", "default_value": "Secretaria de Estado da Administração"},
+    {"field_id": "organization.acronym", "type": "text", "source": "semantic_inline", "default_value": "SEAD/PB"},
+    {"field_id": "justification.celerity", "type": "multiline", "source": "semantic_prose"},
+    {"field_id": "justification.economy", "type": "multiline", "source": "semantic_prose"},
+    {"field_id": "justification.efficiency", "type": "multiline", "source": "semantic_prose"},
+    {"field_id": "justification.legal_security", "type": "multiline", "source": "semantic_prose"},
+    {"field_id": "justification.continuity", "type": "multiline", "source": "semantic_prose"},
+    {"field_id": "justification.conclusion", "type": "multiline", "source": "semantic_prose"},
+    {"field_id": "person.name", "type": "text", "source": "semantic_inline", "default_value": "LUCILEIDE DA SILVA NASCIMENTO"},
+    {"field_id": "person.role", "type": "text", "source": "semantic_inline", "default_value": "Assistente Administrativa"},
+    {"field_id": "person.registration", "type": "text", "source": "semantic_inline", "default_value": "917.108-8"}
+  ],
+  "maximum_unexpected_candidates": 0,
+  "maximum_fresh_semantic_preselected": 0
+}

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 
-DETECTION_PIPELINE_VERSION = 5
+DETECTION_PIPELINE_VERSION = 6
 AUTO_APPLY_READY_CONFIDENCE = 0.85
 AUTO_APPLY_RECOMMENDED_CONFIDENCE = 0.92
 AUTO_APPLY_DIMENSION_MINIMUMS = {
@@ -20,6 +20,9 @@ REVIEW_ONLY_SOURCES = {
     "prefilled_text",
     "consistency_repair",
     "colored_prompt",
+    "semantic_inline",
+    "semantic_prose",
+    "repeatable_list",
 }
 
 
@@ -48,8 +51,10 @@ def apply_review_first_policy(
             reasons.append("A análise estrutural exige revisão antes da aplicação.")
         if source in REVIEW_ONLY_SOURCES:
             reasons.append(
-                "Este detector interpreta texto/formatação e exige confirmação humana."
+                "Este campo foi inferido a partir do conteúdo do documento e exige confirmação humana."
             )
+        if bool(candidate.get("semantic_forces_review", False)):
+            reasons.append("A análise semântica encontrou uma divergência que precisa de confirmação.")
 
         minimum_confidence = (
             AUTO_APPLY_RECOMMENDED_CONFIDENCE
@@ -76,9 +81,15 @@ def apply_review_first_policy(
         ):
             reasons.append("Existe uma violação estrutural que exige revisão.")
 
+        # A location previously approved by the author in the same template
+        # family is the only semantic source allowed to become preselected.
+        # It is deterministic memory, not a fresh AI guess.
+        if source == "learned_mapping" and not bool(candidate.get("requires_configuration", False)):
+            reasons = [reason for reason in reasons if "Confiança" not in reason and "Evidência" not in reason]
+
         eligible = not reasons
         candidate["pipeline_version"] = DETECTION_PIPELINE_VERSION
-        candidate["selection_policy_version"] = 1
+        candidate["selection_policy_version"] = 2
         candidate["auto_apply_eligible"] = eligible
         candidate["auto_apply_reasons"] = reasons
         candidate["selected"] = eligible

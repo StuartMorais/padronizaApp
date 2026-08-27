@@ -49,7 +49,7 @@ optional DocumentConverter
 
 `FieldDefinition` remains dict-compatible so existing template JSON is preserved while new code gets a normalized model and typed properties.
 
-`app/domain/field_handlers.py` is the central behavior registry for field types. It owns common widget hints, formatting, samples, and type-specific validation for text, date, checkbox, dropdown, Brazilian document numbers, numeric types, e-mail, and repeatable tables. New field types should be registered there rather than adding parallel `if/elif` chains to scanner, form, and validation code.
+`app/domain/field_handlers.py` is the central behavior registry for field types. It owns common widget hints, formatting, samples, and type-specific validation for text, date, checkbox, dropdown, Brazilian document numbers, numeric types, e-mail, repeatable tables, and repeatable lists. New field types should be registered there rather than adding parallel `if/elif` chains to scanner, form, and validation code.
 
 ## Automatic detection
 
@@ -69,6 +69,30 @@ detection/
 ```
 
 This makes a detection failure attributable to a specific stage rather than one monolithic function.
+
+### Scanner V6 semantic layer
+
+Scanner V6 adds `app/document/semantic_ai/` after structural discovery. The semantic layer is local/offline and produces evidence, concepts, labels/types, dynamic-scope suggestions, source anchors and learned-template-family matches. It never writes OOXML/PDF directly.
+
+```text
+authoritative tags/native controls
+        ↓
+structural ownership/detectors
+        ↓
+local semantic evidence
+        ↓
+review-first selection policy
+        ↓
+human acceptance
+        ↓
+deterministic tag application
+        ↓
+strict ordinary-scanner round trip
+```
+
+Evidence authority is explicit: authoritative > structural > semantic > visual hint. Fresh semantic inline/prose/list candidates are review-only. Only a previously human-approved mapping that is safely relocated in the same template family may be preselected as `learned_mapping`. Rejections also claim a location so the scanner does not repeatedly suggest the same fixed region.
+
+The local semantic implementation deliberately avoids cloud APIs/heavy LLM runtimes. It uses curated Portuguese administrative/procurement concepts, deterministic hashed vectors/similarity and local review memory. See `docs/SCANNER_V6_SEMANTIC_2026-08.md`.
 
 ## Generation and publication
 
@@ -112,7 +136,7 @@ The interactive converter runs in a worker thread, publishes through a staging f
 
 ## Template diagnostics and preflight
 
-`app/document/diagnostics.py` provides structured diagnostics with severity, stable issue codes, field IDs, source locations, and safe-fix metadata where applicable. It checks markers, IDs, field/config mismatches, conditions/cycles, dropdowns, repeatable tables, and output tokens.
+`app/document/diagnostics.py` provides structured diagnostics with severity, stable issue codes, field IDs, source locations, and safe-fix metadata where applicable. It checks markers, IDs, field/config mismatches, conditions/cycles, dropdowns, repeatable tables/lists, semantic source-anchor metadata, and output tokens.
 
 Preflight is enforced when templates are created, updated, imported, and again immediately before generation. Blocking structural errors cannot silently enter the generation pipeline. The template editor displays issues in a structured navigator; double-clicking a field issue returns to that field in the editor.
 
@@ -142,4 +166,4 @@ Backup restore validates archive sizes, member paths, backup schema, and setting
 
 ## CI and integration testing
 
-The Windows quality workflow runs the automated suite, static checks, and real PySide6 offscreen `--smoke-test` startup. The release workflow is deliberately separate and fast: semantic release tags do not rerun the full quality workflow, packaging performs only compile/dead-module preflight, PyInstaller runs once, and the same one-file executable is used for both the portable asset and Inno Setup installer before assets are published to GitHub Releases.
+The Windows quality workflow runs the automated suite, static checks, and real PySide6 offscreen `--smoke-test` startup. The release workflow is deliberately separate and fast: semantic release tags do not rerun the full quality workflow, packaging performs compile/dead-module plus the fast Scanner V6 semantic benchmark, PyInstaller runs once, and the same one-file executable is used for both the portable asset and Inno Setup installer before assets are published to GitHub Releases.

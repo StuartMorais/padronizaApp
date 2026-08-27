@@ -50,3 +50,21 @@ The current clean source tree was revalidated with:
 - semantic release version tests — numeric latest-tag selection and patch/minor/major increments pass
 
 A real Windows PyInstaller/Inno Setup/GitHub Release run was not executable in this Linux environment; `.github/workflows/build-windows.yml` is the authoritative Windows packaging path.
+
+## Scanner V6 semantic validation — 2026-08-27
+
+After the semantic/dynamic-region integration and hardening pass:
+
+- `pytest -q` — **234 passed, 3 skipped** in one Linux process;
+- core coverage — **79.99%**, above the enforced 75% floor;
+- `python tools/check_semantic_benchmark.py` — **13/13 required**, **0 unexpected**, **0 fresh semantic candidates preselected**;
+- `python tools/check_dead_code.py` — all production modules reachable;
+- `python -m compileall -q app tests tools` — pass;
+- semantic apply → normal DOCX re-scan contract — pass, including repeatable-list type/style/punctuation preservation;
+- accepted learned mappings relocate changed inline, paragraph, list and signature values in the same template family;
+- rejected semantic regions are not suggested again at the same learned location;
+- schema-1 template configuration normalizes to schema 2 and V6 semantic/source-anchor metadata survives strict repository normalization;
+- invalid repeatable-list metadata and invalid/stale semantic anchor metadata are blocking diagnostics/preflight errors;
+- repeatable-list generation produces the expected bullet/punctuation output.
+
+Ruff, Pyright and the real PySide6/Windows startup/build gates were not available in this Linux environment and remain authoritative in the Windows quality workflow.

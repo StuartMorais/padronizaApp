@@ -316,7 +316,7 @@ def postprocess_candidates(
                     "Máscara/placeholder visual aparece ao lado de um rótulo local.",
                 )
             )
-        if source in {"checkbox_choice", "long_choice", "repeatable_table"}:
+        if source in {"checkbox_choice", "long_choice", "repeatable_table", "repeatable_list"}:
             evidences.append(Evidence("group_structure", 0.06, "Vários elementos formam uma estrutura coerente."))
         if candidate.get("region_owner"):
             evidences.append(
@@ -352,8 +352,10 @@ def postprocess_candidates(
             "checkbox_group": 0.94,
             "empty_cell": 0.92,
             "text_span": 0.90,
+            "text_spans": 0.90,
             "append_tag": 0.90,
             "paragraph_block": 0.86,
+            "paragraph_list": 0.86,
             "paragraph": 0.80,
         }.get(location_kind, 0.72)
         if semantics.section:
@@ -499,6 +501,12 @@ def _location_ordinals(
         values.extend(location.get("owned_paragraphs", []) or [])
     elif location.get("paragraphs"):
         values.extend(location.get("paragraphs", []) or [])
+    elif str(location.get("kind", "")) == "text_spans":
+        values.extend(
+            span.get("paragraph")
+            for span in location.get("spans", []) or []
+            if isinstance(span, dict)
+        )
     elif "paragraph" in location:
         values.append(location.get("paragraph"))
 
@@ -589,6 +597,10 @@ def _pick_candidate(a: dict[str, Any], b: dict[str, Any]) -> tuple[dict[str, Any
             "colored_prompt": 4,
             "colored_inline_choice": 6,
             "dropdown_prompt": 2,
+            "learned_mapping": 7,
+            "semantic_inline": 4,
+            "semantic_prose": 3,
+            "repeatable_list": 5,
         }.get(source, 1)
         label_quality = 0 if _poor_label(str(item.get("label", ""))) else 1
         return float(item.get("confidence", 0.0)), source_priority, label_quality
@@ -731,10 +743,16 @@ def _first_location_ordinal(location: dict[str, Any]) -> int:
             return int(location["paragraph"])
         except Exception:
             return -1
-    paragraphs = location.get("paragraphs", []) or []
+    paragraphs = list(location.get("paragraphs", []) or [])
+    if not paragraphs and str(location.get("kind", "")) == "text_spans":
+        paragraphs = [
+            span.get("paragraph")
+            for span in location.get("spans", []) or []
+            if isinstance(span, dict)
+        ]
     if paragraphs:
         try:
-            return int(paragraphs[0])
+            return min(int(value) for value in paragraphs)
         except Exception:
             return -1
     return -1
@@ -748,6 +766,15 @@ def _location_signature(location: dict[str, Any]) -> tuple[Any, ...]:
     kind = str(location.get("kind", ""))
     if kind == "text_span":
         return kind, location.get("paragraph"), location.get("start"), location.get("end")
+    if kind == "text_spans":
+        spans = tuple(
+            sorted(
+                (span.get("paragraph"), span.get("start"), span.get("end"))
+                for span in location.get("spans", []) or []
+                if isinstance(span, dict)
+            )
+        )
+        return kind, spans
     if "paragraph" in location:
         return kind, location.get("paragraph")
     if "paragraphs" in location:

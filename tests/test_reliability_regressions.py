@@ -275,7 +275,7 @@ def test_review_first_policy_preselects_strong_structural_candidate() -> None:
 
     assert candidate["selected"] is True
     assert candidate["auto_apply_eligible"] is True
-    assert candidate["pipeline_version"] == 5
+    assert candidate["pipeline_version"] == 6
 
 
 def test_location_signature_is_stable_across_mapping_order() -> None:

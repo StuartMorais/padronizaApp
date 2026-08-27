@@ -213,6 +213,11 @@ FIELD_HANDLERS: dict[str, FieldHandler] = {
         widget_kind="repeatable_table",
         full_width=True,
     ),
+    FieldType.REPEATABLE_LIST.value: FieldHandler(
+        FieldType.REPEATABLE_LIST,
+        widget_kind="repeatable_list",
+        full_width=True,
+    ),
 }
 
 

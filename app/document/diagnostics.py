@@ -14,10 +14,13 @@ from app.document.docx.scanner import scan_docx_fields
 from app.document.docx.tags import parse_tag
 from app.document.understanding.smart_template import VALID_FIELD_ID, scan_docx_health
 from app.domain.field_metadata import (
+    DYNAMIC_SCOPES,
     dropdown_option_values,
     normalize_repeatable_columns,
     raw_dropdown_option_values,
     raw_repeatable_column_ids,
+    repeatable_list_errors,
+    source_anchor_errors,
 )
 
 
@@ -95,7 +98,7 @@ def diagnose_template(config: dict[str, Any], source_path: Path) -> dict[str, An
     for field_id in sorted(configured_ids & scanned_ids):
         configured_type = str(configured_by_id[field_id].get("type", "text"))
         scanned_type = str(scanned_by_id[field_id].get("type", "text"))
-        if scanned_type in {"checkbox", "date", "dropdown", "repeatable_table"} and configured_type != scanned_type:
+        if scanned_type in {"checkbox", "date", "dropdown", "repeatable_table", "repeatable_list"} and configured_type != scanned_type:
             type_mismatches.append({"id": field_id, "configured": configured_type, "detected": scanned_type})
 
     invalid_conditions, condition_cycles = _condition_problems(configured_fields)
@@ -108,6 +111,8 @@ def diagnose_template(config: dict[str, Any], source_path: Path) -> dict[str, An
     duplicate_dropdown_options: dict[str, list[str]] = {}
     invalid_repeatable_tables: list[str] = []
     duplicate_table_columns: dict[str, list[str]] = {}
+    invalid_repeatable_lists: dict[str, list[str]] = {}
+    invalid_semantic_metadata: dict[str, list[str]] = {}
     for field in configured_fields:
         field_id = str(field.get("id", ""))
         field_type = str(field.get("type", ""))
@@ -132,6 +137,19 @@ def diagnose_template(config: dict[str, Any], source_path: Path) -> dict[str, An
             )
             if duplicates:
                 duplicate_table_columns[field_id] = duplicates
+        if field_type == "repeatable_list":
+            list_errors = repeatable_list_errors(field)
+            if list_errors:
+                invalid_repeatable_lists[field_id] = list_errors
+        dynamic_scope = str(field.get("dynamic_scope", "") or "").casefold()
+        semantic_errors: list[str] = []
+        if dynamic_scope and dynamic_scope not in DYNAMIC_SCOPES:
+            semantic_errors.append("escopo dinâmico inválido")
+        semantic_errors.extend(
+            source_anchor_errors(field.get("source_anchor"), expected_scope=dynamic_scope)
+        )
+        if semantic_errors:
+            invalid_semantic_metadata[field_id] = semantic_errors
     invalid_repeatable_tables.sort()
 
     output = config.get("output", {}) if isinstance(config.get("output"), dict) else {}
@@ -174,6 +192,12 @@ def diagnose_template(config: dict[str, Any], source_path: Path) -> dict[str, An
         add("table.no_columns", "error", "Tabela repetível sem colunas.", field_id)
     for field_id, duplicates in duplicate_table_columns.items():
         add("table.duplicate_columns", "error", "IDs de coluna repetidos: " + ", ".join(duplicates), field_id)
+    for field_id, problems in invalid_repeatable_lists.items():
+        for problem in problems:
+            add("list.invalid", "error", problem.capitalize() + ".", field_id)
+    for field_id, problems in invalid_semantic_metadata.items():
+        for problem in problems:
+            add("semantic.metadata_invalid", "error", problem.capitalize() + ".", field_id)
     for token in invalid_filename_tokens:
         add("output.unknown_token", "warning", f"Marcador desconhecido no nome do arquivo: {token}")
     for malformed in health.get("malformed_placeholders", []):
@@ -187,6 +211,7 @@ def diagnose_template(config: dict[str, Any], source_path: Path) -> dict[str, An
         invalid_config_ids=invalid_config_ids, invalid_conditions=invalid_conditions, condition_cycles=condition_cycles,
         invalid_dropdowns=invalid_dropdowns, duplicate_dropdown_options=duplicate_dropdown_options,
         invalid_repeatable_tables=invalid_repeatable_tables, duplicate_table_columns=duplicate_table_columns,
+        invalid_repeatable_lists=invalid_repeatable_lists, invalid_semantic_metadata=invalid_semantic_metadata,
         invalid_filename_tokens=invalid_filename_tokens, health=health,
     )
     blocking_count = sum(1 for issue in issues if issue.severity == "error")
@@ -208,6 +233,8 @@ def diagnose_template(config: dict[str, Any], source_path: Path) -> dict[str, An
         "duplicate_dropdown_options": duplicate_dropdown_options,
         "invalid_repeatable_tables": invalid_repeatable_tables,
         "duplicate_table_columns": duplicate_table_columns,
+        "invalid_repeatable_lists": invalid_repeatable_lists,
+        "invalid_semantic_metadata": invalid_semantic_metadata,
         "invalid_filename_tokens": invalid_filename_tokens,
         "malformed_placeholders": health.get("malformed_placeholders", []),
         "duplicate_occurrences": health.get("duplicate_occurrences", {}),
@@ -284,6 +311,8 @@ def _legacy_warning_summary(**values: Any) -> list[str]:
         ("duplicate_dropdown_options", "lista(s) suspensa(s) possuem opções repetidas"),
         ("invalid_repeatable_tables", "tabela(s) repetível(is) não possuem colunas"),
         ("duplicate_table_columns", "tabela(s) repetível(is) possuem IDs de coluna duplicados"),
+        ("invalid_repeatable_lists", "lista(s) repetível(is) possuem configuração inválida"),
+        ("invalid_semantic_metadata", "campo(s) possuem metadados semânticos inválidos"),
         ("invalid_filename_tokens", "marcador(es) do nome do arquivo são desconhecidos"),
     )
     for key, label in count_messages:

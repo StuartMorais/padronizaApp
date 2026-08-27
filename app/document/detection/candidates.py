@@ -133,6 +133,24 @@ def candidate_field_definitions(
             field["placeholder"] = placeholder
         if "default_value" in candidate:
             field["default_value"] = deepcopy(candidate.get("default_value"))
+        for key in (
+            "dynamic_scope",
+            "semantic_concept_id",
+            "semantic_prediction",
+            "semantic_model_version",
+            "semantic_fillable_probability",
+            "semantic_concept_confidence",
+            "semantic_learned_similarity",
+            "source_anchor",
+            "source_context",
+            "family_fingerprint",
+            "list_style",
+            "list_punctuation",
+            "minimum_items",
+            "maximum_items",
+        ):
+            if key in candidate:
+                field[key] = deepcopy(candidate.get(key))
         if str(candidate.get("layout", "")) == "choice":
             group = str(candidate.get("layout_group", f"auto_choice_{field_id}"))
             field.update(
@@ -151,8 +169,11 @@ def candidate_field_definitions(
         # editable instead of being silently replaced with today's date.
         if field["type"] == "date":
             field["automatic"] = False
-        if field["type"] == "multiline":
+        if field["type"] in {"multiline", "repeatable_list"}:
             field["full_width"] = True
+        if field["type"] == "repeatable_list":
+            field["required"] = bool(candidate.get("required", True))
+            field["minimum_items"] = max(0, int(candidate.get("minimum_items", 1) or 0))
         section = str(candidate.get("section", "")).strip()
         if section:
             field["section"] = section

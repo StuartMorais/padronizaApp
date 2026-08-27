@@ -6,10 +6,13 @@ from typing import Any, Iterable
 
 from app.domain.field_ids import VALID_FIELD_ID
 from app.domain.field_metadata import (
+    DYNAMIC_SCOPES,
     dropdown_option_values,
     normalize_repeatable_columns,
     raw_dropdown_option_values,
     raw_repeatable_column_ids,
+    repeatable_list_errors,
+    source_anchor_errors,
 )
 
 
@@ -122,6 +125,29 @@ def field_configuration_issues(
                         "table.columns_duplicate",
                         "IDs de coluna repetidos: " + ", ".join(duplicates),
                     )
+
+        if field_type == "repeatable_list":
+            for message in repeatable_list_errors(field):
+                add(row, "error", "list.invalid", message.capitalize() + ".")
+
+        dynamic_scope = str(field.get("dynamic_scope", "") or "").casefold()
+        if dynamic_scope and dynamic_scope not in DYNAMIC_SCOPES:
+            add(
+                row,
+                "error",
+                "semantic.scope_invalid",
+                "O escopo dinâmico do campo é inválido.",
+            )
+        for message in source_anchor_errors(
+            field.get("source_anchor"),
+            expected_scope=dynamic_scope,
+        ):
+            add(
+                row,
+                "error",
+                "semantic.anchor_invalid",
+                message.capitalize() + ".",
+            )
 
         condition = field.get("visible_when")
         if condition:

@@ -31,6 +31,7 @@ from app.ui.widgets.field_container import FieldContainer
 from app.ui.widgets.exclusive_choice import ChoiceOptionCheckBox, ExclusiveChoiceWidget
 from app.ui.widgets.readable_checkbox import ReadableCheckBox
 from app.ui.widgets.repeatable_table import RepeatableTableWidget
+from app.ui.widgets.repeatable_list import RepeatableListWidget
 from app.ui.widgets.searchable_dropdown import SearchableDropdown
 from app.ui.widgets.smart_line_edit import SmartLineEdit
 from app.domain.profile_mapping import build_profile_payload, resolve_profile_values
@@ -1129,7 +1130,7 @@ class DocumentForm(QWidget):
                     False
                     if field_type == "checkbox"
                     else []
-                    if field_type == "repeatable_table"
+                    if field_type in {"repeatable_table", "repeatable_list"}
                     else ""
                 )
 
@@ -1161,6 +1162,8 @@ class DocumentForm(QWidget):
                 values[field_id] = widget.toPlainText().strip()
             elif isinstance(widget, RepeatableTableWidget):
                 values[field_id] = widget.rows()
+            elif isinstance(widget, RepeatableListWidget):
+                values[field_id] = widget.items()
             elif isinstance(widget, SmartLineEdit):
                 values[field_id] = widget.text().strip()
             elif isinstance(widget, QDateEdit):
@@ -1184,7 +1187,17 @@ class DocumentForm(QWidget):
                 continue
             field_type = infer_field_type(field_id, str(field.get("type", "text")))
             value = resolved_values.get(field_id)
-            empty = field_type != "checkbox" and not str(value or "").strip()
+            if field_type == "checkbox":
+                empty = False
+            elif isinstance(value, list):
+                empty = not any(
+                    bool(str(item or "").strip())
+                    if not isinstance(item, dict)
+                    else any(bool(str(cell or "").strip()) for cell in item.values())
+                    for item in value
+                )
+            else:
+                empty = not str(value or "").strip()
             label = str(field.get("label", field_id)).strip() or field_id
             issues.append(
                 {
@@ -1317,6 +1330,8 @@ class DocumentForm(QWidget):
             widget.focus_selector()
         elif isinstance(widget, RepeatableTableWidget):
             widget.focus_table()
+        elif isinstance(widget, RepeatableListWidget):
+            widget.focus_list()
         container = self.field_containers.get(field_id)
         return container if container is not None else widget
 
@@ -1334,12 +1349,15 @@ class DocumentForm(QWidget):
                     return True
             elif isinstance(value, list):
                 if any(
-                    isinstance(row, dict)
-                    and any(
-                        bool(cell) if isinstance(cell, bool) else bool(str(cell or "").strip())
-                        for key, cell in row.items()
-                        if not str(key).startswith("__")
+                    (
+                        isinstance(row, dict)
+                        and any(
+                            bool(cell) if isinstance(cell, bool) else bool(str(cell or "").strip())
+                            for key, cell in row.items()
+                            if not str(key).startswith("__")
+                        )
                     )
+                    or (not isinstance(row, dict) and bool(str(row or "").strip()))
                     for row in value
                 ):
                     return True
@@ -1365,6 +1383,8 @@ class DocumentForm(QWidget):
                     widget.setPlainText(str(value or ""))
                 elif isinstance(widget, RepeatableTableWidget):
                     widget.set_rows(value if isinstance(value, list) else [], emit_signal=False)
+                elif isinstance(widget, RepeatableListWidget):
+                    widget.set_items(value if isinstance(value, list) else [], emit_signal=False)
                 elif isinstance(widget, SmartLineEdit):
                     widget.set_value(value)
                 elif isinstance(widget, QDateEdit):
@@ -1398,6 +1418,9 @@ class DocumentForm(QWidget):
                     widget.clear()
                 elif isinstance(widget, RepeatableTableWidget):
                     widget.clear(emit_signal=False)
+                elif isinstance(widget, RepeatableListWidget):
+                    widget.clear(emit_signal=False)
+                    widget.add_item("", emit_signal=False)
                 elif isinstance(widget, SmartLineEdit):
                     widget.clear()
                 elif isinstance(widget, QDateEdit):
@@ -1446,6 +1469,8 @@ class DocumentForm(QWidget):
             return SearchableDropdown(field.get("options", []), title=label)
         if field_type == "repeatable_table":
             return RepeatableTableWidget(field)
+        if field_type == "repeatable_list":
+            return RepeatableListWidget(field)
         if field_type == "multiline":
             editor = QPlainTextEdit()
             editor.setMinimumHeight(int(field.get("height", 105) or 105))
@@ -1530,6 +1555,8 @@ class DocumentForm(QWidget):
                 "Adicione uma linha para cada item da contratação. Também é possível "
                 "duplicar, reordenar ou colar dados tabulados copiados do Excel."
             )
+        if str(field.get("type", "")) == "repeatable_list":
+            return "Adicione, remova ou altere os itens que devem aparecer na lista do documento."
         return ""
 
     def _connect_widget(self, widget: QWidget, field_id: str) -> None:
@@ -1542,6 +1569,8 @@ class DocumentForm(QWidget):
         elif isinstance(widget, QPlainTextEdit):
             widget.textChanged.connect(callback)
         elif isinstance(widget, RepeatableTableWidget):
+            widget.values_changed.connect(callback)
+        elif isinstance(widget, RepeatableListWidget):
             widget.values_changed.connect(callback)
         elif isinstance(widget, SmartLineEdit):
             widget.value_changed.connect(callback)

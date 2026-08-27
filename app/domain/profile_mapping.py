@@ -92,6 +92,8 @@ def _normalized_type(field: Mapping[str, Any]) -> str:
         "radio": "choice",
         "dropdown": "dropdown",
         "repeatable_table": "repeatable_table",
+        "repeatable_list": "repeatable_list",
+        "editable_list": "repeatable_list",
         "table": "repeatable_table",
         "multiline": "multiline",
         "checkbox": "checkbox",

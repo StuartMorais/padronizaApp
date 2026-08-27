@@ -23,6 +23,7 @@ class FieldType(str, Enum):
     PHONE = "phone"
     EMAIL = "email"
     REPEATABLE_TABLE = "repeatable_table"
+    REPEATABLE_LIST = "repeatable_list"
 
     def __str__(self) -> str:
         return self.value
@@ -54,6 +55,11 @@ _FIELD_TYPE_SPECS = (
     FieldTypeSpec(
         FieldType.REPEATABLE_TABLE,
         ("table", "repeating_table", "repeatable"),
+        is_collection=True,
+    ),
+    FieldTypeSpec(
+        FieldType.REPEATABLE_LIST,
+        ("list", "repeating_list", "dynamic_list", "editable_list"),
         is_collection=True,
     ),
 )

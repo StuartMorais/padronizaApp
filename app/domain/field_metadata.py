@@ -6,6 +6,89 @@ from typing import Any
 
 from app.domain.field_types import FIELD_TYPE_ALIASES
 
+
+DYNAMIC_SCOPES = frozenset({"inline", "paragraph", "list"})
+REPEATABLE_LIST_STYLES = frozenset({"bullet", "numbered", "plain"})
+REPEATABLE_LIST_PUNCTUATIONS = frozenset({"semicolon", "period", "none"})
+SOURCE_ANCHOR_VERSION = 1
+
+
+def source_anchor_errors(value: Any, *, expected_scope: str = "") -> list[str]:
+    """Return schema/consistency problems in persisted semantic source anchors."""
+
+    if value in (None, "", {}):
+        return []
+    if not isinstance(value, dict):
+        return ["a âncora semântica deve ser um objeto"]
+    errors: list[str] = []
+    try:
+        version = int(value.get("version", 0) or 0)
+    except (TypeError, ValueError):
+        version = -1
+    if version != SOURCE_ANCHOR_VERSION:
+        errors.append(
+            f"versão de âncora semântica não suportada ({version}; esperado {SOURCE_ANCHOR_VERSION})"
+        )
+    scope = str(value.get("scope", "") or "").casefold()
+    if scope not in DYNAMIC_SCOPES:
+        errors.append("escopo da âncora semântica inválido")
+    expected = str(expected_scope or "").casefold()
+    if expected and expected in DYNAMIC_SCOPES and scope and scope != expected:
+        errors.append(f"escopo da âncora ({scope}) difere do campo ({expected})")
+    spans = value.get("spans", [])
+    if not isinstance(spans, list) or not spans:
+        errors.append("a âncora semântica não possui trechos de origem")
+        return errors
+    for index, raw in enumerate(spans, start=1):
+        if not isinstance(raw, dict):
+            errors.append(f"trecho {index} da âncora é inválido")
+            continue
+        try:
+            paragraph = int(raw.get("paragraph", -1))
+            start = int(raw.get("start", -1))
+            end = int(raw.get("end", -1))
+        except (TypeError, ValueError):
+            errors.append(f"trecho {index} da âncora possui posição inválida")
+            continue
+        if paragraph < 0 or start < 0 or end <= start:
+            errors.append(f"trecho {index} da âncora possui intervalo inválido")
+        if not str(raw.get("paragraph_fingerprint", "") or "").strip():
+            errors.append(f"trecho {index} da âncora não possui fingerprint do parágrafo")
+    return errors
+
+
+def repeatable_list_errors(field: dict[str, Any]) -> list[str]:
+    """Validate repeatable-list metadata shared by editor/repository/preflight."""
+
+    errors: list[str] = []
+    default_items = field.get("default_value", [])
+    if default_items not in (None, "") and not isinstance(default_items, list):
+        errors.append("a lista repetível deve possuir uma lista de valores padrão")
+    try:
+        minimum_items = int(field.get("minimum_items", 1) or 0)
+    except (TypeError, ValueError):
+        minimum_items = -1
+    if minimum_items < 0:
+        errors.append("a quantidade mínima de itens da lista é inválida")
+    maximum_raw = field.get("maximum_items")
+    maximum_items = 0
+    if maximum_raw not in (None, ""):
+        try:
+            maximum_items = int(maximum_raw)
+        except (TypeError, ValueError):
+            maximum_items = -1
+        if maximum_items <= 0:
+            errors.append("a quantidade máxima de itens da lista é inválida")
+        elif minimum_items >= 0 and maximum_items < minimum_items:
+            errors.append("a quantidade máxima de itens é menor que a quantidade mínima")
+    style = str(field.get("list_style", "bullet") or "bullet").casefold()
+    if style not in REPEATABLE_LIST_STYLES:
+        errors.append(f"estilo de lista não suportado: {style}")
+    punctuation = str(field.get("list_punctuation", "semicolon") or "semicolon").casefold()
+    if punctuation not in REPEATABLE_LIST_PUNCTUATIONS:
+        errors.append(f"pontuação de lista não suportada: {punctuation}")
+    return errors
+
 EDITOR_PRESERVED_METADATA_KEYS = (
     "tag_type",
     "layout_order",
@@ -45,6 +128,20 @@ EDITOR_PRESERVED_METADATA_KEYS = (
     "profile_identity",
     "context_needs_review",
     "context_review_reason",
+    "dynamic_scope",
+    "semantic_concept_id",
+    "semantic_prediction",
+    "semantic_model_version",
+    "semantic_fillable_probability",
+    "semantic_concept_confidence",
+    "semantic_learned_similarity",
+    "source_anchor",
+    "source_context",
+    "family_fingerprint",
+    "list_style",
+    "list_punctuation",
+    "minimum_items",
+    "maximum_items",
 )
 
 

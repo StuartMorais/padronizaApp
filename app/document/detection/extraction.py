@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -37,6 +39,7 @@ class NormalizedTable:
 class NormalizedDocument:
     source_path: Path
     source_fingerprint: str
+    family_fingerprint: str
     records: tuple[NormalizedRecord, ...]
     tables: tuple[NormalizedTable, ...]
 
@@ -83,6 +86,7 @@ def build_normalized_document(
     return NormalizedDocument(
         source_path=path,
         source_fingerprint=_sha256(path),
+        family_fingerprint=_family_fingerprint(normalized_records, normalized_tables),
         records=tuple(normalized_records),
         tables=normalized_tables,
     )
@@ -98,6 +102,91 @@ def location_signature(location: dict[str, Any]) -> str:
     }
     payload = json.dumps(normalized, ensure_ascii=False, sort_keys=True, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
+
+
+def _family_fingerprint(
+    records: list[NormalizedRecord],
+    tables: tuple[NormalizedTable, ...],
+) -> str:
+    """Fingerprint document layout/family while ignoring likely dynamic values."""
+
+    skeleton: list[str] = []
+    previous_was_signature_name = False
+    for record in records:
+        if record.story != "body":
+            continue
+        text = re.sub(r"\s+", " ", str(record.text or "")).strip()
+        if not text:
+            skeleton.append("B")
+            previous_was_signature_name = False
+            continue
+        lines = [line.strip() for line in str(record.text or "").splitlines() if line.strip()]
+        if len(lines) >= 2 and all(re.match(r"^[•·▪◦*\-–—]\s+", line) for line in lines):
+            # Item count/content is intentionally ignored: a reviewed dynamic
+            # list may legitimately gain or lose items in the next version.
+            skeleton.append("LIST")
+            previous_was_signature_name = False
+            continue
+        if "\n" in str(record.text or "") and len(lines) >= 2 and len(lines[0]) <= 110:
+            skeleton.append("H:" + _family_slug(lines[0])[:90])
+            previous_was_signature_name = False
+            continue
+        if _looks_like_signature_name(text):
+            skeleton.append("S:<signature_name>")
+            previous_was_signature_name = True
+            continue
+        if previous_was_signature_name and _looks_like_signature_role(text):
+            skeleton.append("S:<signature_role>")
+            previous_was_signature_name = False
+            continue
+        previous_was_signature_name = False
+        if re.match(r"(?i)^\s*(?:mat\.?|matr[ií]cula\s*:?)\s*", text):
+            skeleton.append("S:<registration>")
+            continue
+        if len(text) >= 120:
+            # Long narrative content is represented by structural ownership,
+            # not wording/length. Dynamic prose can change substantially while
+            # remaining part of the same template family.
+            skeleton.append(f"LONG:{record.table_kind}:{record.table_index is not None}")
+            continue
+        redacted = re.sub(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b", "<email>", text)
+        redacted = re.sub(r"\b\d[\d./-]{2,}\b", "<num>", redacted)
+        redacted = re.sub(r"\b[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ]{2,}(?:/[A-Z]{2})?\b", "<acro>", redacted)
+        skeleton.append("S:" + _family_slug(redacted)[:120])
+
+    for table in tables:
+        skeleton.append(
+            f"T:{table.table_index}:{table.kind}:{table.columns}:{len(table.data_rows)}:{int(table.protected)}"
+        )
+    payload = "\n".join(skeleton)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+
+
+
+def _looks_like_signature_name(text: str) -> bool:
+    words = [word for word in re.split(r"\s+", text.strip()) if word]
+    if not 2 <= len(words) <= 7 or len(text) < 8:
+        return False
+    if any(token in text.casefold() for token in (
+        "secretaria", "justificativa", "histórico", "historico", "documento",
+        "processo", "contrata", "registro de preços", "plano",
+    )):
+        return False
+    letters = [ch for ch in text if ch.isalpha()]
+    return bool(letters) and all(ch.isupper() for ch in letters)
+
+
+def _looks_like_signature_role(text: str) -> bool:
+    if not 3 <= len(text) <= 80 or any(ch in text for ch in ".:;?!"):
+        return False
+    words = [word for word in re.split(r"\s+", text.strip()) if word]
+    return 1 <= len(words) <= 8
+
+def _family_slug(value: object) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"[^A-Za-z0-9<>]+", "_", text.casefold()).strip("_")
+    return text
 
 
 def _sha256(path: Path) -> str:

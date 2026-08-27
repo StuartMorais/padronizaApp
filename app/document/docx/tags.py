@@ -40,6 +40,7 @@ TAG_PREFIXES = frozenset({
     "single_choice",
     "default_or_text",
     "repeat",
+    "repeat_list",
 })
 
 
@@ -107,6 +108,29 @@ def parse_tag(
             field_id,
             FieldType.DATE.value,
             metadata={"tag_type": "date"},
+        )
+
+    if prefix == "repeat_list":
+        parts = [part.strip() for part in definition.split("|")]
+        field_id = parts[0] if parts else ""
+        if not field_id and strict:
+            raise ValueError("Um marcador de lista repetível não possui ID de campo.")
+        list_style = (parts[1] if len(parts) > 1 else "bullet").casefold() or "bullet"
+        if list_style not in {"bullet", "numbered", "plain"}:
+            list_style = "bullet"
+        punctuation = (parts[2] if len(parts) > 2 else "semicolon").casefold() or "semicolon"
+        if punctuation not in {"semicolon", "period", "none"}:
+            punctuation = "semicolon"
+        return TagDefinition(
+            TagKind.FIELD,
+            field_id,
+            FieldType.REPEATABLE_LIST.value,
+            metadata={
+                "tag_type": "repeat_list",
+                "list_style": list_style,
+                "list_punctuation": punctuation,
+                "minimum_items": 1,
+            },
         )
 
     parts = [part.strip() for part in definition.split("|")]

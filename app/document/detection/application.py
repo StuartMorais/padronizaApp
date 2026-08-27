@@ -63,6 +63,8 @@ def apply_docx_field_candidates(
                 _apply_repeatable_table(candidate, document)
             elif kind == "paragraph_block":
                 _apply_paragraph_block(candidate, by_ordinal)
+            elif kind == "paragraph_list":
+                _apply_paragraph_list(candidate, by_ordinal)
             elif kind == "checkbox_group":
                 _apply_checkbox_group(candidate, by_ordinal)
             elif kind == "checkbox_group_inline":
@@ -75,8 +77,16 @@ def apply_docx_field_candidates(
         spans_by_paragraph: dict[int, list[dict[str, Any]]] = defaultdict(list)
         for candidate in accepted:
             location = candidate.get("location", {}) or {}
-            if str(location.get("kind", "")) == "text_span":
+            kind = str(location.get("kind", ""))
+            if kind == "text_span":
                 spans_by_paragraph[int(location.get("paragraph", -1))].append(candidate)
+            elif kind == "text_spans":
+                for span in location.get("spans", []) or []:
+                    if not isinstance(span, dict):
+                        continue
+                    clone = deepcopy(candidate)
+                    clone["location"] = dict(span, kind="text_span")
+                    spans_by_paragraph[int(span.get("paragraph", -1))].append(clone)
 
         for ordinal, paragraph_candidates in spans_by_paragraph.items():
             record = by_ordinal.get(ordinal)
@@ -178,6 +188,29 @@ def _validate_detection_roundtrip(
         )
 
     for candidate in accepted:
+        if str(candidate.get("type", "")).casefold() == "repeatable_list":
+            field_id = str(candidate.get("field_id", "")).strip()
+            scanned_field = by_id.get(field_id, {})
+            if str(scanned_field.get("type", "")).casefold() != "repeatable_list":
+                raise AutomaticDetectionError(
+                    f"A lista repetível '{field_id}' mudou de tipo ao ser reescaneada."
+                )
+            expected_style = str(candidate.get("list_style", "bullet") or "bullet").casefold()
+            expected_punctuation = str(
+                candidate.get("list_punctuation", "semicolon") or "semicolon"
+            ).casefold()
+            if str(scanned_field.get("list_style", "bullet")).casefold() != expected_style:
+                raise AutomaticDetectionError(
+                    f"A lista repetível '{field_id}' mudou de estilo ao ser reescaneada."
+                )
+            if (
+                str(scanned_field.get("list_punctuation", "semicolon")).casefold()
+                != expected_punctuation
+            ):
+                raise AutomaticDetectionError(
+                    f"A lista repetível '{field_id}' mudou de pontuação ao ser reescaneada."
+                )
+
         if str(candidate.get("source", "")) != "repeatable_table":
             continue
         field_id = str(candidate.get("field_id", "")).strip()
@@ -211,6 +244,10 @@ def _tag_for_candidate(candidate: dict[str, Any]) -> str:
         return f"{{{{date:{field_id}}}}}"
     if field_type == "checkbox":
         return f"{{{{checkbox:{field_id}}}}}"
+    if field_type == "repeatable_list":
+        style = str(candidate.get("list_style", "bullet") or "bullet").casefold()
+        punctuation = str(candidate.get("list_punctuation", "semicolon") or "semicolon").casefold()
+        return "{{repeat_list:" + field_id + "|" + style + "|" + punctuation + "}}"
     if field_type == "dropdown":
         options = compact_dropdown_options(candidate.get("options", []))
         if len(options) < 2:
@@ -244,6 +281,23 @@ def _apply_paragraph_block(
         raise AutomaticDetectionError("Bloco de alternativas não encontrado no DOCX.")
     first = records[0].paragraph
     _replace_entire_paragraph(first, _tag_for_candidate(candidate))
+    for record in records[1:]:
+        _remove_paragraph(record.paragraph)
+
+
+def _apply_paragraph_list(
+    candidate: dict[str, Any],
+    by_ordinal: dict[int, _ParagraphRecord],
+) -> None:
+    ordinals = [
+        int(value)
+        for value in candidate.get("location", {}).get("paragraphs", []) or []
+    ]
+    records = [by_ordinal.get(value) for value in ordinals]
+    records = [record for record in records if record is not None]
+    if not records:
+        raise AutomaticDetectionError("A lista detectada não foi encontrada no DOCX.")
+    _replace_entire_paragraph(records[0].paragraph, _tag_for_candidate(candidate))
     for record in records[1:]:
         _remove_paragraph(record.paragraph)
 

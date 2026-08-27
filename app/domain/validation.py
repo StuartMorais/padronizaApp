@@ -94,6 +94,11 @@ def validation_hint(field: dict[str, Any]) -> str:
                 f"{minimum_rows} item(ns). É possível colar linhas copiadas do Excel."
             )
         return "Adicione, duplique, remova ou cole linhas conforme necessário."
+    if field_type == "repeatable_list":
+        minimum_items = max(0, int(field.get("minimum_items", 1) or 0))
+        if minimum_items:
+            return f"Adicione pelo menos {minimum_items} item(ns) à lista."
+        return "Adicione ou remova itens conforme necessário."
     return field_handler(field_type).hint
 
 
@@ -173,6 +178,23 @@ def validate_field(
 
         return None
 
+    if field_type == "repeatable_list":
+        items = [
+            str(item or "").strip()
+            for item in (value if isinstance(value, list) else [])
+            if str(item or "").strip()
+        ]
+        minimum_items = max(
+            0,
+            int(field.get("minimum_items", 1 if field.get("required", False) else 0) or 0),
+        )
+        if len(items) < minimum_items:
+            return f"{label} exige pelo menos {minimum_items} item(ns)."
+        maximum_items = int(field.get("maximum_items", 0) or 0)
+        if maximum_items > 0 and len(items) > maximum_items:
+            return f"{label} permite no máximo {maximum_items} item(ns)."
+        return None
+
     if field_type == "checkbox":
         return None
 
@@ -236,6 +258,11 @@ def sample_value(field: dict[str, Any]) -> Any:
                 continue
             row[str(column.get("id", ""))] = sample_value(column)
         return [row]
+    if field_type == "repeatable_list":
+        defaults = field.get("default_value", [])
+        if isinstance(defaults, list) and defaults:
+            return [str(value) for value in defaults[:3]]
+        return ["Item de exemplo"]
 
     if field_type == "dropdown":
         values = dropdown_option_values(field.get("options", []))
