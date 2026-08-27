@@ -438,6 +438,7 @@ These bugs were found during the refactor and are important regression cases:
 17. **Template package imports lacked resource limits.** ZIP imports now enforce path safety, member count, individual-member size, and total uncompressed-size limits.
 18. **DOCM was invisible to the application and cannot be passed directly to python-docx safely.** Word input now accepts `.docm`, strips VBA into an inert canonical DOCX working copy, preserves the original macro-enabled file untouched, and uses the normal scanner/converter pipeline. The converter never hands an original DOCM to Word COM/LibreOffice, preventing an `AutoOpen` macro from being executed by Padroniza's conversion path.
 19. **The GitHub release workflow repeated dependency installation, the full quality gate, and two PyInstaller builds, then only uploaded Actions artifacts.** Release packaging now installs dependencies once, runs a fast compile/dead-module/semantic-benchmark preflight, runs one PyInstaller `--onefile` build, feeds that exact EXE to Inno Setup, calculates SHA-256 hashes, and publishes the installer/portable EXEs directly to GitHub Releases. Manual releases auto-increment SemVer from existing tags (`patch`/`minor`/`major`), while semantic tag pushes use their explicit version.
+20. **The model-editor “Gerar DOCX de teste…” action ignored values selected in the interactive preview and rebuilt a fresh sample payload.** This was especially misleading for exclusive checkbox groups because sample generation intentionally selects the first alternative. Test generation now uses `form_preview.collect_values()` exactly as shown in the preview; users can explicitly click “Preencher com exemplos” when sample data is desired.
 
 Any future cleanup should keep tests around these scenarios rather than assuming the problem cannot return.
 
@@ -469,7 +470,7 @@ Current coverage policy enforces a **75% minimum** over the non-UI core (`core`,
 At the Scanner V6 semantic baseline validation in the Linux review environment:
 
 ```text
-pytest:             248 passed, 3 skipped (single process)
+pytest:             249 passed, 3 skipped (single process)
 semantic benchmark: 13/13 required, 0 unexpected, 0 fresh semantic preselected
 core coverage:      80.16%
 dead modules:       none

@@ -60,7 +60,6 @@ from app.core.json_io import atomic_write_json
 from app.core.paths import resolve_application_paths
 from app.domain.field_metadata import preserved_editor_field_metadata
 from app.domain.template_quality import field_configuration_issues, issue_counts
-from app.domain.validation import sample_values_for_fields
 from app.domain.field_types import FIELD_TYPE_ORDER
 from app.document.understanding.layout import layout_quality_issues, normalize_form_layout
 from app.domain.section_card_model import (
@@ -518,7 +517,7 @@ class TemplateEditorDialog(QDialog):
         self.form_preview_scroll.setWidget(preview_container)
         self.preview_sample_button = QPushButton('Preencher com exemplos')
         self.preview_clear_button = QPushButton('Limpar prévia')
-        self.test_template_button = QPushButton('Gerar DOCX de teste…')
+        self.test_template_button = QPushButton('Gerar DOCX com esta prévia…')
 
         self.docx_drop_zone.browse_requested.connect(
             self._choose_template_file
@@ -1644,10 +1643,24 @@ class TemplateEditorDialog(QDialog):
             pass
 
         try:
-            effective_fields = smart_fields_from_docx(self.selected_docx, fields)
-            sample_values = sample_values_for_fields(effective_fields)
+            # The interactive preview is the source of truth for a test
+            # generation.  Previously this action discarded everything the
+            # user selected in ``Prévia do formulário`` and regenerated a
+            # fresh sample payload.  Exclusive checkbox samples intentionally
+            # choose the first option, which made a user-selected second/third
+            # option appear to be ignored in the generated DOCX/PDF.
+            preview_values = self.form_preview.collect_values()
+        except ValueError as exc:
+            QMessageBox.warning(
+                self,
+                'Revise a prévia',
+                f'{exc}\n\nPreencha os campos na aba “Prévia do formulário” ou use “Preencher com exemplos” antes de gerar o teste.',
+            )
+            return
+
+        try:
             with staged_output(destination, suffix='.docx') as staged:
-                generate_docx(self.selected_docx, staged, sample_values)
+                generate_docx(self.selected_docx, staged, preview_values)
                 if self.letterhead_checkbox.isChecked():
                     apply_letterhead(staged)
                 publish_staged_output(staged, destination)
@@ -1655,7 +1668,7 @@ class TemplateEditorDialog(QDialog):
             show_exception_dialog(
                 self,
                 'Não foi possível gerar o DOCX de teste',
-                'O teste encontrou um problema ao preencher o modelo com dados de exemplo.',
+                'O teste encontrou um problema ao preencher o modelo com os valores atuais da prévia.',
                 exc,
                 stage='template_editor.test_document.generate',
                 context={'source': self.selected_docx or '', 'destination': destination},
@@ -1664,9 +1677,9 @@ class TemplateEditorDialog(QDialog):
 
         try:
             open_file(destination)
-            detail = 'O documento foi gerado com valores de exemplo e aberto para revisão.'
+            detail = 'O documento foi gerado com os valores atuais da prévia e aberto para revisão.'
         except SystemOpenError:
-            detail = f'O documento foi gerado com valores de exemplo em {destination}.'
+            detail = f'O documento foi gerado com os valores atuais da prévia em {destination}.'
         show_toast(
             self,
             'DOCX de teste gerado',

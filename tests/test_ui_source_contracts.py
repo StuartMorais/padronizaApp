@@ -278,3 +278,18 @@ def test_form_grid_row_separated_exclusive_choices_share_one_qt_button_group() -
     assert "self.form_grid_button_groups: dict[str, QButtonGroup]" in source
     assert "self._register_form_grid_exclusive_checkbox(field, widget)" in source
     assert "button_group.addButton(widget)" in source
+
+
+def test_template_test_generation_uses_interactive_preview_values() -> None:
+    """Generating a test DOCX must honor selections made in the form preview."""
+
+    source = (ROOT / "app/ui/template_manager/template_editor_dialog.py").read_text(
+        encoding="utf-8"
+    )
+    start = source.index("    def _generate_test_document(self) -> None:")
+    end = source.index("    def _selected_field_rows", start)
+    method_source = source[start:end]
+
+    assert "self.form_preview.collect_values()" in method_source
+    assert "sample_values_for_fields" not in method_source
+    assert "generate_docx(self.selected_docx, staged, preview_values)" in method_source
