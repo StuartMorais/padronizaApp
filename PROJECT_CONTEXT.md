@@ -4,7 +4,7 @@
 >
 > **Maintenance rule:** update this file after every meaningful architecture change, feature addition, bug fix that affects project assumptions, quality-gate change, or known limitation. Do not use it as a line-by-line changelog; keep it focused on the current state and decisions that a new developer/chat needs to continue safely.
 
-**Last updated:** 2026-08-27  
+**Last updated:** 2026-08-28  
 **Current baseline:** Scanner V6 semantic/review-first detection + unified four-step Novo/Editar authoring UX + optional official Timbrado for DOCX/PDF + dynamic inline/prose/list regions + learned template-family mappings + safe DOCM ingestion + automatic GitHub Releases  
 **Primary platform:** Windows / PySide6 desktop application  
 **Entry point:** `main.py`
@@ -173,6 +173,18 @@ Each template config can contain:
 ```
 
 The bundled source of truth is `assets/Timbrado.docx`. It is **not** flattened into the template body. During DOCX generation, `app/document/letterhead.py` replaces header/footer references on every Word section with copied official header/footer parts while preserving body content, page size, margins, fields, and the original template source. PDF generation applies the same letterhead to the temporary generated DOCX before conversion. Microsoft Word/LibreOffice therefore render the native Word artwork; the integrated ReportLab fallback additionally renders anchored header/footer images and simple filled DrawingML shapes so the logo/red background/gray footer decoration are not lost.
+
+On Windows, the destination DOCX ZIP handle must be closed before the final atomic `os.replace()` performed by the letterhead writer. `apply_letterhead()` deliberately builds the replacement package inside the read context, exits/closes that context, validates the temporary package, and only then replaces the staged DOCX. A regression test enforces this ordering because replacing an open ZIP produces `[WinError 5] Acesso negado`.
+
+The letterhead writer must preserve the original Word namespace map when changing `word/document.xml`. Do not serialize that part with `xml.etree.ElementTree`: Word documents can carry `mc:Ignorable` prefix names such as `w14`/`wp14`, and dropping their declarations produces an invalid package that Office may repair and LibreOffice may reject. `app/document/letterhead.py` therefore uses `lxml.etree` for namespace-safe OOXML edits.
+
+Microsoft Word compatibility also requires Padroniza to use conventional Word header/footer package parts (`word/headerN.xml` and `word/footerN.xml`) for injected Timbrado content. V6.1.8 used custom names such as `word/padronizaLetterheadFooter.xml`; although the XML itself was well-formed, Microsoft Word could reject the generated DOCX and report that custom footer part as corrupt. The letterhead writer now allocates unused standard `headerN.xml`/`footerN.xml` names, validates the resulting relationship targets, and removes the legacy custom Padroniza parts when reapplying Timbrado so affected generated files can be repaired.
+
+### PDF-reconstructed DOCX paragraph width
+
+PDF text bounding boxes describe the area occupied by the current glyphs, **not** the intended paragraph width. The integrated PDF→DOCX converter must never turn both bbox edges into Word left/right paragraph indents. V6.1.8 keeps only the positional edge implied by alignment: left-aligned text keeps its left offset, right-aligned text keeps its right offset, and centered text uses the normal section width. This prevents short labels/headings from becoming tiny vertical columns after later field replacement.
+
+Older Padroniza DOCX files whose core subject is `Convertido de PDF` are migrated safely: `prepare_template_source()` repairs the layout on a work copy, and `generate_docx()` also applies the repair to a temporary source so already-saved legacy templates generate correctly without mutating their stored/original DOCX.
 
 The option is per-model and defaults to disabled, allowing templates that already contain their own official stationery to avoid duplicated branding.
 
@@ -470,9 +482,9 @@ Current coverage policy enforces a **75% minimum** over the non-UI core (`core`,
 At the Scanner V6 semantic baseline validation in the Linux review environment:
 
 ```text
-pytest:             249 passed, 3 skipped (single process)
+pytest:             256 passed, 3 skipped (single process)
 semantic benchmark: 13/13 required, 0 unexpected, 0 fresh semantic preselected
-core coverage:      80.16%
+core coverage:      80.27%
 dead modules:       none
 compileall:         pass
 ```

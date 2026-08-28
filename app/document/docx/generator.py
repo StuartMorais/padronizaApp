@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from copy import deepcopy
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from docx import Document
@@ -61,47 +62,60 @@ def generate_docx(
         )
 
     try:
-        document = Document(str(template_path))
-        control_context_map = build_word_control_context_map(document)
+        generation_template = template_path
+        repair_context = TemporaryDirectory(prefix="padroniza-layout-repair-")
+        try:
+            from app.document.conversion.pdf import repair_legacy_pdf_docx_layout
 
-        for root in iter_unique_story_roots(document):
-            _expand_repeatable_rows(
-                root,
-                values,
+            repaired_template = Path(repair_context.name) / template_path.name
+            if repair_legacy_pdf_docx_layout(template_path, repaired_template):
+                generation_template = repaired_template
+
+            document = Document(str(generation_template))
+            control_context_map = build_word_control_context_map(document)
+
+            for root in iter_unique_story_roots(document):
+                _expand_repeatable_rows(
+                    root,
+                    values,
+                )
+
+                _replace_placeholders_in_root(
+                    root,
+                    values,
+                )
+
+                _replace_native_controls(
+                    root,
+                    values,
+                    control_context_map,
+                )
+
+                _replace_legacy_checkbox_controls(
+                    root,
+                    values,
+                )
+
+            unresolved = _find_unresolved_placeholders(
+                document
             )
 
-            _replace_placeholders_in_root(
-                root,
-                values,
+            if unresolved:
+                raise DocumentGenerationError(
+                    "Ainda existem campos não resolvidos: "
+                    + ", ".join(sorted(unresolved))
+                )
+
+            output_path.parent.mkdir(
+                parents=True,
+                exist_ok=True,
             )
 
-            _replace_native_controls(
-                root,
-                values,
-                control_context_map,
-            )
+            document.save(str(output_path))
+        finally:
+            repair_context.cleanup()
 
-            _replace_legacy_checkbox_controls(
-                root,
-                values,
-            )
 
-        unresolved = _find_unresolved_placeholders(
-            document
-        )
-
-        if unresolved:
-            raise DocumentGenerationError(
-                "Ainda existem campos não resolvidos: "
-                + ", ".join(sorted(unresolved))
-            )
-
-        output_path.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        document.save(str(output_path))
 
     except DocumentGenerationError:
         raise

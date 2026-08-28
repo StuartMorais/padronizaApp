@@ -90,6 +90,28 @@ def prepare_template_source(source_path: Path | str, work_dir: Path | str) -> Pr
                     pass
 
         warnings.extend(word_preparation.warnings)
+
+        # Padroniza versions before Scanner V6.1.8 reconstructed PDF text by
+        # using both bbox edges as paragraph indents.  If a user re-imports one
+        # of those generated DOCX files, repair it on the work copy instead of
+        # perpetuating the narrow/wrapped layout forever.  The original file is
+        # never modified.
+        legacy_layout_repaired = False
+        try:
+            from app.document.conversion.pdf import repair_legacy_pdf_docx_layout
+
+            repair_destination = destination
+            legacy_layout_repaired = repair_legacy_pdf_docx_layout(
+                prepared_docx_path, repair_destination
+            )
+            if legacy_layout_repaired:
+                prepared_docx_path = repair_destination
+                warnings.append(
+                    'O layout de um DOCX antigo convertido de PDF pelo Padroniza foi corrigido para preservar a largura normal dos parágrafos.'
+                )
+        except DocxConversionError as exc:
+            raise TemplateSourceError(str(exc)) from exc
+
         return PreparedTemplateSource(
             original_path=source,
             docx_path=prepared_docx_path,
@@ -97,7 +119,11 @@ def prepare_template_source(source_path: Path | str, work_dir: Path | str) -> Pr
             converted_from_docm=suffix == '.docm',
             warnings=tuple(warnings),
             native_word_field_hints=word_preparation.field_hints,
-            prepared_work_copy=True if suffix == '.docm' else word_preparation.changed,
+            prepared_work_copy=(
+                True
+                if suffix == '.docm'
+                else bool(word_preparation.changed or legacy_layout_repaired)
+            ),
         )
 
     stem = source.stem[:80] or 'modelo'

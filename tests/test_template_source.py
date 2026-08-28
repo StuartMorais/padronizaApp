@@ -581,3 +581,93 @@ def test_context_resolver_keeps_multiple_block_controls_and_groups_neighboring_c
     assert all(field.get('layout') == 'choice' for field in choice_fields)
     assert all(field.get('selection') == 'single' for field in choice_fields)
     assert all(field.get('section', '').startswith('5. Plano') for field in choice_fields)
+
+
+def test_pdf_reconstruction_does_not_turn_text_bbox_into_right_indent(tmp_path: Path) -> None:
+    """Short PDF labels must keep normal Word width after reconstruction.
+
+    Regression for converted templates where ``1. Solicitante`` and similar
+    labels were given a huge right indent based on the visible text bbox.  That
+    made generated DOCX values wrap into one-character/tiny columns even though
+    the source PDF itself had normal page width.
+    """
+
+    source = tmp_path / "short-label.pdf"
+    pdf = fitz.open()
+    page = pdf.new_page(width=595, height=842)
+    page.insert_text((52, 100), "1. Solicitante")
+    page.insert_text((52, 130), "Texto longo que deve continuar podendo usar a largura normal da pagina")
+    pdf.save(source)
+    pdf.close()
+
+    prepared = prepare_template_source(source, tmp_path / "work")
+    document = Document(prepared.docx_path)
+    by_text = {paragraph.text: paragraph for paragraph in document.paragraphs}
+
+    heading = by_text["1. Solicitante"]
+    assert heading.paragraph_format.left_indent is not None
+    assert heading.paragraph_format.right_indent is None
+
+    long_text = by_text[
+        "Texto longo que deve continuar podendo usar a largura normal da pagina"
+    ]
+    assert long_text.paragraph_format.right_indent is None
+
+
+def test_old_padroniza_pdf_docx_is_repaired_without_mutating_original(tmp_path: Path) -> None:
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Inches
+
+    source = tmp_path / "legacy-pdf.docx"
+    document = Document()
+    document.core_properties.subject = "Convertido de PDF"
+    paragraph = document.add_paragraph("1. Solicitante")
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    paragraph.paragraph_format.left_indent = Inches(0.25)
+    paragraph.paragraph_format.right_indent = Inches(6.5)
+    centered = document.add_paragraph("FORMULÁRIO")
+    centered.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    centered.paragraph_format.left_indent = Inches(2.0)
+    centered.paragraph_format.right_indent = Inches(2.0)
+    document.save(source)
+
+    prepared = prepare_template_source(source, tmp_path / "work")
+
+    assert prepared.docx_path != source
+    assert prepared.prepared_work_copy is True
+    assert any("layout" in warning.casefold() for warning in prepared.warnings)
+
+    original = Document(source)
+    repaired = Document(prepared.docx_path)
+    assert original.paragraphs[0].paragraph_format.right_indent is not None
+    assert repaired.paragraphs[0].paragraph_format.left_indent is not None
+    assert repaired.paragraphs[0].paragraph_format.right_indent is None
+    assert repaired.paragraphs[1].paragraph_format.left_indent is None
+    assert repaired.paragraphs[1].paragraph_format.right_indent is None
+
+
+def test_generation_repairs_legacy_pdf_layout_even_for_existing_templates(tmp_path: Path) -> None:
+    """Existing stored templates are repaired at generation time too."""
+
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Inches
+    from app.document.docx.generator import generate_docx
+
+    source = tmp_path / "legacy-existing-template.docx"
+    document = Document()
+    document.core_properties.subject = "Convertido de PDF"
+    paragraph = document.add_paragraph("1. Solicitante")
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    paragraph.paragraph_format.left_indent = Inches(0.25)
+    paragraph.paragraph_format.right_indent = Inches(6.4)
+    document.save(source)
+
+    output = tmp_path / "generated.docx"
+    generate_docx(source, output, {})
+
+    # The repository/source remains unchanged, while the generated file uses
+    # the corrected paragraph width.
+    assert Document(source).paragraphs[0].paragraph_format.right_indent is not None
+    generated = Document(output)
+    assert generated.paragraphs[0].paragraph_format.left_indent is not None
+    assert generated.paragraphs[0].paragraph_format.right_indent is None

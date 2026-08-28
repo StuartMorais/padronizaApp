@@ -4,9 +4,14 @@ from dataclasses import dataclass
 from html import escape
 from importlib.util import find_spec
 from io import BytesIO
+import os
+import tempfile
+import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Callable, Iterable
+
+from lxml import etree as LET
 
 
 class PdfConversionError(RuntimeError):
@@ -24,6 +29,122 @@ class ConversionCancelledError(RuntimeError):
 def _ensure_not_cancelled(cancel_check: Callable[[], bool] | None) -> None:
     if cancel_check is not None and cancel_check():
         raise ConversionCancelledError("Conversão cancelada pelo usuário.")
+
+
+def repair_legacy_pdf_docx_layout(source_path: Path, destination_path: Path) -> bool:
+    """Repair paragraph-width artifacts created by older Padroniza PDF imports.
+
+    Older PDF->DOCX reconstruction treated the visible PDF text bbox as the
+    logical Word paragraph width and wrote both left and right indents.  Short
+    labels therefore became extremely narrow paragraphs.  Only documents
+    explicitly marked by Padroniza as ``Convertido de PDF`` are eligible.
+
+    The source is never mutated unless ``source_path == destination_path``; in
+    that case the repaired OOXML package is published atomically after the ZIP
+    handle is closed.  Returns ``True`` only when layout attributes changed.
+    """
+
+    source = Path(source_path).expanduser().resolve()
+    destination = Path(destination_path).expanduser().resolve()
+    if not source.is_file() or source.suffix.casefold() != ".docx":
+        return False
+
+    core_ns = "http://purl.org/dc/elements/1.1/"
+    cp_ns = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+    w_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    ns = {"w": w_ns, "dc": core_ns, "cp": cp_ns}
+
+    try:
+        with zipfile.ZipFile(source, "r") as archive:
+            names = set(archive.namelist())
+            if "word/document.xml" not in names or "docProps/core.xml" not in names:
+                return False
+            core = LET.fromstring(archive.read("docProps/core.xml"))
+            subject_nodes = core.xpath("//dc:subject", namespaces=ns)
+            subject = "".join(node.text or "" for node in subject_nodes).strip().casefold()
+            if "convertido de pdf" not in subject:
+                return False
+
+            document_root = LET.fromstring(archive.read("word/document.xml"))
+            changed = False
+            left_attr = f"{{{w_ns}}}left"
+            right_attr = f"{{{w_ns}}}right"
+            val_attr = f"{{{w_ns}}}val"
+
+            for paragraph in document_root.xpath(".//w:p", namespaces=ns):
+                ppr = paragraph.find(f"{{{w_ns}}}pPr")
+                if ppr is None:
+                    continue
+                indent = ppr.find(f"{{{w_ns}}}ind")
+                if indent is None:
+                    continue
+                justification = ppr.find(f"{{{w_ns}}}jc")
+                alignment = (
+                    justification.get(val_attr, "").casefold()
+                    if justification is not None
+                    else ""
+                )
+
+                # Mirror the corrected converter: centered paragraphs use the
+                # normal text width; right-aligned blocks keep only their right
+                # positional edge; ordinary/left blocks keep only the left edge.
+                attrs_to_remove: tuple[str, ...]
+                if alignment in {"center", "both", "distribute"}:
+                    attrs_to_remove = (left_attr, right_attr)
+                elif alignment in {"right", "end"}:
+                    attrs_to_remove = (left_attr,)
+                else:
+                    attrs_to_remove = (right_attr,)
+
+                for attr in attrs_to_remove:
+                    if attr in indent.attrib:
+                        del indent.attrib[attr]
+                        changed = True
+                if not indent.attrib:
+                    ppr.remove(indent)
+
+            if not changed:
+                return False
+
+            replacement_xml = LET.tostring(
+                document_root,
+                encoding="utf-8",
+                xml_declaration=True,
+                standalone=True,
+            )
+            entries = [(info, archive.read(info.filename)) for info in archive.infolist()]
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                prefix=f".{destination.stem}-layout-",
+                suffix=".docx",
+                dir=str(destination.parent),
+                delete=False,
+            ) as handle:
+                temporary = Path(handle.name)
+            with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as output:
+                for info, payload in entries:
+                    output.writestr(
+                        info,
+                        replacement_xml if info.filename == "word/document.xml" else payload,
+                    )
+            with zipfile.ZipFile(temporary, "r") as check:
+                broken = check.testzip()
+                if broken:
+                    raise DocxConversionError(
+                        f"A correção de layout produziu uma entrada DOCX inválida: {broken}"
+                    )
+            os.replace(temporary, destination)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        return True
+    except (OSError, zipfile.BadZipFile, LET.XMLSyntaxError) as exc:
+        raise DocxConversionError(
+            f"Não foi possível corrigir o layout do DOCX convertido de PDF: {exc}"
+        ) from exc
 
 
 @dataclass(frozen=True)
@@ -1066,8 +1187,27 @@ def _append_pdf_text_block(
     else:
         paragraph.alignment = alignment_enum.LEFT
 
-    paragraph.paragraph_format.left_indent = Inches(max(0.0, (bbox[0] - 24.0) / 72.0))
-    paragraph.paragraph_format.right_indent = Inches(max(0.0, (page_width - bbox[2] - 24.0) / 72.0))
+    # A PDF text block's bounding box describes the pixels actually occupied by
+    # its current text; it does *not* describe the width of the logical paragraph.
+    # Using both bbox edges as Word paragraph indents therefore constrains short
+    # labels/headings to a tiny column (e.g. ``1. Solicitante``), and any changed
+    # or generated value wraps one word/character per line.  Preserve only the
+    # positional edge implied by the alignment and leave the opposite side free
+    # to use the section's normal text width.
+    edge_margin = 24.0
+    if paragraph.alignment == alignment_enum.CENTER:
+        paragraph.paragraph_format.left_indent = None
+        paragraph.paragraph_format.right_indent = None
+    elif paragraph.alignment == alignment_enum.RIGHT:
+        paragraph.paragraph_format.left_indent = None
+        paragraph.paragraph_format.right_indent = Inches(
+            max(0.0, (page_width - bbox[2] - edge_margin) / 72.0)
+        )
+    else:
+        paragraph.paragraph_format.left_indent = Inches(
+            max(0.0, (bbox[0] - edge_margin) / 72.0)
+        )
+        paragraph.paragraph_format.right_indent = None
     paragraph.paragraph_format.space_after = Pt(1.5)
     paragraph.paragraph_format.line_spacing = 1.0
 
