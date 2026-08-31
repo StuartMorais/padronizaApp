@@ -253,6 +253,9 @@ def test_field_review_defaults_to_user_language_and_hides_technical_columns() ->
     assert 'self.table.setColumnHidden(2, True)' in source
     assert 'self.table.setColumnHidden(3, True)' in source
     assert '"Detalhes técnicos"' in source
+    assert 'candidate_display_label(candidate)' in source
+    assert 'candidate_document_excerpt(candidate)' in source
+    assert 'self.context_title.setText(f"Onde “{display_label}” aparece no documento?")' in source
 
 
 def test_models_page_embeds_full_library_manager() -> None:

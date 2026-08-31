@@ -185,9 +185,45 @@ def resolve_anchor_spans(
 
 def source_context(candidate: dict[str, Any], records: Iterable[Any]) -> dict[str, str]:
     by_ordinal = {int(getattr(record, "ordinal", -1)): record for record in records}
-    spans = _location_spans(dict(candidate.get("location", {}) or {}))
+    location = dict(candidate.get("location", {}) or {})
+    kind = str(location.get("kind", ""))
+
+    if kind in {"paragraph_list", "paragraph_block", "checkbox_group", "checkbox_group_multi_cell"}:
+        paragraphs = [int(value) for value in location.get("paragraphs", []) or []]
+        texts = [
+            str(getattr(by_ordinal.get(ordinal), "text", "") or "").strip()
+            for ordinal in paragraphs
+            if by_ordinal.get(ordinal) is not None
+        ]
+        target = "\n".join(text for text in texts if text)
+        return {"before": "", "target": target, "after": ""} if target else {}
+
+    if kind in {"paragraph", "append_tag", "empty_cell", "checkbox_group_inline"}:
+        record = by_ordinal.get(int(location.get("paragraph", -1)))
+        if record is None:
+            return {}
+        text = str(getattr(record, "text", "") or "")
+        if not text:
+            return {}
+        return {"before": "", "target": text, "after": ""}
+
+    spans = _location_spans(location)
     if not spans:
         return {}
+    if len(spans) > 1:
+        targets: list[str] = []
+        for span in spans:
+            record = by_ordinal.get(int(span.get("paragraph", -1)))
+            if record is None:
+                continue
+            text = str(getattr(record, "text", "") or "")
+            start = max(0, int(span.get("start", 0) or 0))
+            end = min(len(text), int(span.get("end", len(text)) or len(text)))
+            piece = text[start:end].strip()
+            if piece:
+                targets.append(piece)
+        return {"before": "", "target": "\n".join(targets), "after": ""} if targets else {}
+
     span = spans[0]
     record = by_ordinal.get(int(span.get("paragraph", -1)))
     if record is None:

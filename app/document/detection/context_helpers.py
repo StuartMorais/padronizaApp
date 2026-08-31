@@ -286,15 +286,79 @@ def _is_instruction_candidate(record: _ParagraphRecord) -> bool:
 
 
 def _run_is_red(run: Run) -> bool:
-    """Return True when a Word run is explicitly rendered as red.
+    """Return True when a Word run is rendered as a strong red color.
 
-    Keeping this at run granularity is important for institutional forms where
-    only the editable fragment inside an otherwise static sentence is colored.
+    Institutional templates do not always write the color directly on the
+    ``w:r`` element.  Word can inherit it from a character style or paragraph
+    style, and older Scanner V6 builds only inspected ``run.font.color.rgb``.
+    That made visually identical red placeholders disappear depending on how
+    the author formatted them.  Resolve the common style inheritance chain
+    before deciding that a run is not red.
     """
 
-    color = run.font.color.rgb
-    if color is None:
-        return False
+    for color in _run_color_candidates(run):
+        if _rgb_is_red(color):
+            return True
+    return False
+
+
+def _run_color_candidates(run: Run):
+    """Yield explicit/inherited RGB values from strongest to weakest source."""
+
+    seen: set[str] = set()
+
+    def emit(font):
+        try:
+            color = font.color.rgb
+        except Exception:
+            color = None
+        if color is None:
+            return None
+        key = str(color)
+        if key in seen:
+            return None
+        seen.add(key)
+        return color
+
+    direct = emit(run.font)
+    if direct is not None:
+        yield direct
+
+    # Character style, including its base-style chain.
+    try:
+        style = run.style
+    except Exception:
+        style = None
+    visited: set[int] = set()
+    while style is not None and id(style) not in visited:
+        visited.add(id(style))
+        value = emit(style.font)
+        if value is not None:
+            yield value
+        try:
+            style = style.base_style
+        except Exception:
+            break
+
+    # Paragraph styles can also provide the effective run color.
+    paragraph = getattr(run, "_parent", None)
+    try:
+        style = paragraph.style
+    except Exception:
+        style = None
+    visited.clear()
+    while style is not None and id(style) not in visited:
+        visited.add(id(style))
+        value = emit(style.font)
+        if value is not None:
+            yield value
+        try:
+            style = style.base_style
+        except Exception:
+            break
+
+
+def _rgb_is_red(color) -> bool:
     try:
         red, green, blue = int(color[0]), int(color[1]), int(color[2])
     except Exception:

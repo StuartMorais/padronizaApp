@@ -136,3 +136,18 @@ def test_pdf_reconstruction_preserves_logical_form_sections(tmp_path: Path) -> N
     assert fields_by_label["Descrição da ocorrência"]["type"] == "multiline"
     assert fields_by_label["Providência recomendada"]["type"] == "multiline"
     assert fields_by_label["Próxima revisão"]["layout_row"] == fields_by_label["Responsável"]["layout_row"]
+
+
+def test_pdf_table_reconstruction_drops_xml_control_characters(tmp_path: Path) -> None:
+    from docx import Document
+    from docx.shared import Pt
+    from app.document.conversion.pdf import _append_pdf_table
+
+    document = Document()
+    _append_pdf_table(document, [["Fornecedor\x00 Teste", "R$ 10,00\x0b"]], Pt=Pt)
+    output = tmp_path / "xml-safe.docx"
+    document.save(output)
+
+    restored = Document(output)
+    assert restored.tables[0].cell(0, 0).text == "Fornecedor Teste"
+    assert restored.tables[0].cell(0, 1).text == "R$ 10,00"

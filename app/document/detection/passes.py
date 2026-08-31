@@ -31,6 +31,10 @@ from app.document.detection.text_fields import (
     _detect_blank_followup_areas,
     _detect_colored_inline_choice,
     _detect_colored_prompt,
+    _detect_colored_choice_blocks,
+    _detect_unclaimed_colored_fields,
+    _detect_unclaimed_visual_intent_fields,
+    _detect_generic_intent_fields,
     _detect_consistency_repair_fields,
     _detect_dropdown_prompt,
     _detect_empty_cells,
@@ -74,6 +78,21 @@ def run_structural_detector_passes(
     check_cancel()
     long_choices = _detect_long_choice_blocks(document, records, known_ids)
     for candidate in long_choices:
+        candidates.append(candidate)
+        reserved.update(
+            int(value)
+            for value in candidate.get("location", {}).get("paragraphs", [])
+        )
+        known_ids.add(str(candidate.get("field_id", "")))
+
+    check_cancel()
+    colored_choices = _detect_colored_choice_blocks(
+        records,
+        candidates,
+        known_ids,
+        reserved,
+    )
+    for candidate in colored_choices:
         candidates.append(candidate)
         reserved.update(
             int(value)
@@ -270,9 +289,51 @@ def run_fallback_detector_passes(
 
     check_cancel()
     workspace.candidates.extend(
+        _detect_unclaimed_colored_fields(
+            workspace.records,
+            workspace.candidates,
+            workspace.known_ids,
+            workspace.reserved_ordinals,
+        )
+    )
+
+    check_cancel()
+    workspace.candidates.extend(
+        _detect_unclaimed_visual_intent_fields(
+            workspace.records,
+            workspace.candidates,
+            workspace.known_ids,
+            workspace.reserved_ordinals,
+        )
+    )
+
+    check_cancel()
+    workspace.candidates.extend(
         _detect_consistency_repair_fields(
             workspace.records,
             workspace.candidates,
             workspace.known_ids,
+        )
+    )
+
+
+def run_generic_intent_detector_passes(
+    workspace: DetectionWorkspace,
+    check_cancel: CancelCheck,
+) -> None:
+    """Run the broadest review-only editable-intent fallback last.
+
+    This intentionally runs after structural, visual and semantic discovery so
+    unfamiliar generic patterns cannot steal a region from a more specialized
+    detector or block a semantic concept through ``known_ids``.
+    """
+
+    check_cancel()
+    workspace.candidates.extend(
+        _detect_generic_intent_fields(
+            workspace.records,
+            workspace.candidates,
+            workspace.known_ids,
+            workspace.reserved_ordinals,
         )
     )

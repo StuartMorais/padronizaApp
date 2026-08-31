@@ -1130,6 +1130,29 @@ def _configure_docx_section(section: Any, width_points: float, height_points: fl
     section.footer_distance = Inches(0.15)
 
 
+def _xml_safe_text(value: Any) -> str:
+    """Remove characters that XML 1.0 / python-docx cannot serialize.
+
+    Some SIAGOV PDFs contain embedded control bytes in otherwise extractable
+    text. PyMuPDF faithfully returns them, while ``python-docx`` rejects the
+    whole conversion with ``All strings must be XML compatible``. Preserve all
+    printable Unicode and the XML whitespace characters instead of failing the
+    user's scan because of one invisible byte.
+    """
+
+    text = str(value or "")
+    return "".join(
+        char
+        for char in text
+        if (
+            char in {"\t", "\n", "\r"}
+            or "\x20" <= char <= "\ud7ff"
+            or "\ue000" <= char <= "\ufffd"
+            or "\U00010000" <= char <= "\U0010ffff"
+        )
+    )
+
+
 def _block_text(block: dict[str, Any]) -> str:
     values: list[str] = []
     for line in block.get("lines", []):
@@ -1223,7 +1246,7 @@ def _append_pdf_text_block(
                 if not text:
                     continue
 
-                run = paragraph.add_run(text)
+                run = paragraph.add_run(_xml_safe_text(text))
                 font_name = str(span.get("font", ""))
                 flags = int(span.get("flags", 0) or 0)
                 run.bold = bool(flags & 16) or "bold" in font_name.casefold()
@@ -1236,7 +1259,7 @@ def _append_pdf_text_block(
                 blue = color_value & 255
                 run.font.color.rgb = RGBColor(red, green, blue)
         else:
-            run = paragraph.add_run(line_text)
+            run = paragraph.add_run(_xml_safe_text(line_text))
             if spans:
                 first = spans[0]
                 font_name = str(first.get("font", ""))
@@ -1294,7 +1317,7 @@ def _append_pdf_visual_row_table(
         width_points = max(42.0, boundaries[index] - starts[index])
         cell.width = Inches(width_points / 72.0)
         text = _pdf_enriched_line_text(line, page_drawings)
-        cell.text = text
+        cell.text = _xml_safe_text(text)
         for paragraph in cell.paragraphs:
             paragraph.paragraph_format.space_after = Pt(0)
             for run in paragraph.runs:
@@ -1442,7 +1465,7 @@ def _pdf_cell_text_with_controls(
         if parts:
             return " ".join(f"☐ {part}" for part in parts)
 
-    text = str(fallback or "").strip()
+    text = _xml_safe_text(fallback).strip()
     if not text and any(
         x0 <= (line[0] + line[2]) / 2.0 <= x1
         and y0 <= (line[1] + line[3]) / 2.0 <= y1
@@ -1497,7 +1520,7 @@ def _append_pdf_table(
                     )
 
             cell = table.cell(row_index, column_index)
-            cell.text = value
+            cell.text = _xml_safe_text(value)
             for paragraph in cell.paragraphs:
                 for run in paragraph.runs:
                     run.font.size = Pt(8.5)

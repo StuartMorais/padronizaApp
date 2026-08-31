@@ -55,7 +55,11 @@ LEGACY_BRACED_PLACEHOLDER_PATTERN = re.compile(
 CHOICE_SEPARATOR_PATTERN = re.compile(r"^\s*OU\s*$", re.IGNORECASE)
 INSTRUCTION_PATTERN = re.compile(
     r"^\s*(?:informar|informe|descrever|descreva|detalhar|detalhe|"
-    r"indicar|indique|justificar|justifique|preencher|preencha)\b",
+    r"indicar|indique|justificar|justifique|preencher|preencha|"
+    r"considerar|considere|explicitar|explicite|apresentar|apresente|"
+    r"especificar|especifique|inserir|insira|registrar|registre|"
+    r"definir|defina|identificar|identifique|relacionar|relacione|"
+    r"mencionar|mencione)\b",
     re.IGNORECASE,
 )
 GENERIC_DROPDOWN_PATTERN = re.compile(
@@ -94,6 +98,13 @@ _SOURCE_LABELS = {
     "terminal_prompt": "Prompt final após bloco de instruções",
     "colored_prompt": "Placeholder textual destacado por formatação",
     "colored_inline_choice": "Alternativas coloridas dentro do texto",
+    "colored_choice_block": "Bloco de alternativas coloridas",
+    "colored_visual_field": "Trecho colorido possivelmente editável",
+    "instruction_placeholder": "Instrução explícita de preenchimento",
+    "generic_labeled_value": "Valor existente após um rótulo",
+    "generic_choice": "Alternativas textuais para revisão",
+    "visual_field": "Trecho visualmente destacado possivelmente editável",
+    "visual_choice": "Alternativas destacadas visualmente",
     "semantic_inline": "Campo semântico dentro do texto",
     "semantic_prose": "Bloco de texto semanticamente editável",
     "repeatable_list": "Lista repetível",

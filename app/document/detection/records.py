@@ -68,6 +68,34 @@ def _collect_paragraph_records(document: _Document) -> list[_ParagraphRecord]:
             nonlocal_table_index[0] += 1
             walk_table(Table(child, document), story="body", index=nonlocal_table_index[0])
 
+    def add_textbox_paragraphs(root, *, story: str, parent) -> None:
+        """Expose Word textbox paragraphs to the same scanner pipeline.
+
+        ``python-docx`` intentionally exposes ordinary body/table paragraphs but
+        not paragraphs nested under ``w:txbxContent`` (VML/DrawingML text boxes).
+        Institutional forms frequently place editable labels/values inside those
+        shapes.  Keep them as normal paragraph records so detection and approved
+        tag application use the same stable ordinal map.
+        """
+
+        try:
+            elements = root.xpath(".//w:txbxContent//w:p")
+        except Exception:
+            elements = []
+        seen: set[int] = set()
+        for element in elements:
+            key = id(element)
+            if key in seen:
+                continue
+            seen.add(key)
+            add_paragraph(Paragraph(element, parent), story=story)
+
+    # Text boxes are descendants of normal body paragraphs and therefore are
+    # not returned by the direct-child body walk above. Add only their nested
+    # text paragraphs here, after the ordinary body/table story, so ordinals are
+    # deterministic in both detection and application.
+    add_textbox_paragraphs(document.element, story="body_textbox", parent=document)
+
     # Headers and footers are included for ordinary placeholder suggestions,
     # but long choice-block detection remains focused on body tables.
     for section_index, section in enumerate(document.sections):
@@ -80,5 +108,10 @@ def _collect_paragraph_records(document: _Document) -> list[_ParagraphRecord]:
             for table in story.tables:
                 nonlocal_table_index[0] += 1
                 walk_table(table, story=story_name, index=nonlocal_table_index[0])
+            add_textbox_paragraphs(
+                story._element,
+                story=f"{story_name}_textbox",
+                parent=story,
+            )
 
     return records

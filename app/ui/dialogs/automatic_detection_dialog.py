@@ -25,6 +25,10 @@ from PySide6.QtWidgets import (
 )
 
 from app.document.detection.candidates import candidate_source_label
+from app.document.detection.presentation import (
+    candidate_display_label,
+    candidate_document_excerpt,
+)
 from app.document.understanding.semantic import candidate_explanation, confidence_band
 from app.domain.field_ids import VALID_FIELD_ID
 from app.domain.field_metadata import compact_dropdown_options
@@ -176,9 +180,9 @@ class AutomaticDetectionDialog(QDialog):
         self.table.setColumnHidden(3, True)
         root.addWidget(self.table, 1)
 
-        context_title = QLabel("Onde isso aparece no documento?")
-        context_title.setObjectName("mutedText")
-        root.addWidget(context_title)
+        self.context_title = QLabel("Onde isso aparece no documento?")
+        self.context_title.setObjectName("mutedText")
+        root.addWidget(self.context_title)
         self.source_context_label = QLabel()
         self.source_context_label.setWordWrap(True)
         self.source_context_label.setTextFormat(Qt.TextFormat.RichText)
@@ -315,15 +319,16 @@ class AutomaticDetectionDialog(QDialog):
             self.table.setItem(
                 row,
                 4,
-                QTableWidgetItem(str(candidate.get("label", ""))),
+                QTableWidgetItem(candidate_display_label(candidate)),
             )
             self.table.setItem(
                 row,
                 5,
                 QTableWidgetItem(self._candidate_type_label(candidate)),
             )
-            preview_item = QTableWidgetItem(str(candidate.get("preview", "")))
-            preview_item.setToolTip(str(candidate.get("preview", "")))
+            excerpt = candidate_document_excerpt(candidate)
+            preview_item = QTableWidgetItem(excerpt)
+            preview_item.setToolTip(excerpt)
             self.table.setItem(row, 6, preview_item)
 
         self.table.resizeRowsToContents()
@@ -336,7 +341,7 @@ class AutomaticDetectionDialog(QDialog):
     def _refresh_row(self, row: int) -> None:
         candidate = self._candidates[row]
         self.table.item(row, 3).setText(str(candidate.get("field_id", "")))
-        self.table.item(row, 4).setText(str(candidate.get("label", "")))
+        self.table.item(row, 4).setText(candidate_display_label(candidate))
         self.table.item(row, 5).setText(
             self._candidate_type_label(candidate)
         )
@@ -422,8 +427,8 @@ class AutomaticDetectionDialog(QDialog):
             haystack = " ".join(
                 (
                     str(candidate.get("field_id", "")),
-                    str(candidate.get("label", "")),
-                    str(candidate.get("preview", "")),
+                    candidate_display_label(candidate),
+                    candidate_document_excerpt(candidate),
                     candidate_source_label(candidate),
                 )
             ).casefold()
@@ -468,10 +473,13 @@ class AutomaticDetectionDialog(QDialog):
                 self.source_context_label.clear()
             return
         candidate = self._candidates[row]
+        display_label = candidate_display_label(candidate)
+        if hasattr(self, "context_title"):
+            self.context_title.setText(f"Onde “{display_label}” aparece no documento?")
         if hasattr(self, "source_context_label"):
             context = dict(candidate.get("source_context", {}) or {})
             before = html.escape(str(context.get("before", "") or ""))
-            target = html.escape(str(context.get("target", "") or candidate.get("preview", "") or ""))
+            target = html.escape(str(context.get("target", "") or candidate_document_excerpt(candidate) or ""))
             after = html.escape(str(context.get("after", "") or ""))
             if target:
                 self.source_context_label.setText(
@@ -490,7 +498,7 @@ class AutomaticDetectionDialog(QDialog):
         }.get(priority, priority)
         location = candidate.get("location", {}) or {}
         lines = [
-            f"{candidate.get('label', candidate.get('field_id', 'Campo'))} — {confidence}% — {priority_label}",
+            f"{display_label} — {confidence}% — {priority_label}",
             f"Origem: {candidate_source_label(candidate)}",
         ]
         dimensions = candidate.get("confidence_dimensions", {}) or {}
@@ -711,7 +719,7 @@ class _CandidateEditorDialog(QDialog):
 
         preview_label = QLabel("Trecho encontrado no documento")
         root.addWidget(preview_label)
-        preview = QPlainTextEdit(str(candidate.get("preview", "")))
+        preview = QPlainTextEdit(candidate_document_excerpt(candidate))
         preview.setReadOnly(True)
         preview.setMaximumHeight(90)
         root.addWidget(preview)

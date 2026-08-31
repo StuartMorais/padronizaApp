@@ -1,0 +1,1018 @@
+{
+  "schema_version": 2,
+  "template": {
+    "id": "declaracao-cafil-lei-9-697-12-sia31016-ge",
+    "name": "Declaração    Cafil   Lei 9.697.12   Sia31016   Ge",
+    "description": "",
+    "category": "",
+    "version": "1.0",
+    "source_file": "template.docx",
+    "adapter": "docx"
+  },
+  "fields": [
+    {
+      "id": "process.number",
+      "label": "Número do processo",
+      "type": "text",
+      "required": true,
+      "dynamic_scope": "inline",
+      "semantic_learned_similarity": 0.0,
+      "detection_needs_review": true,
+      "detection_review_priority": "recommended",
+      "source_context": {
+        "after": "",
+        "before": "Processo Pbdoc N°: ",
+        "target": "SDH-PRC-2026/03089"
+      },
+      "detection_source": "automatic",
+      "detection_confidence_band": "high",
+      "context_confidence": 0.9,
+      "section": "Processo",
+      "semantic_prediction": {
+        "concept_confidence": 0.94,
+        "concept_id": "process.number",
+        "fillable_probability": 0.949,
+        "forces_review": false,
+        "label_confidence": 0.99,
+        "learned_similarity": 0.0,
+        "model_version": 1,
+        "reasons": [
+          "Semântica local corresponde a 'Número do processo' (94%)."
+        ],
+        "suggested_label": "Número do processo",
+        "suggested_type": "text",
+        "type_confidence": 0.98
+      },
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "processo.numero_do_processo:text"
+        }
+      },
+      "profile_identity": "processo.numero_do_processo:text",
+      "detection_confidence": 0.9400000000000001,
+      "detection_confidence_dimensions": {
+        "fillable": 0.949,
+        "label": 0.98,
+        "structure": 0.9,
+        "type": 0.88
+      },
+      "detection_reviewed": true,
+      "semantic_concept_confidence": 0.94,
+      "label_source": "automatic_detection",
+      "scanner_version": 4,
+      "detector_version": 3,
+      "section_source": "semantic_detection",
+      "type_source": "automatic_detection",
+      "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+      "detection_review_reasons": [
+        "O rótulo encontrado pelo detector difere do contexto local forte."
+      ],
+      "detection_evidence": [
+        {
+          "authority": "semantic",
+          "code": "heuristic",
+          "description": "Sinal encontrado pelo detector especializado.",
+          "weight": 0.38
+        },
+        {
+          "authority": "semantic",
+          "code": "label_disagreement",
+          "description": "O rótulo encontrado pelo detector difere do contexto local forte.",
+          "weight": -0.06
+        },
+        {
+          "authority": "semantic",
+          "code": "local_context",
+          "description": "Campo possui contexto local forte.",
+          "weight": 0.07
+        },
+        {
+          "authority": "semantic",
+          "code": "type_support",
+          "description": "Formato visual e tipo do campo são compatíveis.",
+          "weight": 0.05
+        },
+        {
+          "authority": "semantic",
+          "code": "semantic_ai",
+          "description": "Semântica local corresponde a 'Número do processo' (94%).",
+          "weight": 0.053
+        }
+      ],
+      "source_anchor": {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "scope": "inline",
+        "spans": [
+          {
+            "cell_index": null,
+            "end": 37,
+            "left_context": "Processo Pbdoc N°: ",
+            "original": "SDH-PRC-2026/03089",
+            "paragraph": 5,
+            "paragraph_fingerprint": "52b284121c3af5205ea7",
+            "right_context": "",
+            "row_index": null,
+            "start": 19,
+            "story": "body",
+            "table_index": null
+          }
+        ],
+        "version": 1
+      },
+      "semantic_concept_id": "process.number",
+      "default_value": "SDH-PRC-2026/03089",
+      "semantic_fillable_probability": 0.9490000000000001,
+      "semantic_model_version": 1,
+      "context_resolver_version": 3
+    },
+    {
+      "id": "procurement.object",
+      "label": "Objeto do processo",
+      "type": "multiline",
+      "required": true,
+      "dynamic_scope": "paragraph",
+      "semantic_learned_similarity": 0.0,
+      "detection_needs_review": false,
+      "detection_review_priority": "ready",
+      "source_context": {
+        "after": "",
+        "before": "Objeto: ",
+        "target": "Adesão à Ata nº 0024/2026 - Aquisição de café - WW DISTRIBUIDORA DE ALIMENTOS LTDA"
+      },
+      "detection_source": "automatic",
+      "detection_confidence_band": "high",
+      "context_confidence": 0.9,
+      "section": "Processo",
+      "semantic_prediction": {
+        "concept_confidence": 0.82,
+        "concept_id": "procurement.ata_number",
+        "fillable_probability": 0.9865,
+        "forces_review": true,
+        "label_confidence": 0.99,
+        "learned_similarity": 0.0,
+        "model_version": 1,
+        "reasons": [
+          "Semântica local corresponde a 'Número da Ata' (82%).",
+          "O tipo estrutural 'multiline' diverge do tipo semântico 'text'."
+        ],
+        "suggested_label": "Número da Ata",
+        "suggested_type": "text",
+        "type_confidence": 0.98
+      },
+      "full_width": true,
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "processo.objeto_do_processo:multiline"
+        }
+      },
+      "layout": "full_width",
+      "profile_identity": "processo.objeto_do_processo:multiline",
+      "detection_confidence": 1.0,
+      "detection_confidence_dimensions": {
+        "fillable": 0.987,
+        "label": 0.98,
+        "structure": 0.9,
+        "type": 0.88
+      },
+      "detection_reviewed": true,
+      "semantic_concept_confidence": 0.82,
+      "label_source": "automatic_detection",
+      "scanner_version": 4,
+      "detector_version": 3,
+      "section_source": "semantic_detection",
+      "type_source": "automatic_detection",
+      "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+      "detection_review_reasons": [
+        "A análise semântica encontrou uma divergência que precisa de confirmação humana."
+      ],
+      "detection_evidence": [
+        {
+          "authority": "semantic",
+          "code": "heuristic",
+          "description": "Sinal encontrado pelo detector especializado.",
+          "weight": 0.41
+        },
+        {
+          "authority": "semantic",
+          "code": "label_agreement",
+          "description": "Rótulo concorda com o contexto físico do documento.",
+          "weight": 0.1
+        },
+        {
+          "authority": "semantic",
+          "code": "local_context",
+          "description": "Campo possui contexto local forte.",
+          "weight": 0.07
+        },
+        {
+          "authority": "semantic",
+          "code": "type_support",
+          "description": "Formato visual e tipo do campo são compatíveis.",
+          "weight": 0.05
+        },
+        {
+          "authority": "semantic",
+          "code": "semantic_ai",
+          "description": "Semântica local corresponde a 'Número da Ata' (82%).",
+          "weight": 0.038
+        },
+        {
+          "authority": "semantic",
+          "code": "semantic_ai",
+          "description": "O tipo estrutural 'multiline' diverge do tipo semântico 'text'.",
+          "weight": 0.038
+        }
+      ],
+      "source_anchor": {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "scope": "paragraph",
+        "spans": [
+          {
+            "cell_index": null,
+            "end": 90,
+            "left_context": "Objeto: ",
+            "original": "Adesão à Ata nº 0024/2026 - Aquisição de café - WW DISTRIBUIDORA DE ALIMENTOS LTDA",
+            "paragraph": 7,
+            "paragraph_fingerprint": "2329f56f04e0b702ec15",
+            "right_context": "",
+            "row_index": null,
+            "start": 8,
+            "story": "body",
+            "table_index": null
+          }
+        ],
+        "version": 1
+      },
+      "semantic_concept_id": "procurement.object",
+      "default_value": "Adesão à Ata nº 0024/2026 - Aquisição de café - WW DISTRIBUIDORA DE ALIMENTOS LTDA",
+      "semantic_fillable_probability": 0.9865,
+      "semantic_model_version": 1,
+      "context_resolver_version": 3
+    },
+    {
+      "id": "process.total_value",
+      "label": "Valor total do processo",
+      "type": "currency",
+      "required": true,
+      "dynamic_scope": "inline",
+      "semantic_learned_similarity": 0.0,
+      "detection_needs_review": false,
+      "detection_review_priority": "ready",
+      "source_context": {
+        "after": "",
+        "before": "",
+        "target": "R$17.745,00\ndezessete mil, setecentos e quarenta e cinco reais"
+      },
+      "detection_source": "automatic",
+      "detection_confidence_band": "high",
+      "context_confidence": 0.9,
+      "section": "Processo",
+      "semantic_prediction": {
+        "concept_confidence": 0.2733,
+        "concept_id": "process.number",
+        "fillable_probability": 0.982,
+        "forces_review": false,
+        "label_confidence": 0.6133,
+        "learned_similarity": 0.0,
+        "model_version": 1,
+        "reasons": [],
+        "suggested_label": "Valor total do processo",
+        "suggested_type": "currency",
+        "type_confidence": 0.6333
+      },
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "processo.valor_total_do_processo:currency"
+        }
+      },
+      "validation_hint": "Digite os centavos normalmente. Exemplo: R$ 1.250,00",
+      "profile_identity": "processo.valor_total_do_processo:currency",
+      "detection_confidence": 1.0,
+      "detection_confidence_dimensions": {
+        "fillable": 0.982,
+        "label": 0.98,
+        "structure": 0.9,
+        "type": 0.88
+      },
+      "detection_reviewed": true,
+      "semantic_concept_confidence": 0.2732511575061488,
+      "label_source": "automatic_detection",
+      "scanner_version": 4,
+      "detector_version": 3,
+      "section_source": "semantic_detection",
+      "type_source": "automatic_detection",
+      "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+      "detection_evidence": [
+        {
+          "authority": "semantic",
+          "code": "heuristic",
+          "description": "Sinal encontrado pelo detector especializado.",
+          "weight": 0.44
+        },
+        {
+          "authority": "semantic",
+          "code": "label_agreement",
+          "description": "Rótulo concorda com o contexto físico do documento.",
+          "weight": 0.1
+        },
+        {
+          "authority": "semantic",
+          "code": "local_context",
+          "description": "Campo possui contexto local forte.",
+          "weight": 0.07
+        },
+        {
+          "authority": "semantic",
+          "code": "type_support",
+          "description": "Formato visual e tipo do campo são compatíveis.",
+          "weight": 0.05
+        }
+      ],
+      "source_anchor": {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "scope": "inline",
+        "spans": [
+          {
+            "cell_index": null,
+            "end": 36,
+            "left_context": "Valor total do processo: ",
+            "original": "R$17.745,00",
+            "paragraph": 9,
+            "paragraph_fingerprint": "ac43f04b846c64f1ae2e",
+            "right_context": " (dezessete mil, setecentos e quarenta e cinco reais)",
+            "row_index": null,
+            "start": 25,
+            "story": "body",
+            "table_index": null
+          },
+          {
+            "cell_index": null,
+            "end": 88,
+            "left_context": "Valor total do processo: R$17.745,00 (",
+            "original": "dezessete mil, setecentos e quarenta e cinco reais",
+            "paragraph": 9,
+            "paragraph_fingerprint": "ac43f04b846c64f1ae2e",
+            "render": "currency_words",
+            "right_context": ")",
+            "row_index": null,
+            "start": 38,
+            "story": "body",
+            "table_index": null
+          }
+        ],
+        "version": 1
+      },
+      "semantic_concept_id": "process.total_value",
+      "default_value": "R$17.745,00",
+      "semantic_fillable_probability": 0.982,
+      "semantic_model_version": 1,
+      "context_resolver_version": 3
+    },
+    {
+      "id": "supplier.document",
+      "label": "CPF/CNPJ do fornecedor",
+      "type": "text",
+      "required": true,
+      "dynamic_scope": "inline",
+      "semantic_learned_similarity": 0.0,
+      "detection_needs_review": false,
+      "detection_review_priority": "ready",
+      "source_context": {
+        "after": "",
+        "before": "",
+        "target": "17.698.441/0001-0"
+      },
+      "layout_group": "doc_table_1_segment_0",
+      "detection_source": "automatic",
+      "layout_order": 1,
+      "detection_confidence_band": "high",
+      "context_confidence": 0.9,
+      "section": "Fornecedor",
+      "layout_row": "row_1",
+      "semantic_prediction": {
+        "concept_confidence": 0.1249,
+        "concept_id": "justification.conclusion",
+        "fillable_probability": 0.874,
+        "forces_review": false,
+        "label_confidence": 0.5,
+        "learned_similarity": 0.0,
+        "model_version": 1,
+        "reasons": [],
+        "suggested_label": "CPF/CNPJ do fornecedor",
+        "suggested_type": "text",
+        "type_confidence": 0.55
+      },
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "fornecedor.cpf_cnpj_do_fornecedor:text"
+        }
+      },
+      "layout": "form_grid",
+      "profile_identity": "fornecedor.cpf_cnpj_do_fornecedor:text",
+      "detection_confidence": 1.0,
+      "layout_grid_columns": 3,
+      "detection_confidence_dimensions": {
+        "fillable": 0.874,
+        "label": 0.8,
+        "structure": 0.9,
+        "type": 0.88
+      },
+      "detection_reviewed": true,
+      "semantic_concept_confidence": 0.12488648095761833,
+      "label_source": "automatic_detection",
+      "layout_column_index": 0,
+      "scanner_version": 4,
+      "profile_key": "supplier.document",
+      "detector_version": 3,
+      "layout_column_span": 1,
+      "section_source": "semantic_detection",
+      "type_source": "automatic_detection",
+      "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+      "detection_evidence": [
+        {
+          "authority": "semantic",
+          "code": "heuristic",
+          "description": "Sinal encontrado pelo detector especializado.",
+          "weight": 0.41
+        },
+        {
+          "authority": "semantic",
+          "code": "label_agreement",
+          "description": "Rótulo concorda com o contexto físico do documento.",
+          "weight": 0.1
+        },
+        {
+          "authority": "semantic",
+          "code": "type_support",
+          "description": "Formato visual e tipo do campo são compatíveis.",
+          "weight": 0.05
+        }
+      ],
+      "source_anchor": {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "scope": "inline",
+        "spans": [
+          {
+            "cell_index": 0,
+            "end": 17,
+            "left_context": "",
+            "original": "17.698.441/0001-0",
+            "paragraph": 14,
+            "paragraph_fingerprint": "d02a35c0fa00305dd678",
+            "right_context": "",
+            "row_index": 1,
+            "start": 0,
+            "story": "body",
+            "table_index": 0
+          }
+        ],
+        "version": 1
+      },
+      "semantic_concept_id": "supplier.document",
+      "default_value": "17.698.441/0001-0",
+      "semantic_fillable_probability": 0.8740000000000001,
+      "layout_static_rows": [
+        {
+          "layout_row": "row_0",
+          "layout_order": 0,
+          "layout_column_index": 0,
+          "layout_column_span": 1,
+          "layout_grid_columns": 3,
+          "text": "CPF/CNPJ"
+        },
+        {
+          "layout_row": "row_0",
+          "layout_order": 0,
+          "layout_column_index": 1,
+          "layout_column_span": 1,
+          "layout_grid_columns": 3,
+          "text": "CREDOR"
+        },
+        {
+          "layout_row": "row_0",
+          "layout_order": 0,
+          "layout_column_index": 2,
+          "layout_column_span": 1,
+          "layout_grid_columns": 3,
+          "text": "VALOR"
+        }
+      ],
+      "semantic_model_version": 1,
+      "context_resolver_version": 3
+    },
+    {
+      "id": "supplier.name",
+      "label": "Fornecedor / credor",
+      "type": "text",
+      "required": true,
+      "dynamic_scope": "inline",
+      "semantic_learned_similarity": 0.0,
+      "detection_needs_review": false,
+      "detection_review_priority": "ready",
+      "source_context": {
+        "after": "",
+        "before": "",
+        "target": "WW Distribuidora de Alimentos LTDA"
+      },
+      "layout_group": "doc_table_1_segment_0",
+      "detection_source": "automatic",
+      "layout_order": 1,
+      "detection_confidence_band": "high",
+      "context_confidence": 0.9,
+      "section": "Fornecedor",
+      "layout_row": "row_1",
+      "semantic_prediction": {
+        "concept_confidence": 0.1482,
+        "concept_id": "date.generic",
+        "fillable_probability": 0.955,
+        "forces_review": false,
+        "label_confidence": 0.5,
+        "learned_similarity": 0.0,
+        "model_version": 1,
+        "reasons": [],
+        "suggested_label": "Fornecedor / credor",
+        "suggested_type": "text",
+        "type_confidence": 0.55
+      },
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "fornecedor.fornecedor_credor:text"
+        }
+      },
+      "layout": "form_grid",
+      "profile_identity": "fornecedor.fornecedor_credor:text",
+      "detection_confidence": 1.0,
+      "layout_grid_columns": 3,
+      "detection_confidence_dimensions": {
+        "fillable": 0.955,
+        "label": 0.8,
+        "structure": 0.9,
+        "type": 0.88
+      },
+      "detection_reviewed": true,
+      "semantic_concept_confidence": 0.1481972306002117,
+      "label_source": "automatic_detection",
+      "layout_column_index": 1,
+      "scanner_version": 4,
+      "profile_key": "supplier.name",
+      "detector_version": 3,
+      "layout_column_span": 1,
+      "section_source": "semantic_detection",
+      "type_source": "automatic_detection",
+      "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+      "detection_evidence": [
+        {
+          "authority": "semantic",
+          "code": "heuristic",
+          "description": "Sinal encontrado pelo detector especializado.",
+          "weight": 0.41
+        },
+        {
+          "authority": "semantic",
+          "code": "label_agreement",
+          "description": "Rótulo concorda com o contexto físico do documento.",
+          "weight": 0.1
+        },
+        {
+          "authority": "semantic",
+          "code": "type_support",
+          "description": "Formato visual e tipo do campo são compatíveis.",
+          "weight": 0.05
+        }
+      ],
+      "source_anchor": {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "scope": "inline",
+        "spans": [
+          {
+            "cell_index": 1,
+            "end": 34,
+            "left_context": "",
+            "original": "WW Distribuidora de Alimentos LTDA",
+            "paragraph": 15,
+            "paragraph_fingerprint": "4cbcc9d285cc126efe99",
+            "right_context": "",
+            "row_index": 1,
+            "start": 0,
+            "story": "body",
+            "table_index": 0
+          }
+        ],
+        "version": 1
+      },
+      "semantic_concept_id": "supplier.name",
+      "default_value": "WW Distribuidora de Alimentos LTDA",
+      "semantic_fillable_probability": 0.9550000000000001,
+      "semantic_model_version": 1,
+      "context_resolver_version": 3
+    },
+    {
+      "id": "supplier.amount",
+      "label": "Valor do fornecedor",
+      "type": "currency",
+      "required": true,
+      "dynamic_scope": "inline",
+      "semantic_learned_similarity": 0.0,
+      "detection_needs_review": true,
+      "detection_review_priority": "recommended",
+      "source_context": {
+        "after": "",
+        "before": "",
+        "target": "R$17.745,00"
+      },
+      "layout_group": "doc_table_1_segment_0",
+      "detection_source": "automatic",
+      "layout_order": 1,
+      "detection_confidence_band": "high",
+      "context_confidence": 0.9,
+      "section": "Fornecedor",
+      "layout_row": "row_1",
+      "semantic_prediction": {
+        "concept_confidence": 0.1692,
+        "concept_id": "process.number",
+        "fillable_probability": 0.9765,
+        "forces_review": false,
+        "label_confidence": 0.5092,
+        "learned_similarity": 0.0,
+        "model_version": 1,
+        "reasons": [],
+        "suggested_label": "Valor do fornecedor",
+        "suggested_type": "currency",
+        "type_confidence": 0.55
+      },
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "fornecedor.valor_do_fornecedor:currency"
+        }
+      },
+      "validation_hint": "Digite os centavos normalmente. Exemplo: R$ 1.250,00",
+      "layout": "form_grid",
+      "profile_identity": "fornecedor.valor_do_fornecedor:currency",
+      "detection_confidence": 0.9900000000000001,
+      "layout_grid_columns": 3,
+      "detection_confidence_dimensions": {
+        "fillable": 0.977,
+        "label": 0.97,
+        "structure": 0.9,
+        "type": 0.88
+      },
+      "detection_reviewed": true,
+      "semantic_concept_confidence": 0.16918694599559714,
+      "label_source": "automatic_detection",
+      "layout_column_index": 2,
+      "scanner_version": 4,
+      "profile_key": "supplier.amount",
+      "detector_version": 3,
+      "layout_column_span": 1,
+      "section_source": "semantic_detection",
+      "type_source": "automatic_detection",
+      "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+      "detection_review_reasons": [
+        "O rótulo encontrado pelo detector difere do contexto local forte."
+      ],
+      "detection_evidence": [
+        {
+          "authority": "semantic",
+          "code": "heuristic",
+          "description": "Sinal encontrado pelo detector especializado.",
+          "weight": 0.43
+        },
+        {
+          "authority": "semantic",
+          "code": "label_disagreement",
+          "description": "O rótulo encontrado pelo detector difere do contexto local forte.",
+          "weight": -0.06
+        },
+        {
+          "authority": "semantic",
+          "code": "local_context",
+          "description": "Campo possui contexto local forte.",
+          "weight": 0.07
+        },
+        {
+          "authority": "semantic",
+          "code": "type_support",
+          "description": "Formato visual e tipo do campo são compatíveis.",
+          "weight": 0.05
+        }
+      ],
+      "source_anchor": {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "scope": "inline",
+        "spans": [
+          {
+            "cell_index": 2,
+            "end": 11,
+            "left_context": "",
+            "original": "R$17.745,00",
+            "paragraph": 16,
+            "paragraph_fingerprint": "74d6a5928350f4e5416d",
+            "right_context": "",
+            "row_index": 1,
+            "start": 0,
+            "story": "body",
+            "table_index": 0
+          }
+        ],
+        "version": 1
+      },
+      "semantic_concept_id": "supplier.amount",
+      "default_value": "R$17.745,00",
+      "semantic_fillable_probability": 0.9765000000000001,
+      "semantic_model_version": 1,
+      "context_resolver_version": 3
+    },
+    {
+      "id": "cafil.reference_month",
+      "label": "Mês de referência da consulta CAFIL",
+      "type": "dropdown",
+      "required": true,
+      "options": [
+        "JANEIRO",
+        "FEVEREIRO",
+        "MARÇO",
+        "ABRIL",
+        "MAIO",
+        "JUNHO",
+        "JULHO",
+        "AGOSTO",
+        "SETEMBRO",
+        "OUTUBRO",
+        "NOVEMBRO",
+        "DEZEMBRO"
+      ],
+      "dynamic_scope": "inline",
+      "semantic_learned_similarity": 0.0,
+      "detection_needs_review": false,
+      "detection_review_priority": "ready",
+      "source_context": {
+        "after": " de 2026, e o resultado está disponível no site: https://cge.pb.gov.br/site/imagens/gsc/cafil-pb.pdf, conforme documento em anexo.",
+        "before": "Declaramos ainda que a pesquisa foi realizada na data de hoje, com referência ao mês de ",
+        "target": "JULHO"
+      },
+      "detection_source": "automatic",
+      "detection_confidence_band": "high",
+      "context_confidence": 0.9,
+      "section": "Consulta CAFIL",
+      "tag_type": "dropdown",
+      "semantic_prediction": {
+        "concept_confidence": 0.82,
+        "concept_id": "procurement.ata_number",
+        "fillable_probability": 0.9535,
+        "forces_review": true,
+        "label_confidence": 0.99,
+        "learned_similarity": 0.0,
+        "model_version": 1,
+        "reasons": [
+          "Semântica local corresponde a 'Número da Ata' (82%).",
+          "O tipo estrutural 'dropdown' diverge do tipo semântico 'text'."
+        ],
+        "suggested_label": "Número da Ata",
+        "suggested_type": "text",
+        "type_confidence": 0.98
+      },
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "consulta_cafil.mes_de_referencia_da_consulta_cafil:dropdown"
+        }
+      },
+      "profile_identity": "consulta_cafil.mes_de_referencia_da_consulta_cafil:dropdown",
+      "detection_confidence": 0.94,
+      "detection_confidence_dimensions": {
+        "fillable": 0.954,
+        "label": 0.45,
+        "structure": 0.9,
+        "type": 0.58
+      },
+      "detection_reviewed": true,
+      "semantic_concept_confidence": 0.82,
+      "label_source": "automatic_detection",
+      "scanner_version": 4,
+      "detector_version": 3,
+      "section_source": "semantic_detection",
+      "type_source": "automatic_detection",
+      "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+      "detection_review_reasons": [
+        "A análise semântica encontrou uma divergência que precisa de confirmação humana."
+      ],
+      "detection_evidence": [
+        {
+          "authority": "semantic",
+          "code": "heuristic",
+          "description": "Sinal encontrado pelo detector especializado.",
+          "weight": 0.44
+        },
+        {
+          "authority": "semantic",
+          "code": "semantic_ai",
+          "description": "Semântica local corresponde a 'Número da Ata' (82%).",
+          "weight": 0.038
+        },
+        {
+          "authority": "semantic",
+          "code": "semantic_ai",
+          "description": "O tipo estrutural 'dropdown' diverge do tipo semântico 'text'.",
+          "weight": 0.038
+        }
+      ],
+      "source_anchor": {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "scope": "inline",
+        "spans": [
+          {
+            "cell_index": null,
+            "end": 93,
+            "left_context": "Declaramos ainda que a pesquisa foi realizada na data de hoje, com referência ao mês de ",
+            "original": "JULHO",
+            "paragraph": 19,
+            "paragraph_fingerprint": "f2e6e735b24130562d2e",
+            "right_context": " de 2026, e o resultado está disponível no site: https://cge.pb.gov.br/site/imagens/gsc/ca",
+            "row_index": null,
+            "start": 88,
+            "story": "body",
+            "table_index": null
+          }
+        ],
+        "version": 1
+      },
+      "semantic_concept_id": "cafil.reference_month",
+      "default_value": "JULHO",
+      "semantic_fillable_probability": 0.9535,
+      "semantic_model_version": 1,
+      "context_resolver_version": 3
+    },
+    {
+      "id": "cafil.reference_year",
+      "label": "Ano de referência da consulta CAFIL",
+      "type": "integer",
+      "required": true,
+      "dynamic_scope": "inline",
+      "semantic_learned_similarity": 0.0,
+      "detection_needs_review": false,
+      "detection_review_priority": "ready",
+      "source_context": {
+        "after": ", e o resultado está disponível no site: https://cge.pb.gov.br/site/imagens/gsc/cafil-pb.pdf, conforme documento em anexo.",
+        "before": "Declaramos ainda que a pesquisa foi realizada na data de hoje, com referência ao mês de JULHO de ",
+        "target": "2026"
+      },
+      "detection_source": "automatic",
+      "detection_confidence_band": "high",
+      "context_confidence": 0.9,
+      "section": "Consulta CAFIL",
+      "semantic_prediction": {
+        "concept_confidence": 0.82,
+        "concept_id": "procurement.ata_number",
+        "fillable_probability": 0.981,
+        "forces_review": true,
+        "label_confidence": 0.99,
+        "learned_similarity": 0.0,
+        "model_version": 1,
+        "reasons": [
+          "Semântica local corresponde a 'Número da Ata' (82%).",
+          "O tipo estrutural 'integer' diverge do tipo semântico 'text'."
+        ],
+        "suggested_label": "Número da Ata",
+        "suggested_type": "text",
+        "type_confidence": 0.98
+      },
+      "context_evidence": {
+        "profile_identity": {
+          "confidence": 0.9,
+          "description": "Identidade portátil derivada de seção, rótulo e tipo.",
+          "source": "semantic_identity",
+          "value": "consulta_cafil.ano_de_referencia_da_consulta_cafil:integer"
+        }
+      },
+      "validation_hint": "Use somente números inteiros.",
+      "profile_identity": "consulta_cafil.ano_de_referencia_da_consulta_cafil:integer",
+      "detection_confidence": 0.99,
+      "detection_confidence_dimensions": {
+        "fillable": 0.981,
+        "label": 0.45,
+        "structure": 0.9,
+        "type": 0.88
+      },
+      "detection_reviewed": true,
+      "semantic_concept_confidence": 0.82,
+      "label_source": "automatic_detection",
+      "scanner_version": 4,
+      "detector_version": 3,
+      "section_source": "semantic_detection",
+      "type_source": "automatic_detection",
+      "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+      "detection_review_reasons": [
+        "A análise semântica encontrou uma divergência que precisa de confirmação humana."
+      ],
+      "detection_evidence": [
+        {
+          "authority": "semantic",
+          "code": "heuristic",
+          "description": "Sinal encontrado pelo detector especializado.",
+          "weight": 0.44
+        },
+        {
+          "authority": "semantic",
+          "code": "type_support",
+          "description": "Formato visual e tipo do campo são compatíveis.",
+          "weight": 0.05
+        },
+        {
+          "authority": "semantic",
+          "code": "semantic_ai",
+          "description": "Semântica local corresponde a 'Número da Ata' (82%).",
+          "weight": 0.038
+        },
+        {
+          "authority": "semantic",
+          "code": "semantic_ai",
+          "description": "O tipo estrutural 'integer' diverge do tipo semântico 'text'.",
+          "weight": 0.038
+        }
+      ],
+      "source_anchor": {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "scope": "inline",
+        "spans": [
+          {
+            "cell_index": null,
+            "end": 101,
+            "left_context": "mos ainda que a pesquisa foi realizada na data de hoje, com referência ao mês de JULHO de ",
+            "original": "2026",
+            "paragraph": 19,
+            "paragraph_fingerprint": "f2e6e735b24130562d2e",
+            "right_context": ", e o resultado está disponível no site: https://cge.pb.gov.br/site/imagens/gsc/cafil-pb.p",
+            "row_index": null,
+            "start": 97,
+            "story": "body",
+            "table_index": null
+          }
+        ],
+        "version": 1
+      },
+      "semantic_concept_id": "cafil.reference_year",
+      "default_value": "2026",
+      "semantic_fillable_probability": 0.981,
+      "semantic_model_version": 1,
+      "context_resolver_version": 3
+    }
+  ],
+  "sections": [
+    {
+      "title": "Processo",
+      "fields": [
+        "process.number",
+        "procurement.object",
+        "process.total_value"
+      ]
+    },
+    {
+      "title": "Fornecedor",
+      "fields": [
+        "supplier.document",
+        "supplier.name",
+        "supplier.amount"
+      ]
+    },
+    {
+      "title": "Consulta CAFIL",
+      "fields": [
+        "cafil.reference_month",
+        "cafil.reference_year"
+      ]
+    }
+  ],
+  "output": {
+    "filename_pattern": "{{template.name}}.docx",
+    "folder_pattern": ""
+  },
+  "numbering": {
+    "enabled": false,
+    "key": "declaracao-cafil-lei-9-697-12-sia31016-ge",
+    "padding": 4
+  },
+  "letterhead": {
+    "enabled": false,
+    "source": "bundled_default"
+  }
+}

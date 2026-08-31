@@ -6,6 +6,7 @@ from docx import Document
 from docx.shared import RGBColor
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.enum.style import WD_STYLE_TYPE
 
 from app.document.detection.application import apply_docx_field_candidates
 from app.document.detection.candidates import candidate_field_definitions
@@ -1555,3 +1556,318 @@ def test_real_cafil_declaration_detects_process_supplier_and_reference_period(tm
         "Fornecedor Teste Ltda",
         "R$ 20.500,00",
     ]
+
+
+
+def test_unknown_red_prompt_is_surfaced_for_review(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=1, cols=1)
+    cell = table.cell(0, 0)
+    cell.paragraphs[0].text = "Campo adicional:"
+    paragraph = cell.add_paragraph()
+    run = paragraph.add_run("Fonte de Recursos")
+    run.font.color.rgb = RGBColor(255, 0, 0)
+    source = _save(document, tmp_path / "unknown-red-prompt.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+    prompt = next(item for item in candidates if item["preview"] == "Fonte de Recursos")
+
+    assert prompt["source"] in {"colored_prompt", "colored_visual_field"}
+    assert prompt["selected"] is False
+    assert prompt["auto_apply_eligible"] is False
+
+
+def test_red_character_style_is_resolved_as_visual_intent(tmp_path: Path) -> None:
+    document = Document()
+    style = document.styles.add_style("CampoVermelho", WD_STYLE_TYPE.CHARACTER)
+    style.font.color.rgb = RGBColor(255, 0, 0)
+    table = document.add_table(rows=1, cols=1)
+    cell = table.cell(0, 0)
+    cell.paragraphs[0].text = "Responsável complementar:"
+    paragraph = cell.add_paragraph()
+    run = paragraph.add_run("Gestor responsável")
+    run.style = style
+    source = _save(document, tmp_path / "styled-red-prompt.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+
+    assert any(
+        item.get("preview") == "Gestor responsável"
+        and item.get("source") in {"colored_prompt", "colored_visual_field"}
+        for item in candidates
+    )
+
+
+def test_inline_red_angle_placeholder_is_reviewable_without_replacing_static_text(tmp_path: Path) -> None:
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run("Contratação de serviços de ")
+    target = paragraph.add_run("< Informar a descrição do objeto, constante do item 2 do DFD >")
+    target.font.color.rgb = RGBColor(255, 0, 0)
+    paragraph.add_run(", conforme condições estabelecidas neste instrumento.")
+    source = _save(document, tmp_path / "inline-red-angle.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+    visual = next(item for item in candidates if item.get("source") == "colored_visual_field")
+
+    assert "descrição do objeto" in visual["label"].casefold()
+    assert visual["location"]["kind"] == "text_span"
+    assert visual["selected"] is False
+
+    output = tmp_path / "inline-red-angle-prepared.docx"
+    apply_docx_field_candidates(source, output, [visual])
+    rendered = Document(str(output)).paragraphs[0].text
+    assert rendered.startswith("Contratação de serviços de {{")
+    assert rendered.endswith(", conforme condições estabelecidas neste instrumento.")
+
+
+def test_colored_inline_slash_options_become_dropdown(tmp_path: Path) -> None:
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run("Grau de prioridade: ")
+    target = paragraph.add_run("Normal / Urgente / Emergencial")
+    target.font.color.rgb = RGBColor(255, 0, 0)
+    source = _save(document, tmp_path / "colored-slash-options.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+    choice = next(item for item in candidates if item.get("source") == "colored_inline_choice")
+
+    assert choice["type"] == "dropdown"
+    assert choice["options"] == [
+        "Normal",
+        "Urgente",
+        "Emergencial",
+    ]
+
+
+def test_colored_body_ou_block_is_grouped_and_requires_review(tmp_path: Path) -> None:
+    document = Document()
+    document.add_paragraph("Forma de contratação:")
+    for value in ("Contratação direta", "OU", "Licitação tradicional"):
+        paragraph = document.add_paragraph()
+        run = paragraph.add_run(value)
+        run.font.color.rgb = RGBColor(255, 0, 0)
+    source = _save(document, tmp_path / "colored-body-choice.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+    choice = next(item for item in candidates if item.get("source") == "colored_choice_block")
+
+    assert choice["type"] == "dropdown"
+    assert choice["selected"] is False
+    assert choice["options"] == [
+        "Contratação direta",
+        "Licitação tradicional",
+    ]
+
+
+def test_static_red_note_does_not_become_visual_field(tmp_path: Path) -> None:
+    document = Document()
+    paragraph = document.add_paragraph()
+    run = paragraph.add_run(
+        "Importante: este texto é apenas uma orientação para o preenchimento da tabela."
+    )
+    run.font.color.rgb = RGBColor(255, 0, 0)
+    source = _save(document, tmp_path / "static-red-note.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+
+    assert not any(
+        item.get("source") in {"colored_visual_field", "colored_prompt"}
+        for item in candidates
+    )
+
+
+def test_generic_black_labeled_value_is_surfaced_for_review(tmp_path: Path) -> None:
+    document = Document()
+    document.add_paragraph("Responsável pela fiscalização: Maria da Silva")
+    source = _save(document, tmp_path / "generic-label-value.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+    candidate = next(
+        item for item in candidates
+        if item.get("source") == "generic_labeled_value"
+        and item.get("label") == "Responsável pela fiscalização"
+    )
+
+    assert candidate["preview"] == "Maria da Silva"
+    assert candidate["location"]["kind"] == "text_span"
+    assert candidate["selected"] is False
+    assert candidate["auto_apply_eligible"] is False
+
+
+def test_generic_black_inline_choices_are_reviewable_dropdown(tmp_path: Path) -> None:
+    document = Document()
+    document.add_paragraph("Modalidade: Pregão / Dispensa / Inexigibilidade")
+    source = _save(document, tmp_path / "generic-black-choice.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+    candidate = next(item for item in candidates if item.get("source") == "generic_choice")
+
+    assert candidate["label"] == "Modalidade"
+    assert candidate["type"] == "dropdown"
+    assert candidate["options"] == ["Pregão", "Dispensa", "Inexigibilidade"]
+    assert candidate["selected"] is False
+
+
+def test_black_instruction_placeholder_is_detected_without_color(tmp_path: Path) -> None:
+    document = Document()
+    document.add_paragraph("Fonte de recursos: [INFORMAR FONTE DE RECURSOS]")
+    source = _save(document, tmp_path / "black-instruction-placeholder.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+    candidate = next(
+        item for item in candidates if item.get("source") == "instruction_placeholder"
+    )
+
+    assert candidate["label"] == "Fonte de recursos"
+    assert candidate["preview"] == "[INFORMAR FONTE DE RECURSOS]"
+    assert candidate["selected"] is False
+
+
+def test_generic_adjacent_label_value_is_reviewable_without_whitelist(tmp_path: Path) -> None:
+    document = Document()
+    table = document.add_table(rows=1, cols=2)
+    table.cell(0, 0).text = "Responsável pela fiscalização:"
+    table.cell(0, 1).text = "Maria da Silva"
+    source = _save(document, tmp_path / "generic-adjacent-value.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+    candidate = next(
+        item for item in candidates
+        if item.get("source") == "generic_labeled_value"
+        and item.get("label") == "Responsável pela fiscalização"
+    )
+
+    assert candidate["preview"] == "Maria da Silva"
+    assert candidate["selected"] is False
+
+
+def test_highlighted_non_red_value_is_surfaced_as_visual_intent(tmp_path: Path) -> None:
+    from docx.enum.text import WD_COLOR_INDEX
+
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run("Gestor responsável: ")
+    run = paragraph.add_run("Maria da Silva")
+    run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+    source = _save(document, tmp_path / "highlighted-value.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+    candidate = next(item for item in candidates if item.get("source") == "visual_field")
+
+    assert candidate["label"] == "Gestor responsável"
+    assert candidate["preview"] == "Maria da Silva"
+    assert "highlight" in candidate.get("visual_intent_signals", [])
+    assert candidate["selected"] is False
+
+
+def test_underlined_value_after_label_is_surfaced_but_underlined_legal_prose_is_not(tmp_path: Path) -> None:
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run("Unidade demandante: ")
+    value = paragraph.add_run("Diretoria Administrativa")
+    value.underline = True
+
+    prose = document.add_paragraph()
+    legal = prose.add_run(
+        "A contratação observará os requisitos previstos na legislação aplicável."
+    )
+    legal.underline = True
+    source = _save(document, tmp_path / "underlined-intent.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+    visual = [item for item in candidates if item.get("source") == "visual_field"]
+
+    assert any(
+        item.get("label") == "Unidade demandante"
+        and item.get("preview") == "Diretoria Administrativa"
+        for item in visual
+    )
+    assert not any("legislação aplicável" in str(item.get("preview", "")) for item in visual)
+
+
+def test_blue_value_and_field_named_style_are_visual_intent_signals(tmp_path: Path) -> None:
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run("Gestor: ")
+    blue = paragraph.add_run("Maria da Silva")
+    blue.font.color.rgb = RGBColor(0, 70, 200)
+
+    style = document.styles.add_style("Campo Editável", WD_STYLE_TYPE.CHARACTER)
+    paragraph = document.add_paragraph()
+    paragraph.add_run("Unidade requisitante: ")
+    styled = paragraph.add_run("Gerência Administrativa")
+    styled.style = style
+    source = _save(document, tmp_path / "other-visual-intent.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+    visual = [item for item in candidates if item.get("source") == "visual_field"]
+
+    assert any(
+        item.get("label") == "Gestor"
+        and "nondefault_color" in item.get("visual_intent_signals", [])
+        for item in visual
+    )
+    assert any(
+        item.get("label") == "Unidade requisitante"
+        and "field_style" in item.get("visual_intent_signals", [])
+        for item in visual
+    )
+
+
+def _append_textbox_paragraph(document: Document, text: str) -> None:
+    """Add a minimal w:txbxContent paragraph for scanner/application regression."""
+
+    host = document.add_paragraph()
+    host_run = OxmlElement("w:r")
+    textbox = OxmlElement("w:txbxContent")
+    paragraph = OxmlElement("w:p")
+    run = OxmlElement("w:r")
+    node = OxmlElement("w:t")
+    node.text = text
+    run.append(node)
+    paragraph.append(run)
+    textbox.append(paragraph)
+    host_run.append(textbox)
+    host._p.append(host_run)
+
+
+def test_textbox_field_is_detected_and_can_be_tagged_transactionally(tmp_path: Path) -> None:
+    document = Document()
+    _append_textbox_paragraph(
+        document,
+        "Responsável pela conferência: Maria da Silva",
+    )
+    source = _save(document, tmp_path / "textbox-field.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+    candidate = next(
+        item for item in candidates
+        if item.get("source") == "generic_labeled_value"
+        and item.get("label") == "Responsável pela conferência"
+    )
+    assert candidate["selected"] is False
+
+    prepared = tmp_path / "textbox-field-prepared.docx"
+    apply_docx_field_candidates(source, prepared, [candidate])
+    fields = smart_fields_from_docx(prepared, candidate_field_definitions([candidate]))
+
+    assert any(field.get("id") == candidate["field_id"] for field in fields)
+
+
+def test_legal_brackets_and_ordinary_ou_prose_do_not_trigger_generic_fallback(tmp_path: Path) -> None:
+    document = Document()
+    document.add_paragraph(
+        "Nos termos do art. 75, o processo poderá ser licitado ou dispensado conforme a lei."
+    )
+    document.add_paragraph(
+        "Trecho legal reproduzido com supressão editorial [...] sem qualquer campo de formulário."
+    )
+    source = _save(document, tmp_path / "generic-negative-controls.docx")
+
+    candidates = detect_docx_field_candidates(source, semantic_enabled=False)
+
+    assert not any(
+        item.get("source") in {"generic_choice", "instruction_placeholder", "generic_labeled_value"}
+        for item in candidates
+    )

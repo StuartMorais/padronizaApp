@@ -305,7 +305,57 @@ def postprocess_candidates(
                 Evidence(
                     "colored_choice",
                     0.07,
-                    "Trecho colorido dentro de texto fixo contém alternativas explícitas separadas por OU.",
+                    "Trecho colorido dentro de texto fixo contém alternativas explícitas.",
+                )
+            )
+        elif source == "colored_choice_block":
+            evidences.append(
+                Evidence(
+                    "colored_choice_block",
+                    0.04,
+                    "Formatação colorida agrupa alternativas que exigem revisão humana.",
+                )
+            )
+        elif source == "colored_visual_field":
+            evidences.append(
+                Evidence(
+                    "colored_visual_intent",
+                    0.02,
+                    "Trecho visualmente destacado foi preservado como possível campo para revisão.",
+                )
+            )
+        elif source == "instruction_placeholder":
+            evidences.append(
+                Evidence(
+                    "explicit_fill_instruction",
+                    0.08,
+                    "O próprio documento contém uma instrução explícita de preenchimento.",
+                )
+            )
+        elif source == "generic_labeled_value":
+            evidences.append(
+                Evidence(
+                    "generic_label_value",
+                    0.03,
+                    "Um valor curto aparece fisicamente associado a um rótulo de formulário.",
+                )
+            )
+        elif source == "generic_choice":
+            evidences.append(
+                Evidence(
+                    "generic_choice",
+                    0.05,
+                    "Alternativas compactas aparecem após um rótulo explícito.",
+                )
+            )
+        elif source in {"visual_field", "visual_choice"}:
+            signals = ", ".join(str(value) for value in candidate.get("visual_intent_signals", []) or [])
+            evidences.append(
+                Evidence(
+                    "visual_intent",
+                    0.04,
+                    "Formatação visual incomum sugere conteúdo variável"
+                    + (f" ({signals})." if signals else "."),
                 )
             )
         elif source == "inline_placeholder":
@@ -596,6 +646,13 @@ def _pick_candidate(a: dict[str, Any], b: dict[str, Any]) -> tuple[dict[str, Any
             "terminal_prompt": 5,
             "colored_prompt": 4,
             "colored_inline_choice": 6,
+            "colored_choice_block": 5,
+            "colored_visual_field": 2,
+            "instruction_placeholder": 5,
+            "generic_labeled_value": 3,
+            "generic_choice": 5,
+            "visual_field": 2,
+            "visual_choice": 5,
             "dropdown_prompt": 2,
             "learned_mapping": 7,
             "semantic_inline": 4,

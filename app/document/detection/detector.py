@@ -16,6 +16,7 @@ from app.document.detection.models import AutomaticDetectionCancelled, Automatic
 from app.document.detection.passes import (
     DetectionWorkspace,
     run_fallback_detector_passes,
+    run_generic_intent_detector_passes,
     run_record_detector_passes,
     run_structural_detector_passes,
 )
@@ -238,6 +239,10 @@ def detect_docx_field_candidates(
                 reserved_ordinals=reserved_ordinals,
             )
         )
+    # Broad unfamiliar intent is deliberately last. It can surface regions that
+    # every specialized detector missed, but must never pre-empt stronger
+    # structural/semantic ownership.
+    run_generic_intent_detector_passes(workspace, check_cancel)
     candidates = workspace.candidates
 
     source_kind = (

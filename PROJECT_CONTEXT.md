@@ -277,6 +277,10 @@ candidate evidence + deterministic semantic/type inference
 ↓
 local semantic concepts / inline-prose-list discovery / learned family mappings
 ↓
+visual-intent fallback for still-unclaimed regions
+↓
+final general editable-intent fallback for unfamiliar field-like structures
+↓
 evidence authority + selection policy (preselected vs review-only)
 ↓
 user review / acceptance
@@ -295,6 +299,8 @@ Important structure-first rules retained from Scanner V4:
 - physical Word tables are classified before ordinary cell candidates;
 - valid manual tags protect their local structure from reinterpretation;
 - formatting is evidence, not an absolute field rule;
+- red is only one visual signal: unfamiliar editable intent may also come from plain label/value structure, adjacent table cells, explicit fill instructions, highlight/underline/non-red styles, or text boxes/shapes;
+- generic editable-intent inference runs only after stronger structural/semantic ownership and is always review-only, so improving recall cannot silently apply uncertain guesses;
 - binary long-choice blocks with a single standalone `OU` are valid choices (two alternatives are sufficient);
 - mixed-color sentences may expose a narrowly bounded inline choice when one contiguous colored span contains explicit `OU` alternatives; only that colored span is replaced;
 - terminal prompts after instructional blocks can become fields when context is strong;
@@ -303,7 +309,7 @@ Important structure-first rules retained from Scanner V4:
 - automatically written tags are staged and must pass the strict normal DOCX scanner before publication;
 - real scanner bugs should become permanent regression fixtures/contracts.
 
-See `docs/SCANNER_V6_SEMANTIC_2026-08.md` for the current semantic contract, `docs/SCANNER_V5_2026-08.md` for the review-first foundation, and `docs/SCANNER_V4_2026-08.md` for the underlying structure-first rules.
+See `docs/SCANNER_V6_SEMANTIC_2026-08.md` for the current semantic contract, `docs/SCANNER_EDITABLE_INTENT_SAFETY_NET_2026-08.md` for the general recall-oriented fallback, `docs/SCANNER_VISUAL_SAFETY_NET_2026-08.md` for the visual/red signal layer, `docs/SCANNER_V5_2026-08.md` for the review-first foundation, and `docs/SCANNER_V4_2026-08.md` for the underlying structure-first rules.
 
 ### Assisted-detection review model
 
@@ -481,12 +487,12 @@ It currently performs:
 
 Current coverage policy enforces a **75% minimum** over the non-UI core (`core`, `domain`, `document`, `repositories`, `services`). UI correctness relies more heavily on constructor/navigation/startup smoke coverage than line coverage.
 
-At the Scanner V6 semantic baseline validation in the Linux review environment:
+At the current Scanner V6 editable-intent validation in the Linux review environment:
 
 ```text
-pytest:             258 passed, 3 skipped (single process)
+pytest:             280 passed, 3 skipped (single process)
 semantic benchmark: 13/13 required, 0 unexpected, 0 fresh semantic preselected
-core coverage:      80.4%
+core coverage:      80.52%
 dead modules:       none
 compileall:         pass
 ```
@@ -557,7 +563,7 @@ The internal DOCX/DOCM → PDF converter cannot perfectly reproduce all Microsof
 
 ### Automatic/semantic detection quality
 
-Scanner V6 uses structure-first ownership, section/table analysis, content-role classification, multidimensional confidence, local semantic concepts, versioned anchors, learned template-family mappings, review evidence, caching, cooperative cancellation, invariants, and transactional tag round-trip validation. It is still inference: unusual legal/government layouts can produce false positives/negatives or imperfect semantic scope/type/label suggestions. Fresh semantic inline/prose/list regions intentionally remain review-only. Improve quality through committed real-document benchmark contracts rather than broad score tuning without fixtures.
+Scanner V6 uses structure-first ownership, section/table analysis, content-role classification, multidimensional confidence, local semantic concepts, versioned anchors, learned template-family mappings, visual evidence, a final general editable-intent fallback, review evidence, caching, cooperative cancellation, invariants, and transactional tag round-trip validation. It is still inference: unusual legal/government layouts can produce false positives/negatives or imperfect semantic scope/type/label suggestions. Fresh semantic inline/prose/list regions and all generic editable-intent discoveries intentionally remain review-only. The general fallback runs last so an unfamiliar guess cannot steal ownership from authoritative tags, stronger structure, or semantic concepts. Improve quality through committed real-document benchmark contracts rather than broad score tuning without fixtures.
 
 ### Generated filling-form layout
 
@@ -572,6 +578,8 @@ Template-editor work copies also have a conservative repeatable-marker migration
 New and existing-template authoring now use the same guided **Documento → Campos → Organizar → Concluir** flow described above. It deliberately hides technical field IDs, profile/group/visibility/layout automation, diagnostics, tag tools, output patterns, numbering, undo/history controls, and direct row mutation until **Opções avançadas** is enabled.
 
 The field-review dialog now uses user-facing states (`✓ Identificado`, `⚠ Confira`, `? Possível campo`), keeps source context visible, and hides origin/internal ID plus confidence/structure internals behind **Detalhes técnicos**. The normal user should decide only whether a questionable source region is dynamic and whether the proposed label/type makes sense.
+
+Review presentation has an explicit two-column contract: **Campo** answers “what does Padroniza think this field means?” using a human-facing label, while **Trecho no documento** answers “what exact source text is Padroniza pointing at?”. Technical IDs/origins must never replace either value in the default view. Lists are rendered as readable document text rather than Python representations, and generic detections first use nearby labels/semantic suggestions before a humanized-ID fallback. The context pane repeats the selected friendly field name and highlights the source excerpt so the reviewer can map suggestion → document without opening technical details.
 
 The previous `Ferramentas do arquivo` menu with separate `Localizar campos` / `Detectar campos sem tags` commands remains removed. Existing-model editing still exposes one primary **Localizar campos** action backed by `TemplateScanResult` / `locate_template_fields()`, while new-model creation starts that same service from the single **Analisar documento** step action. **Diagnóstico** is an advanced/secondary tool because it answers a different question ("is this model structurally valid?") rather than locating fields.
 
@@ -645,6 +653,12 @@ A real SIA31003 declaration regression on 2026-08-27 adds two additional contrac
 
 A real CAFIL declaration regression on 2026-08-31 adds an administrative-document contract for `tests/fixtures/regression/declaracao_cafil_sia31016.docx`. Scanner V6 must offer exactly the meaningful variable regions needed to reuse that declaration: `process.number`, the complete `procurement.object`, `process.total_value`, supplier document/name/amount, and the CAFIL reference month/year. The Ata number printed *inside* the editable object is suppressed as a nested candidate so the author does not receive overlapping fields. The reference month is a 12-option Portuguese dropdown and the year is an integer field. When a detected total has a parenthetical written amount, assisted application writes both the normal currency tag and an internal `currency_words` rendering tag bound to the same field ID; generation therefore updates `R$ 20.500,00 (vinte mil e quinhentos reais)` from one user-entered total instead of leaving stale prose.
 
+A broader SIAGOV corpus pass on 2026-08-31 adds a visual-intent safety net for new Word forms. Unknown short red prompts are no longer vocabulary-gated; red inherited from character/paragraph styles is recognized; red inline spans such as `< Informar ... >` become review-only possible fields; inline options can use `OU`, `|`, spaced `/`, or short semicolon lists; and red paragraph blocks separated by explicit `OU` can be proposed as a dropdown. Ambiguous visual findings (`colored_visual_field` / `colored_choice_block`) are always review-only, preserving the Scanner V6 human-approval contract while reducing silent false negatives. Static guidance prefixes and body section headings are filtered to control noise. See `docs/SCANNER_VISUAL_SAFETY_NET_2026-08.md`.
+
+A follow-up recall pass on 2026-08-31 generalizes that safety net beyond color. Discovery now has a final **editable-intent** stage that runs only after authoritative, structural, semantic, and visual ownership. It can surface unfamiliar plain black `Rótulo: valor` regions, strong adjacent label/value table cells, compact labeled black choices, explicit fill instructions such as `[INFORMAR ...]` / `<Descrever ...>`, highlighted or underlined compact values, non-red colored/styled field spans, and Word text-box (`w:txbxContent`) content that `python-docx` normally omits from `document.paragraphs`. These sources (`generic_labeled_value`, `generic_choice`, `instruction_placeholder`, `visual_field`, `visual_choice`) are always review-only. Noise guards reject common headings, signatures, legal citations/prose, hyperlinks, generic `[...]`, and grammatical `ou`. The supplied SIAGOV examples are used as an external acceptance corpus: all 24 supported DOCX/DOCM/PDF files prepare/scan without a hard failure; the XLSX remains out of scanner scope and the user documents are not bundled. See `docs/SCANNER_EDITABLE_INTENT_SAFETY_NET_2026-08.md`.
+
+The same corpus exposed a PDF-preparation hard failure: some SIAGOV PDFs contain invisible control characters that are returned by PyMuPDF but cannot be serialized by python-docx. `app/document/conversion/pdf.py` now removes only XML 1.0-invalid control characters at DOCX insertion boundaries. PDFs that previously failed immediately with `All strings must be XML compatible` now complete preparation and reach field localization. At the visual-only checkpoint the quality gate was `265 passed, 3 skipped`; the later general editable-intent baseline supersedes that checkpoint.
+
 ---
 
 ## 16. Explicit repeatable-table section recovery (2026-08-25)
@@ -656,3 +670,9 @@ Older templates that already persisted the generic fallback `Dados do documento`
 Native Word dropdown/date/checkbox controls without Developer-tab Tag/Title metadata must use the same contextual identifier during generation that the scanner used while building the form. `generate_docx()` now builds the Word control-context map before replacement and resolves unnamed native controls with that same mapping. Truly unresolvable recognized controls are left untouched instead of failing on a field that was never exposed to the user.
 
 The government DFD fixture with a header/background drawing was used to validate generation. The generated DOCX retained all three media assets and both drawings in `header1.xml`; visual rendering confirmed that the Paraíba government background/header artwork remained present after field replacement.
+
+### Field-review presentation contract (2026-08-31)
+
+The assisted-detection review screen now has an explicit reviewer-facing presentation layer. **Campo** must remain a friendly semantic/local name, while **Trecho no documento** must remain readable source text from the actual candidate region. Generic candidates use nearby source labels and semantic suggestions before falling back to a humanized technical identifier. Internal IDs, detector origins and confidence internals remain opt-in under **Detalhes técnicos**. Candidate lists/default arrays are rendered as normal document text rather than Python representations, and paragraph/list source contexts retain the full relevant text so the reviewer can see exactly what Padroniza intends to replace. The selected context title repeats the friendly field name (for example `Onde “Materiais / itens” aparece no documento?`) to reinforce the mapping between the proposed field and the highlighted source region.
+
+The current post-change Python quality baseline is `280 passed, 3 skipped`; core coverage is `80.52%`; dead-module reachability and `compileall` are green; and the Scanner V6 semantic benchmark remains `13/13`, with zero unexpected candidates and zero fresh semantic preselection. Ruff, Pyright, and PySide6 are not installed in the analysis environment used for this handoff, so those static/Windows-offscreen Qt gates were not executed here; CI/Windows quality remains authoritative for them.

@@ -10,7 +10,7 @@ from app.document.docx.tags import PLACEHOLDER_PATTERN
 from app.document.detection.candidates import _candidate
 from app.document.detection.context_helpers import (
     _contains_authoritative_marker, _context_label_for_record, _detected_placeholder_type,
-    _is_pure_fill_area_text, _looks_like_fill_area_text, _paragraph_is_red, _run_is_red,
+    _is_pure_fill_area_text, _looks_like_fill_area_text, _paragraph_is_red, _run_color_candidates, _run_is_red,
 )
 from app.document.detection.identifiers import (
     _clean_label, _humanize_id, _is_reasonable_label, _legacy_placeholder_field_id,
@@ -39,6 +39,42 @@ _PREFILLED_TEXT_STATIC_PREFIX_PATTERN = re.compile(
     r"orienta[cç][aã]o|observa[cç][aã]o\s+fixa|rodap[eé])\s*[:\-]",
     re.IGNORECASE,
 )
+_COLORED_STATIC_GUIDANCE_PATTERN = re.compile(
+    r"^\s*(?:notas?|importante|aten[cç][aã]o|aviso|orienta[cç][aã]o|exemplo|"
+    r"veja\s+que|a\s+reda[cç][aã]o\s+acima|observa[cç][aã]o\s+fixa)\b",
+    re.IGNORECASE,
+)
+_COLORED_COLUMN_GUIDANCE_PATTERN = re.compile(
+    r"^\s*[\[(]?(?:preencher|informar)\s+(?:a\s+)?coluna\b",
+    re.IGNORECASE,
+)
+_ANGLE_PLACEHOLDER_PATTERN = re.compile(r"^\s*<\s*(.+?)\s*>\s*[.,;:]?\s*$", re.DOTALL)
+_GENERIC_INSTRUCTION_PLACEHOLDER_PATTERN = re.compile(
+    r"(?:\[\s*(?P<bracket>(?:informar|informe|descrever|descreva|detalhar|detalhe|"
+    r"indicar|indique|justificar|justifique|preencher|preencha|especificar|especifique|"
+    r"inserir|insira|registrar|registre|definir|defina|identificar|identifique|"
+    r"relacionar|relacione|mencionar|mencione)\b[^\]\n]{2,320})\s*\]"
+    r"|<\s*(?P<angle>(?:informar|informe|descrever|descreva|detalhar|detalhe|"
+    r"indicar|indique|justificar|justifique|preencher|preencha|especificar|especifique|"
+    r"inserir|insira|registrar|registre|definir|defina|identificar|identifique|"
+    r"relacionar|relacione|mencionar|mencione)\b[^>\n]{2,320})\s*>)",
+    re.IGNORECASE,
+)
+_GENERIC_STATIC_LABEL_PATTERN = re.compile(
+    r"^\s*(?:lei|decreto|portaria|resolu[cç][aã]o|instru[cç][aã]o normativa|"
+    r"art(?:igo)?\.?|inciso|par[aá]grafo|cap[ií]tulo|se[cç][aã]o|anexo)\b",
+    re.IGNORECASE,
+)
+_GENERIC_VALUE_SENTENCE_PATTERN = re.compile(
+    r"(?:[.!?]\s|\b(?:considerando|declaramos|solicitamos|informamos|conforme|"
+    r"mediante|observado|observada|devendo|dever[aá]|ser[aá]|fica|ficam)\b)",
+    re.IGNORECASE,
+)
+_FIELD_STYLE_HINT_PATTERN = re.compile(
+    r"(?:campo|field|edit[aá]vel|editar|preench|input|placeholder|resposta|vari[aá]vel|formul[aá]rio)",
+    re.IGNORECASE,
+)
+
 
 
 def _detect_blank_followup_areas(
@@ -877,6 +913,1109 @@ def _detect_terminal_prompt(
     return candidate
 
 
+
+def _instruction_placeholder_label(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    match: re.Match[str],
+) -> str:
+    prefix = (record.text or "")[: match.start()].rstrip()
+    if ":" in prefix:
+        local = prefix.rsplit("\n", 1)[-1].rsplit(":", 1)[0]
+        cleaned = _clean_label(local[-150:])
+        if _is_reasonable_label(cleaned, maximum=120):
+            return cleaned
+
+    inner = _normalize_space(match.group("bracket") or match.group("angle") or "")
+    cleaned = re.sub(
+        r"^(?:informar|informe|descrever|descreva|detalhar|detalhe|indicar|indique|"
+        r"justificar|justifique|preencher|preencha|especificar|especifique|inserir|insira|"
+        r"registrar|registre|definir|defina|identificar|identifique|relacionar|relacione|"
+        r"mencionar|mencione)\s+",
+        "",
+        inner,
+        flags=re.IGNORECASE,
+    )
+    cleaned = _clean_label(cleaned.strip(" .,:;"))
+    if _is_reasonable_label(cleaned, maximum=150):
+        return cleaned
+
+    context = _context_label_for_record(record, records)
+    if _is_reasonable_label(context, maximum=150):
+        return _clean_label(context)
+    return "Campo a preencher"
+
+
+def _detect_instruction_placeholders(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    known_ids: set[str],
+) -> list[dict[str, Any]]:
+    """Detect explicit ``[INFORMAR ...]`` / ``<INFORMAR ...>`` instructions.
+
+    Unlike generic square-bracket prose, the contents must begin with a fill
+    instruction verb.  This keeps legal omissions/citations such as ``[...]``
+    static while allowing unfamiliar author instructions in any font color.
+    """
+
+    text = record.text or ""
+    if not text or _contains_authoritative_marker(record.paragraph):
+        return []
+    result: list[dict[str, Any]] = []
+    for match in _GENERIC_INSTRUCTION_PLACEHOLDER_PATTERN.finditer(text):
+        raw = match.group(0)
+        inner = _normalize_space(match.group("bracket") or match.group("angle") or "")
+        if len(inner) < 5 or len(inner) > 320:
+            continue
+        label = _instruction_placeholder_label(record, records, match)
+        field_id = _unique_field_id(_make_field_id(label), known_ids)
+        known_ids.add(field_id)
+        field_type = suggest_field_type(label)
+        if field_type == "text" and len(inner) >= 100:
+            field_type = "multiline"
+        result.append(
+            _candidate(
+                field_id=field_id,
+                label=label,
+                field_type=field_type,
+                confidence=0.86 if label != "Campo a preencher" else 0.76,
+                source="instruction_placeholder",
+                preview=raw,
+                location={
+                    "kind": "text_span",
+                    "paragraph": record.ordinal,
+                    "start": match.start(),
+                    "end": match.end(),
+                    "original": raw,
+                },
+                default_selected=False,
+            )
+        )
+    return result
+
+
+def _record_role(record: _ParagraphRecord) -> str:
+    return str(getattr(getattr(record, "understanding", None), "role", "") or "")
+
+
+def _looks_like_static_generic_context(record: _ParagraphRecord, label: str = "") -> bool:
+    role = _record_role(record)
+    if role in {
+        "heading", "instruction", "note", "signature", "header_footer",
+        "table_title", "table_header", "table_reference", "example", "tagged",
+    }:
+        return True
+    cleaned = _clean_label(label)
+    return bool(cleaned and _GENERIC_STATIC_LABEL_PATTERN.match(cleaned))
+
+
+def _strong_value_shape(value: str) -> bool:
+    text = _normalize_space(value)
+    if not text:
+        return False
+    return bool(
+        re.fullmatch(r"R\$\s*[\d.]+(?:,\d{2})?", text, re.IGNORECASE)
+        or re.fullmatch(r"\d{1,3}(?:\.\d{3})*/\d{4}-\d{2}", text)
+        or re.fullmatch(r"\d{2}\.\d{3}\.\d{3}/\d{4}-\d{1,2}", text)
+        or re.fullmatch(r"\d{3}\.\d{3}\.\d{3}-\d{2}", text)
+        or re.fullmatch(r"\(?\d{2}\)?\s*\d{4,5}-\d{4}", text)
+        or re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", text)
+        or re.fullmatch(r"\d{1,2}/\d{1,2}/\d{2,4}", text)
+        or re.fullmatch(r"\d+(?:[.,]\d+)?%", text)
+        or re.fullmatch(r"[A-ZÁÉÍÓÚÂÊÔÃÕÇ]{2,12}(?:-[A-Z0-9ÁÉÍÓÚÂÊÔÃÕÇ]{2,12})*-\d{4}/\d+", text)
+    )
+
+
+def _looks_like_short_existing_value(value: str, *, maximum: int = 180) -> bool:
+    text = _normalize_space(value)
+    if not text or len(text) > maximum:
+        return False
+    if (
+        _is_pure_fill_area_text(text)
+        or _GENERIC_INSTRUCTION_PLACEHOLDER_PATTERN.search(text)
+        or INSTRUCTION_PATTERN.match(text)
+        or GENERIC_DROPDOWN_PATTERN.match(text)
+        or CHECKBOX_TOKEN_PATTERN.search(text)
+        or text.casefold().startswith(("http://", "https://", "www."))
+    ):
+        return False
+    if _strong_value_shape(text):
+        return True
+    if len(text.split()) > 18:
+        return False
+    if _GENERIC_VALUE_SENTENCE_PATTERN.search(text):
+        return False
+    # Short values commonly include people, organizational units, identifiers,
+    # names, codes and current sample/default text.  Commas/semicolons and a
+    # terminal full stop are much more typical of prose than of one value.
+    if text.endswith((".", ";")) or ";" in text:
+        return False
+    if text.count(",") >= 2:
+        return False
+    return sum(ch.isalpha() for ch in text) >= 2 or any(ch.isdigit() for ch in text)
+
+
+def _detect_generic_inline_choice(
+    record: _ParagraphRecord,
+    known_ids: set[str],
+) -> dict[str, Any] | None:
+    """Detect compact black/plain alternatives after an explicit label."""
+
+    text = record.text or ""
+    if not text or ":" not in text or _contains_authoritative_marker(record.paragraph):
+        return None
+    colon = text.find(":")
+    label = _clean_label(text[:colon])
+    if not _is_reasonable_label(label, maximum=120) or _looks_like_static_generic_context(record, label):
+        return None
+    start = colon + 1
+    while start < len(text) and text[start].isspace():
+        start += 1
+    tail = _normalize_space(text[start:])
+    if not tail or len(tail) > 220 or tail.endswith("."):
+        return None
+    parts = _visual_choice_parts(tail)
+    if not parts:
+        return None
+    if any(len(part.split()) > 9 for part in parts):
+        return None
+    # A bare use of the conjunction "ou" inside ordinary prose is common.
+    # Requiring compact alternatives keeps this a field-like expression.
+    if re.search(r"\s+\bou\b\s+", tail, re.IGNORECASE) and any(len(part) > 90 for part in parts):
+        return None
+
+    field_id = _unique_field_id(_make_field_id(label), known_ids)
+    return _candidate(
+        field_id=field_id,
+        label=label,
+        field_type="dropdown",
+        confidence=0.82,
+        source="generic_choice",
+        preview=tail,
+        location={
+            "kind": "text_span",
+            "paragraph": record.ordinal,
+            "start": start,
+            "end": len(text),
+            "original": text[start:],
+        },
+        options=parts,
+        default_selected=False,
+    )
+
+
+def _detect_generic_labeled_value(
+    record: _ParagraphRecord,
+    known_ids: set[str],
+) -> dict[str, Any] | None:
+    """Review-only fallback for unfamiliar ``Label: current value`` fields."""
+
+    text = record.text or ""
+    if not text or ":" not in text or _contains_authoritative_marker(record.paragraph):
+        return None
+    colon = text.find(":")
+    label = _clean_label(text[:colon])
+    if not _is_reasonable_label(label, maximum=120) or _looks_like_static_generic_context(record, label):
+        return None
+    start = colon + 1
+    while start < len(text) and text[start].isspace():
+        start += 1
+    raw_value = text[start:]
+    value = _normalize_space(raw_value)
+    if not _looks_like_short_existing_value(value):
+        return None
+    # Compact alternatives belong to the dropdown fallback, not a text field.
+    if _visual_choice_parts(value):
+        return None
+
+    field_id = _unique_field_id(_make_field_id(label), known_ids)
+    field_type = suggest_field_type(label)
+    confidence = 0.82 if _strong_value_shape(value) else 0.74
+    return _candidate(
+        field_id=field_id,
+        label=label,
+        field_type=field_type,
+        confidence=confidence,
+        source="generic_labeled_value",
+        preview=value,
+        location={
+            "kind": "text_span",
+            "paragraph": record.ordinal,
+            "start": start,
+            "end": len(text),
+            "original": raw_value,
+        },
+        placeholder=value,
+        default_selected=False,
+    )
+
+
+def _detect_generic_adjacent_value(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    known_ids: set[str],
+) -> dict[str, Any] | None:
+    """Broaden table ``label | current value`` discovery without a label whitelist.
+
+    The older detector only trusts a few labels.  This fallback accepts an
+    unfamiliar label when the physical row relationship is strong, but leaves
+    the result unchecked for human review.
+    """
+
+    text = _normalize_space(record.text)
+    if (
+        not text
+        or record.cell is None
+        or record.table is None
+        or record.row_index is None
+        or _contains_authoritative_marker(record.paragraph)
+    ):
+        return None
+    label = _clean_label(text)
+    if not _is_reasonable_label(label, maximum=100) or _looks_like_static_generic_context(record, label):
+        return None
+
+    try:
+        unique_cells = _unique_row_cells(record.table.rows[record.row_index])
+        current_index = next(
+            index for index, cell in enumerate(unique_cells)
+            if id(cell._tc) == id(record.cell._tc)
+        )
+    except (StopIteration, IndexError, AttributeError, TypeError):
+        return None
+    if current_index + 1 >= len(unique_cells):
+        return None
+    value_cell = unique_cells[current_index + 1]
+    value_records = [
+        item for item in records
+        if item.cell is not None and id(item.cell._tc) == id(value_cell._tc)
+    ]
+    non_empty = [item for item in value_records if _normalize_space(item.text)]
+    if len(non_empty) != 1:
+        return None
+    value_record = non_empty[0]
+    if _contains_authoritative_marker(value_record.paragraph):
+        return None
+    value = _normalize_space(value_record.text)
+    if not _looks_like_short_existing_value(value, maximum=140):
+        return None
+
+    explicit_label = text.endswith((":", "："))
+    # Without ':' require another strong signal so ordinary two-column
+    # reference tables do not become an avalanche of editable suggestions.
+    if not explicit_label and not _strong_value_shape(value):
+        if len(label.split()) > 7 or len(value.split()) > 8:
+            return None
+        value_visual = any(_run_visual_intent_signals(run) for run in value_record.paragraph.runs if run.text)
+        if not value_visual:
+            return None
+
+    field_id = _unique_field_id(_make_field_id(label), known_ids)
+    field_type = suggest_field_type(label)
+    return _candidate(
+        field_id=field_id,
+        label=label,
+        field_type=field_type,
+        confidence=0.80 if explicit_label or _strong_value_shape(value) else 0.72,
+        source="generic_labeled_value",
+        preview=value,
+        location={
+            "kind": "text_span",
+            "paragraph": value_record.ordinal,
+            "start": 0,
+            "end": len(value_record.text),
+            "original": value_record.text,
+            "table_index": value_record.table_index,
+            "row_index": value_record.row_index,
+            "cell_index": value_record.cell_index,
+        },
+        placeholder=value,
+        default_selected=False,
+    )
+
+
+def _color_tuple(color) -> tuple[int, int, int] | None:
+    try:
+        return int(color[0]), int(color[1]), int(color[2])
+    except Exception:
+        value = str(color or "")
+        if len(value) != 6:
+            return None
+        try:
+            return int(value[:2], 16), int(value[2:4], 16), int(value[4:], 16)
+        except ValueError:
+            return None
+
+
+def _run_visual_intent_signals(run) -> set[str]:
+    """Return strong non-red formatting signals that can mark editable text."""
+
+    text = run.text or ""
+    if not _normalize_space(text):
+        return set()
+    style_name = ""
+    try:
+        style_name = str(run.style.name or "")
+    except Exception:
+        pass
+    if style_name.casefold() == "hyperlink" or text.casefold().startswith(("http://", "https://", "www.")):
+        return set()
+
+    signals: set[str] = set()
+    try:
+        if run.font.highlight_color is not None:
+            signals.add("highlight")
+    except Exception:
+        pass
+    try:
+        if run.underline not in {None, False}:
+            signals.add("underline")
+    except Exception:
+        pass
+    if style_name and _FIELD_STYLE_HINT_PATTERN.search(style_name):
+        signals.add("field_style")
+    try:
+        paragraph_style = str(run._parent.style.name or "")
+    except Exception:
+        paragraph_style = ""
+    if paragraph_style and _FIELD_STYLE_HINT_PATTERN.search(paragraph_style):
+        signals.add("field_style")
+
+    # Red already has its specialized detector. This branch handles blue,
+    # green, purple, etc. and explicit accent/theme colors. Neutral black/gray
+    # is ignored because ordinary body text often carries it explicitly.
+    if not _run_is_red(run):
+        for color in _run_color_candidates(run):
+            rgb = _color_tuple(color)
+            if rgb is None:
+                continue
+            red, green, blue = rgb
+            if max(rgb) - min(rgb) >= 45 and max(rgb) >= 90:
+                signals.add("nondefault_color")
+                break
+        try:
+            theme = run.font.color.theme_color
+        except Exception:
+            theme = None
+        if theme is not None and any(token in str(theme).casefold() for token in ("accent", "followed_hyperlink")):
+            signals.add("nondefault_color")
+
+    # Run shading is another common hand-authored "fill this" convention.
+    try:
+        shading = run._r.xpath("./w:rPr/w:shd")
+    except Exception:
+        shading = []
+    for node in shading:
+        fill = str(node.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}fill", "") or "")
+        if fill and fill.casefold() not in {"auto", "ffffff", "000000"}:
+            signals.add("shading")
+            break
+    return signals
+
+
+def _visual_intent_run_groups(paragraph) -> list[tuple[int, int, str, set[str]]]:
+    groups: list[tuple[int, int, str, set[str]]] = []
+    offset = 0
+    active_start: int | None = None
+    active_text: list[str] = []
+    active_signals: set[str] = set()
+    for run in paragraph.runs:
+        run_text = run.text or ""
+        start = offset
+        end = start + len(run_text)
+        signals = _run_visual_intent_signals(run)
+        # Leave red regions to the mature colored fallback so only new visual
+        # conventions are handled here.
+        if signals and not _run_is_red(run):
+            if active_start is None:
+                active_start = start
+            active_text.append(run_text)
+            active_signals.update(signals)
+        elif active_start is not None:
+            groups.append((active_start, start, "".join(active_text), set(active_signals)))
+            active_start = None
+            active_text = []
+            active_signals.clear()
+        offset = end
+    if active_start is not None:
+        groups.append((active_start, offset, "".join(active_text), set(active_signals)))
+    return groups
+
+
+def _neighbor_record(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    *,
+    direction: int,
+) -> _ParagraphRecord | None:
+    index = record.ordinal + direction
+    while 0 <= index < len(records):
+        other = records[index]
+        index += direction
+        if other.story != record.story:
+            continue
+        if record.cell is not None:
+            if other.cell is None or id(other.cell._tc) != id(record.cell._tc):
+                continue
+        elif other.cell is not None:
+            continue
+        if _normalize_space(other.text):
+            return other
+    return None
+
+
+def _standalone_visual_context_is_fieldlike(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    visible: str,
+    signals: set[str],
+) -> bool:
+    """Require context before treating a fully formatted paragraph as a field."""
+
+    previous = _neighbor_record(record, records, direction=-1)
+    following = _neighbor_record(record, records, direction=1)
+    if any(_record_role(item) == "signature" for item in (previous, following) if item is not None):
+        return False
+    if "field_style" in signals:
+        return True
+    if previous is not None:
+        previous_text = _normalize_space(previous.text)
+        if _record_role(previous) == "field_prompt" or (
+            previous_text.endswith((":", "："))
+            and _is_reasonable_label(_clean_label(previous_text), maximum=160)
+        ):
+            return True
+    if INSTRUCTION_PATTERN.match(visible):
+        return True
+    # Strong highlight/shading can mark a standalone fill value, but without a
+    # nearby prompt it is equally common on signatures and headings. Keep those
+    # ambiguous cases silent rather than flooding review with document chrome.
+    return False
+
+
+def _detect_unclaimed_visual_intent_fields(
+    records: list[_ParagraphRecord],
+    existing_candidates: list[dict[str, Any]],
+    known_ids: set[str],
+    reserved_ordinals: set[int],
+) -> list[dict[str, Any]]:
+    """Surface highlighted/underlined/styled/non-red regions nobody claimed."""
+
+    whole_claims, span_claims = _candidate_claims(existing_candidates)
+    result: list[dict[str, Any]] = []
+    for record in records:
+        if record.ordinal in reserved_ordinals or record.ordinal in whole_claims:
+            continue
+        if _contains_authoritative_marker(record.paragraph):
+            continue
+        role = _record_role(record)
+        if role in {"heading", "instruction", "note", "signature", "header_footer", "table_title", "table_header", "table_reference", "tagged"}:
+            continue
+        full = record.text or ""
+        for start, end, raw, signals in _visual_intent_run_groups(record.paragraph):
+            visible = _normalize_space(raw)
+            if not visible or len(visible) > 420:
+                continue
+            if _span_overlaps_claimed(record.ordinal, start, end, whole_claims, span_claims):
+                continue
+            if visible.casefold().startswith(("http://", "https://", "www.")):
+                continue
+            prefix = full[:start].rstrip()
+            suffix = full[end:].lstrip()
+            inline_label = bool(
+                ":" in prefix
+                and _is_reasonable_label(_clean_label(prefix.rsplit(":", 1)[0][-150:]), maximum=120)
+            )
+            standalone = start == 0 and end >= len(full)
+            if standalone and not inline_label and not _standalone_visual_context_is_fieldlike(
+                record, records, visible, signals
+            ):
+                continue
+            # A color-only prefix such as ``Indicação de marcas ou modelos``
+            # followed by a black legal citation is normally a heading, not a
+            # partial editable span. Require an inline/adjacent prompt or an
+            # explicitly field-named style for such mixed formatting.
+            if (
+                start == 0
+                and suffix
+                and signals <= {"nondefault_color", "underline"}
+                and not inline_label
+                and "field_style" not in signals
+            ):
+                previous = _neighbor_record(record, records, direction=-1)
+                if previous is None or _record_role(previous) != "field_prompt":
+                    continue
+            # Underline by itself is weak and common in legal prose. Require a
+            # compact value next to a label.
+            if signals == {"underline"}:
+                if not inline_label or len(visible) > 120 or len(visible.split()) > 14:
+                    continue
+            if len(visible.split()) > 28 and not ({"highlight", "field_style", "shading"} & signals):
+                continue
+
+            label = _visual_label_from_span(record, records, raw, start)
+            if _looks_like_static_generic_context(record, label):
+                continue
+            parts = _visual_choice_parts(visible)
+            has_explicit_choice_separator = bool(
+                "|" in visible
+                or re.search(r"\s+/\s+", visible)
+                or ";" in visible
+                or re.search(r"\bOU\b", visible)
+                or inline_label
+            )
+            is_choice = bool(
+                parts
+                and has_explicit_choice_separator
+                and all(len(part.split()) <= 10 for part in parts)
+            )
+            source = "visual_choice" if is_choice else "visual_field"
+            field_type = "dropdown" if is_choice else suggest_field_type(label)
+            if field_type == "text" and len(visible) >= 140:
+                field_type = "multiline"
+            field_id = _unique_field_id(_make_field_id(label), known_ids)
+            known_ids.add(field_id)
+            candidate = _candidate(
+                field_id=field_id,
+                label=label,
+                field_type=field_type,
+                confidence=0.82 if {"highlight", "field_style", "shading"} & signals else 0.74,
+                source=source,
+                preview=visible,
+                location={
+                    "kind": "text_span",
+                    "paragraph": record.ordinal,
+                    "start": start,
+                    "end": end,
+                    "original": raw,
+                },
+                options=parts if is_choice else None,
+                placeholder=visible if not is_choice else "",
+                default_selected=False,
+            )
+            candidate["visual_intent_signals"] = sorted(signals)
+            result.append(candidate)
+            span_claims[record.ordinal].append((start, end))
+    return result
+
+
+def _generic_candidate_overlaps_claims(
+    candidate: dict[str, Any],
+    whole_claims: set[int],
+    span_claims: dict[int, list[tuple[int, int]]],
+) -> bool:
+    location = dict(candidate.get("location", {}) or {})
+    kind = str(location.get("kind", ""))
+    if kind == "text_span":
+        try:
+            return _span_overlaps_claimed(
+                int(location.get("paragraph", -1)),
+                int(location.get("start", 0)),
+                int(location.get("end", 0)),
+                whole_claims,
+                span_claims,
+            )
+        except (TypeError, ValueError):
+            return True
+    if "paragraph" in location:
+        try:
+            return int(location.get("paragraph", -1)) in whole_claims
+        except (TypeError, ValueError):
+            return True
+    return False
+
+
+def _register_generic_claim(
+    candidate: dict[str, Any],
+    whole_claims: set[int],
+    span_claims: dict[int, list[tuple[int, int]]],
+) -> None:
+    location = dict(candidate.get("location", {}) or {})
+    kind = str(location.get("kind", ""))
+    try:
+        ordinal = int(location.get("paragraph", -1))
+    except (TypeError, ValueError):
+        return
+    if kind == "text_span":
+        try:
+            span_claims[ordinal].append(
+                (int(location.get("start", 0)), int(location.get("end", 0)))
+            )
+        except (TypeError, ValueError):
+            pass
+    elif ordinal >= 0:
+        whole_claims.add(ordinal)
+
+
+def _detect_generic_intent_fields(
+    records: list[_ParagraphRecord],
+    existing_candidates: list[dict[str, Any]],
+    known_ids: set[str],
+    reserved_ordinals: set[int],
+) -> list[dict[str, Any]]:
+    """Last-resort review candidates for unfamiliar editable intent.
+
+    This pass is intentionally color-agnostic and runs only after stronger
+    structural, semantic and visual detectors.  It broadens recall without
+    stealing ownership from a detector that already understood the region.
+    """
+
+    whole_claims, span_claims = _candidate_claims(existing_candidates)
+    result: list[dict[str, Any]] = []
+    for record in records:
+        if record.ordinal in reserved_ordinals or record.ordinal in whole_claims:
+            continue
+        if _contains_authoritative_marker(record.paragraph):
+            continue
+
+        # Use an isolated ID set while probing. A rejected overlapping fallback
+        # must not consume an identifier and force suffixes on later candidates.
+        temporary_ids = set(known_ids)
+        proposals: list[dict[str, Any]] = []
+
+        placeholders = _detect_instruction_placeholders(record, records, temporary_ids)
+        proposals.extend(placeholders)
+        if not placeholders:
+            choice = _detect_generic_inline_choice(record, temporary_ids)
+            if choice is not None:
+                proposals.append(choice)
+            else:
+                labeled = _detect_generic_labeled_value(record, temporary_ids)
+                if labeled is not None:
+                    proposals.append(labeled)
+
+        # A label in one cell can point to a value in the next cell, so this
+        # proposal may target another record ordinal. Check its physical claim
+        # rather than assuming the current record owns the candidate.
+        if not proposals:
+            adjacent = _detect_generic_adjacent_value(record, records, temporary_ids)
+            if adjacent is not None:
+                proposals.append(adjacent)
+
+        for candidate in proposals:
+            if _generic_candidate_overlaps_claims(candidate, whole_claims, span_claims):
+                continue
+            result.append(candidate)
+            field_id = str(candidate.get("field_id", "")).strip()
+            if field_id:
+                known_ids.add(field_id)
+            _register_generic_claim(candidate, whole_claims, span_claims)
+    return result
+
+
+def _colored_run_groups(paragraph) -> list[tuple[int, int, str]]:
+    """Return contiguous red run spans using paragraph-text offsets."""
+
+    groups: list[tuple[int, int, str]] = []
+    offset = 0
+    active_start: int | None = None
+    active_text: list[str] = []
+    for run in paragraph.runs:
+        run_text = run.text or ""
+        run_start = offset
+        run_end = run_start + len(run_text)
+        is_red = bool(run_text) and _run_is_red(run)
+        if is_red:
+            if active_start is None:
+                active_start = run_start
+            active_text.append(run_text)
+        elif active_start is not None:
+            groups.append((active_start, run_start, "".join(active_text)))
+            active_start = None
+            active_text = []
+        offset = run_end
+    if active_start is not None:
+        groups.append((active_start, offset, "".join(active_text)))
+    return groups
+
+
+def _visual_choice_parts(value: str) -> list[str]:
+    text = _normalize_space(value)
+    if not text:
+        return []
+
+    # Delimiters are deliberately evaluated separately. Semicolons are common
+    # punctuation in legal clauses, so only treat them as option separators in
+    # short, list-like text.
+    if re.search(r"\s+\bou\b\s+", text, flags=re.IGNORECASE):
+        raw_parts = re.split(r"\s+\bou\b\s+", text, flags=re.IGNORECASE)
+    elif "|" in text:
+        raw_parts = re.split(r"\s*\|\s*", text)
+    elif re.search(r"\s+/\s+", text):
+        raw_parts = re.split(r"\s+/\s+", text)
+    elif ";" in text and len(text) <= 180 and "." not in text:
+        raw_parts = re.split(r"\s*;\s*", text)
+    else:
+        return []
+
+    parts = [_normalize_space(part) for part in raw_parts]
+    parts = [part for part in parts if part]
+    if len(parts) < 2 or len(parts) > 8:
+        return []
+    if any(len(part) < 2 or len(part) > 180 for part in parts):
+        return []
+    if len({part.casefold() for part in parts}) != len(parts):
+        return []
+    return parts
+
+
+def _looks_like_static_colored_guidance(value: str) -> bool:
+    text = _normalize_space(value)
+    if not text:
+        return True
+    if text.casefold() in {"ou", "e/ou", "ou:"}:
+        return True
+    if _COLORED_STATIC_GUIDANCE_PATTERN.match(text):
+        return True
+    if _COLORED_COLUMN_GUIDANCE_PATTERN.match(text):
+        return True
+    if text.startswith(("“", '"')) and text.endswith(("”", '"')):
+        return True
+    return False
+
+
+def _visual_label_from_span(
+    record: _ParagraphRecord,
+    records: list[_ParagraphRecord],
+    raw: str,
+    start: int,
+) -> str:
+    """Build a useful review label for a colored fill span."""
+
+    angle = _ANGLE_PLACEHOLDER_PATTERN.match(raw)
+    if angle:
+        text = _normalize_space(angle.group(1))
+        text = re.sub(
+            r"^(?:informar|informe|descrever|descreva|detalhar|detalhe|"
+            r"indicar|indique|justificar|justifique|preencher|preencha|"
+            r"especificar|especifique|inserir|insira)\s+",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.split(
+            r"\s*,?\s+(?:constante|conforme|em conson[aâ]ncia)\s+",
+            text,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0]
+        cleaned = _clean_label(text)
+        if cleaned:
+            return cleaned
+
+    full_text = record.text or ""
+    prefix = full_text[:start].rstrip()
+    if ":" in prefix:
+        tail = prefix.rsplit(":", 1)[0]
+        tail = re.split(r"[.;!?]\s+", tail)[-1]
+        cleaned = _clean_label(tail[-140:])
+        if _is_reasonable_label(cleaned, maximum=120):
+            return cleaned
+
+    context = _context_label_for_record(record, records)
+    if context and _is_reasonable_label(context, maximum=150):
+        return _clean_label(context)
+
+    cleaned_raw = _clean_label(_normalize_space(raw).strip("<>[]() "))
+    return cleaned_raw or "Campo destacado"
+
+
+def _candidate_claims(
+    candidates: list[dict[str, Any]],
+) -> tuple[set[int], dict[int, list[tuple[int, int]]]]:
+    whole: set[int] = set()
+    spans: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    for candidate in candidates:
+        location = dict(candidate.get("location", {}) or {})
+        kind = str(location.get("kind", ""))
+        if kind in {"paragraph", "empty_cell", "append_tag"}:
+            try:
+                whole.add(int(location.get("paragraph", -1)))
+            except (TypeError, ValueError):
+                pass
+        elif kind in {"paragraph_block", "paragraph_list"}:
+            for value in location.get("paragraphs", []) or []:
+                try:
+                    whole.add(int(value))
+                except (TypeError, ValueError):
+                    pass
+        elif kind == "text_span":
+            try:
+                ordinal = int(location.get("paragraph", -1))
+                spans[ordinal].append((int(location.get("start", 0)), int(location.get("end", 0))))
+            except (TypeError, ValueError):
+                pass
+        elif kind == "text_spans":
+            for span in location.get("spans", []) or []:
+                if not isinstance(span, dict):
+                    continue
+                try:
+                    ordinal = int(span.get("paragraph", -1))
+                    spans[ordinal].append((int(span.get("start", 0)), int(span.get("end", 0))))
+                except (TypeError, ValueError):
+                    pass
+    return whole, spans
+
+
+def _span_overlaps_claimed(
+    ordinal: int,
+    start: int,
+    end: int,
+    whole_claims: set[int],
+    span_claims: dict[int, list[tuple[int, int]]],
+) -> bool:
+    if ordinal in whole_claims:
+        return True
+    return any(start < other_end and other_start < end for other_start, other_end in span_claims.get(ordinal, []))
+
+
+def _detect_colored_choice_blocks(
+    records: list[_ParagraphRecord],
+    existing_candidates: list[dict[str, Any]],
+    known_ids: set[str],
+    reserved_ordinals: set[int],
+) -> list[dict[str, Any]]:
+    """Find review-only red alternatives split across consecutive paragraphs.
+
+    This complements the older table-cell ``long_choice`` detector.  Many
+    SIAGOV Word forms use red clauses in the document body, separated by a red
+    ``OU`` paragraph, or use the same pattern in compact table headers.
+    """
+
+    whole_claims, _ = _candidate_claims(existing_candidates)
+    by_region: dict[tuple[Any, ...], list[_ParagraphRecord]] = defaultdict(list)
+    for record in records:
+        cell_key = id(record.cell._tc) if record.cell is not None else None
+        by_region[(record.story, record.table_index, cell_key)].append(record)
+
+    result: list[dict[str, Any]] = []
+    seen_sequences: set[tuple[int, ...]] = set()
+    for region_records in by_region.values():
+        region_records.sort(key=lambda item: item.ordinal)
+        sequence: list[_ParagraphRecord] = []
+
+        def flush() -> None:
+            nonlocal sequence
+            if not sequence:
+                return
+            meaningful = [item for item in sequence if _normalize_space(item.text)]
+            sequence = []
+            if len(meaningful) < 3:
+                return
+            if not any(_normalize_space(item.text).casefold() == "ou" for item in meaningful):
+                return
+            ordinals = tuple(item.ordinal for item in meaningful)
+            if ordinals in seen_sequences:
+                return
+            if any(item.ordinal in reserved_ordinals or item.ordinal in whole_claims for item in meaningful):
+                return
+            if any(_contains_authoritative_marker(item.paragraph) for item in meaningful):
+                return
+
+            segments: list[list[_ParagraphRecord]] = [[]]
+            for item in meaningful:
+                if _normalize_space(item.text).casefold() == "ou":
+                    if segments[-1]:
+                        segments.append([])
+                    continue
+                segments[-1].append(item)
+            segments = [segment for segment in segments if segment]
+            if len(segments) < 2 or len(segments) > 8:
+                return
+
+            options: list[dict[str, str]] = []
+            for segment in segments:
+                value = _normalize_space("\n".join(item.text for item in segment))
+                if len(value) < 2 or len(value) > 1400:
+                    return
+                label = value
+                numbered = re.sub(r"^\s*\d+(?:\.\d+)*\.?\s*", "", label)
+                if numbered:
+                    label = numbered
+                if len(label) > 90:
+                    label = label[:87].rstrip() + "..."
+                options.append({"label": label, "value": value})
+
+            first = meaningful[0]
+            context = _context_label_for_record(first, records)
+            label = _clean_label(context or "Escolha uma alternativa")
+            field_id = _unique_field_id(_make_field_id(label), known_ids)
+            known_ids.add(field_id)
+            seen_sequences.add(ordinals)
+            result.append(
+                _candidate(
+                    field_id=field_id,
+                    label=label,
+                    field_type="dropdown",
+                    confidence=0.86,
+                    source="colored_choice_block",
+                    preview=" OU ".join(option["label"] for option in options),
+                    location={
+                        "kind": "paragraph_block",
+                        "paragraphs": [item.ordinal for item in meaningful],
+                    },
+                    options=options,
+                    layout="choice",
+                    layout_group=f"auto_choice_{field_id}",
+                )
+            )
+
+        active_section = ""
+        for record in region_records:
+            text = _normalize_space(record.text)
+            section = str(semantic_section(record) or "").strip()
+            if sequence and section and active_section and section != active_section:
+                flush()
+            if section:
+                active_section = section
+
+            if not text:
+                if sequence:
+                    sequence.append(record)
+                continue
+            if _paragraph_is_red(record.paragraph):
+                # Red section headings organize optional clauses; they are not
+                # themselves an alternative and should terminate the previous
+                # choice window rather than being swallowed into it.
+                if record.cell is None and _looks_like_section_label(text):
+                    flush()
+                    active_section = section
+                    continue
+                sequence.append(record)
+                continue
+            flush()
+        flush()
+    return result
+
+
+def _detect_unclaimed_colored_fields(
+    records: list[_ParagraphRecord],
+    existing_candidates: list[dict[str, Any]],
+    known_ids: set[str],
+    reserved_ordinals: set[int],
+) -> list[dict[str, Any]]:
+    """Surface unclaimed red spans instead of silently dropping them.
+
+    These findings are deliberately review-only.  They are the scanner's
+    visual-intent safety net for new institutional forms whose labels have
+    never appeared in Padroniza before.
+    """
+
+    from app.document.detection.field_inference import infer_field_type
+
+    whole_claims, span_claims = _candidate_claims(existing_candidates)
+    result: list[dict[str, Any]] = []
+    for record in records:
+        if record.ordinal in reserved_ordinals or record.ordinal in whole_claims:
+            continue
+        if _contains_authoritative_marker(record.paragraph):
+            continue
+        groups = _colored_run_groups(record.paragraph)
+        if not groups:
+            continue
+
+        full_text = record.text or ""
+        for start, end, raw in groups:
+            if _span_overlaps_claimed(record.ordinal, start, end, whole_claims, span_claims):
+                continue
+            text = _normalize_space(raw)
+            if not text or _looks_like_static_colored_guidance(text):
+                continue
+            if (
+                X_PLACEHOLDER_PATTERN.search(text)
+                or UNDERSCORE_PLACEHOLDER_PATTERN.search(text)
+                or CURRENCY_PLACEHOLDER_PATTERN.search(text)
+                or ZERO_PHONE_PLACEHOLDER_PATTERN.search(text)
+                or ZERO_CPF_PLACEHOLDER_PATTERN.search(text)
+                or SAMPLE_EMAIL_PLACEHOLDER_PATTERN.search(text)
+            ):
+                continue
+
+            prefix = _normalize_space(full_text[:start])
+            suffix = _normalize_space(full_text[end:])
+            whole_red = not prefix and not suffix
+            angle = _ANGLE_PLACEHOLDER_PATTERN.match(text)
+            choice_parts = _visual_choice_parts(text)
+
+            # Long all-red policy/contract clauses are usually static unless a
+            # stronger detector identified them as an instruction or choice.
+            if whole_red and len(text) > 220 and angle is None and not choice_parts:
+                continue
+
+            label = _visual_label_from_span(record, records, text, start)
+            field_id = _unique_field_id(_make_field_id(label), known_ids)
+            known_ids.add(field_id)
+
+            if choice_parts:
+                options = [
+                    {"label": part[:1].upper() + part[1:] if part else part, "value": part}
+                    for part in choice_parts
+                ]
+                result.append(
+                    _candidate(
+                        field_id=field_id,
+                        label=label,
+                        field_type="dropdown",
+                        confidence=0.82,
+                        source="colored_choice_block" if whole_red else "colored_inline_choice",
+                        preview=text,
+                        location=(
+                            {"kind": "paragraph", "paragraph": record.ordinal}
+                            if whole_red
+                            else {
+                                "kind": "text_span",
+                                "paragraph": record.ordinal,
+                                "start": start,
+                                "end": end,
+                                "original": raw,
+                            }
+                        ),
+                        options=options,
+                        layout="choice",
+                        layout_group=f"auto_choice_{field_id}",
+                    )
+                )
+                continue
+
+            section = str(semantic_section(record) or "").strip()
+            inference = infer_field_type(label, section=section, preview=text)
+            field_type = inference.field_type
+            if angle is not None and field_type == "text" and len(text) >= 70:
+                field_type = "multiline"
+            if whole_red and len(text) >= 110 and field_type == "text":
+                field_type = "multiline"
+
+            confidence = 0.84 if angle is not None else (0.74 if not whole_red else 0.68)
+            candidate = _candidate(
+                field_id=field_id,
+                label=label,
+                field_type=field_type,
+                confidence=confidence,
+                source="colored_visual_field",
+                preview=text,
+                location=(
+                    {"kind": "paragraph", "paragraph": record.ordinal}
+                    if whole_red
+                    else {
+                        "kind": "text_span",
+                        "paragraph": record.ordinal,
+                        "start": start,
+                        "end": end,
+                        "original": raw,
+                    }
+                ),
+            )
+            if section:
+                candidate["section"] = section
+            candidate["type_inference"] = {
+                "confidence": inference.confidence,
+                "reasons": list(inference.reasons),
+            }
+            candidate["visual_intent"] = "angle_placeholder" if angle is not None else "colored_text"
+            result.append(candidate)
+    return result
+
+
 def _detect_colored_inline_choice(
     record: _ParagraphRecord,
     records: list[_ParagraphRecord],
@@ -897,44 +2036,16 @@ def _detect_colored_inline_choice(
     """
 
     paragraph = record.paragraph
-    runs = list(paragraph.runs)
-    if not runs or _contains_authoritative_marker(paragraph):
+    if not paragraph.runs or _contains_authoritative_marker(paragraph):
         return None
 
-    # Build paragraph offsets for contiguous explicitly-red run groups.
-    groups: list[tuple[int, int, str]] = []
-    offset = 0
-    active_start: int | None = None
-    active_text: list[str] = []
-    for run in runs:
-        run_text = run.text or ""
-        run_start = offset
-        run_end = run_start + len(run_text)
-        is_red = bool(run_text) and _run_is_red(run)
-        if is_red:
-            if active_start is None:
-                active_start = run_start
-            active_text.append(run_text)
-        elif active_start is not None:
-            groups.append((active_start, run_start, "".join(active_text)))
-            active_start = None
-            active_text = []
-        offset = run_end
-    if active_start is not None:
-        groups.append((active_start, offset, "".join(active_text)))
-
     choice_groups: list[tuple[int, int, str, list[str]]] = []
-    for start, end, raw in groups:
+    for start, end, raw in _colored_run_groups(paragraph):
         text = _normalize_space(raw)
-        if len(text) < 7 or len(text) > 360:
+        if len(text) < 3 or len(text) > 520:
             continue
-        # Require whitespace around OU. This intentionally does not match
-        # ``e/ou`` or words containing the letters "ou".
-        parts = [
-            _normalize_space(part)
-            for part in re.split(r"\s+ou\s+", text, flags=re.IGNORECASE)
-        ]
-        if len(parts) < 2 or len(parts) > 5 or any(len(part) < 2 for part in parts):
+        parts = _visual_choice_parts(text)
+        if not parts:
             continue
         choice_groups.append((start, end, raw, parts))
 
@@ -1017,30 +2128,37 @@ def _detect_colored_prompt(
     from app.document.detection.identifiers import _unique_contextual_field_id
 
     text = _normalize_space(record.text)
+    red_text = _normalize_space("".join(raw for _start, _end, raw in _colored_run_groups(record.paragraph)))
     if (
         not text
         or len(text) > 70
-        or not _paragraph_is_red(record.paragraph)
+        or red_text != text
         or _contains_authoritative_marker(record.paragraph)
+        or INSTRUCTION_PATTERN.match(text)
     ):
         return None
     role = str(getattr(getattr(record, "understanding", None), "role", "") or "")
     if role in {"note", "heading", "table_header", "table_reference", "tagged"}:
+        return None
+    if record.cell is None and _looks_like_section_label(text):
         return None
 
     semantic, _source, semantic_confidence = semantic_label(record)
     owner = getattr(record, "structure", None)
     section = str(getattr(owner, "section", "") or semantic_section(record) or "")
     normalized = _slug(text)
-    field_words = {
-        "nome", "nome_completo", "cargo", "matricula", "setor", "lotacao", "funcao",
-        "cpf", "cnpj", "email", "e_mail", "telefone", "celular", "cep", "cidade", "uf",
-        "data", "valor", "quantidade", "descricao", "observacao", "justificativa",
-    }
-    if normalized not in field_words:
+    if _looks_like_static_colored_guidance(text):
+        return None
+    if normalized in {"ou", "e_ou"}:
         return None
 
+    # Unknown red prompts are intentionally surfaced for review.  Requiring a
+    # fixed vocabulary here caused new SIAGOV fields to disappear until the
+    # application itself was patched.  Structural/semantic role filters above
+    # still protect headings and reference-table text from automatic guesses.
     table_kind = str(getattr(owner, "table_kind", "") or "")
+    if record.cell is None and semantic_confidence < 0.72 and len(text.split()) > 8:
+        return None
     label = (
         semantic
         if table_kind in {"fixed_form", "repeatable", "editable_sheet"}
