@@ -240,6 +240,10 @@ def _tag_for_candidate(candidate: dict[str, Any]) -> str:
     if not field_id:
         raise AutomaticDetectionError("Uma sugestão selecionada não possui ID de campo.")
 
+    location = dict(candidate.get("location", {}) or {})
+    if str(location.get("render", "")).casefold() == "currency_words":
+        return f"{{{{currency_words:{field_id}}}}}"
+
     if field_type == "date":
         return f"{{{{date:{field_id}}}}}"
     if field_type == "checkbox":

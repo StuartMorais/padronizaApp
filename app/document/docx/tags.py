@@ -35,6 +35,7 @@ ROW_NUMBER_IDS = frozenset({
 
 TAG_PREFIXES = frozenset({
     "checkbox",
+    "currency_words",
     "date",
     "dropdown",
     "single_choice",
@@ -108,6 +109,17 @@ def parse_tag(
             field_id,
             FieldType.DATE.value,
             metadata={"tag_type": "date"},
+        )
+
+    if prefix == "currency_words":
+        field_id = definition.strip()
+        if not field_id and strict:
+            raise ValueError("Um marcador de valor por extenso não possui ID de campo.")
+        return TagDefinition(
+            TagKind.FIELD,
+            field_id,
+            FieldType.CURRENCY.value,
+            metadata={"render": "currency_words"},
         )
 
     if prefix == "repeat_list":

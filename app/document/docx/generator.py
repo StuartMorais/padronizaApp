@@ -15,6 +15,7 @@ from app.document.understanding.context_resolver import (
     build_word_control_context_map,
 )
 from app.domain.field_ids import FIELD_ID_TOKEN_PATTERN
+from app.domain.field_formats import currency_to_words_pt_br
 from app.domain.field_metadata import dropdown_option_values
 from app.document.docx.tags import PLACEHOLDER_PATTERN, ROW_NUMBER_IDS, TagKind, parse_tag
 from app.document.docx.controls import (
@@ -635,6 +636,11 @@ def _replace_placeholder(
         return ""
 
     field_id = normalize_control_id(definition.field_id)
+
+    if str(definition.metadata.get("render", "")) == "currency_words":
+        if field_id not in values:
+            return match.group(0)
+        return currency_to_words_pt_br(values.get(field_id))
 
     if definition.kind == TagKind.ROW_NUMBER:
         if field_id not in values:

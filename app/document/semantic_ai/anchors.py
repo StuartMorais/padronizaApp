@@ -45,6 +45,11 @@ def build_source_anchor(
                 "left_context": left,
                 "right_context": right,
                 "paragraph_fingerprint": paragraph_fingerprint(text),
+                **(
+                    {"render": str(span.get("render", ""))}
+                    if str(span.get("render", "")).strip()
+                    else {}
+                ),
             }
         )
 
@@ -127,6 +132,11 @@ def resolve_anchor_spans(
                     "start": start,
                     "end": end,
                     "original": text[start:end],
+                    **(
+                        {"render": str(stored.get("render", ""))}
+                        if str(stored.get("render", "")).strip()
+                        else {}
+                    ),
                 }
                 break
 
@@ -140,6 +150,11 @@ def resolve_anchor_spans(
                         "start": start,
                         "end": end,
                         "original": current,
+                        **(
+                            {"render": str(stored.get("render", ""))}
+                            if str(stored.get("render", "")).strip()
+                            else {}
+                        ),
                     }
                     break
 
@@ -155,6 +170,11 @@ def resolve_anchor_spans(
                     "start": 0,
                     "end": len(text),
                     "original": text,
+                    **(
+                        {"render": str(stored.get("render", ""))}
+                        if str(stored.get("render", "")).strip()
+                        else {}
+                    ),
                 }
                 break
         if found is None:

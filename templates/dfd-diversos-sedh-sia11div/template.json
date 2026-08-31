@@ -1,0 +1,1139 @@
+{
+  "template": {
+    "id": "dfd-diversos-sedh-sia11div",
+    "name": "Dfd   Diversos   Sedh   Sia11Div",
+    "description": "",
+    "category": "",
+    "version": "1.0",
+    "source_file": "template.docx",
+    "adapter": "docx"
+  },
+  "fields": [
+    {
+      "id": "setor.nome",
+      "label": "Setor Requisitante (Unidade/Setor/Depto)",
+      "type": "text",
+      "required": true,
+      "type_source": "document_context",
+      "section_source": "document_context",
+      "layout_order": 2,
+      "layout_column_span": 2,
+      "layout_group_label": "1. Área Requisitante da Demanda",
+      "section": "1. Área Requisitante da Demanda",
+      "layout": "form_grid",
+      "layout_static_rows": [
+        {
+          "layout_row": "row_1",
+          "layout_order": 1,
+          "layout_column_index": 0,
+          "layout_column_span": 2,
+          "layout_grid_columns": 2,
+          "text": "Órgão: Secretaria de Estado do Desenvolvimento Humano - SEDH"
+        }
+      ],
+      "layout_column_index": 0,
+      "layout_row": "row_2",
+      "layout_grid_columns": 2,
+      "full_width": true,
+      "layout_group": "doc_table_4_segment_1",
+      "label_source": "document_context"
+    },
+    {
+      "id": "responsável.nome",
+      "label": "Responsável pela Demanda",
+      "type": "text",
+      "required": true,
+      "type_source": "document_context",
+      "section_source": "document_context",
+      "layout_order": 3,
+      "layout_column_span": 1,
+      "layout_group_label": "1. Área Requisitante da Demanda",
+      "section": "1. Área Requisitante da Demanda",
+      "layout": "form_grid",
+      "profile_key": "signatory.nome",
+      "layout_column_index": 0,
+      "layout_row": "row_3",
+      "layout_grid_columns": 2,
+      "layout_group": "doc_table_4_segment_1",
+      "label_source": "document_context"
+    },
+    {
+      "id": "responsável.matricula",
+      "label": "Matrícula",
+      "type": "text",
+      "required": true,
+      "type_source": "document_context",
+      "section_source": "document_context",
+      "layout_order": 3,
+      "layout_column_span": 1,
+      "layout_group_label": "1. Área Requisitante da Demanda",
+      "section": "1. Área Requisitante da Demanda",
+      "layout": "form_grid",
+      "profile_key": "signatory.matricula",
+      "layout_column_index": 1,
+      "layout_row": "row_3",
+      "layout_grid_columns": 2,
+      "layout_group": "doc_table_4_segment_1",
+      "label_source": "document_context"
+    },
+    {
+      "id": "requisitante.email",
+      "label": "E-mail",
+      "type": "email",
+      "required": true,
+      "type_source": "document_context",
+      "section_source": "document_context",
+      "layout_order": 4,
+      "layout_column_span": 1,
+      "layout_group_label": "1. Área Requisitante da Demanda",
+      "section": "1. Área Requisitante da Demanda",
+      "layout": "form_grid",
+      "validation_hint": "Exemplo: nome@orgao.gov.br",
+      "layout_column_index": 0,
+      "layout_row": "row_4",
+      "layout_grid_columns": 2,
+      "layout_group": "doc_table_4_segment_1",
+      "label_source": "document_context"
+    },
+    {
+      "id": "responsavel.numero",
+      "label": "Telefone",
+      "type": "phone",
+      "required": true,
+      "type_source": "document_context",
+      "section_source": "document_context",
+      "layout_order": 4,
+      "layout_column_span": 1,
+      "layout_group_label": "1. Área Requisitante da Demanda",
+      "section": "1. Área Requisitante da Demanda",
+      "layout": "form_grid",
+      "validation_hint": "Informe DDD e número. Exemplo: (83) 99999-9999",
+      "profile_key": "signatory.numero",
+      "layout_column_index": 1,
+      "layout_row": "row_4",
+      "layout_grid_columns": 2,
+      "layout_group": "doc_table_4_segment_1",
+      "label_source": "document_context"
+    },
+    {
+      "id": "descrição.demanda",
+      "label": "Descrição da demanda",
+      "type": "multiline",
+      "required": true,
+      "type_source": "document_context",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_column_span": 2,
+      "layout_group_label": "2. Descrição da Demanda",
+      "section": "2. Descrição da Demanda",
+      "layout": "form_grid",
+      "layout_column_index": 0,
+      "layout_row": "row_1",
+      "layout_grid_columns": 2,
+      "full_width": true,
+      "layout_group": "doc_table_5_segment_1",
+      "label_source": "document_context"
+    },
+    {
+      "id": "itens",
+      "label": "Itens",
+      "type": "repeatable_table",
+      "required": true,
+      "columns": [
+        {
+          "id": "item",
+          "label": "Item",
+          "type": "auto_number",
+          "required": false,
+          "marker": "row.number"
+        },
+        {
+          "id": "descricao",
+          "label": "Descrição",
+          "type": "multiline",
+          "required": true,
+          "marker": "itens.descricao"
+        },
+        {
+          "id": "quantidade_2023",
+          "label": "Quantidade 2023",
+          "type": "integer",
+          "required": true,
+          "marker": "itens.quantidade_2023"
+        },
+        {
+          "id": "quantidade_2024",
+          "label": "Quantidade 2024",
+          "type": "integer",
+          "required": true,
+          "marker": "itens.quantidade_2024"
+        },
+        {
+          "id": "quantidade_2025",
+          "label": "Quantidade 2025",
+          "type": "integer",
+          "required": true,
+          "marker": "itens.quantidade_2025"
+        },
+        {
+          "id": "quantidade_solicitada",
+          "label": "Quantidade Solicitada",
+          "type": "integer",
+          "required": true,
+          "marker": "itens.quantidade_solicitada"
+        },
+        {
+          "id": "pca_2026",
+          "label": "Consta no PCA para 2026?SIM / NÃO",
+          "type": "dropdown",
+          "required": true,
+          "marker": "itens.pca_2026",
+          "options": [
+            "SIM",
+            "NÃO"
+          ]
+        }
+      ],
+      "minimum_rows": 1,
+      "numbering_padding": 2,
+      "type_source": "identifier",
+      "section": "Dados do documento",
+      "validation_hint": "Adicione pelo menos 1 item(ns). É possível colar linhas copiadas do Excel.",
+      "label_source": "identifier"
+    },
+    {
+      "id": "justificativa.demanda",
+      "label": "Justificativa Demanda",
+      "type": "multiline",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_column_span": 1,
+      "layout_group_label": "4. Justificativa da necessidade da demanda, considerando o planejamento estratégico, as diretrizes de planejamento, se for o caso",
+      "section": "4. Justificativa da necessidade da demanda, considerando o planejamento estratégico, as diretrizes de planejamento, se for o caso",
+      "layout": "form_grid",
+      "layout_column_index": 0,
+      "layout_row": "row_1",
+      "layout_grid_columns": 1,
+      "full_width": true,
+      "layout_group": "doc_table_7_segment_1",
+      "label_source": "identifier"
+    },
+    {
+      "id": "detalhamento.contratacao",
+      "label": "Detalhamento da contratação",
+      "type": "multiline",
+      "required": true,
+      "type_source": "tag",
+      "section": "Dados do documento",
+      "label_source": "document_context",
+      "tag_type": "default_or_text",
+      "default_value": "Não há necessidade de detalhamento mais amplo, uma vez que o objeto está claramente definido nos quantitativos e especificação do item 3 acima."
+    },
+    {
+      "id": "finalidade.objeto",
+      "label": "Finalidade Objeto",
+      "type": "multiline",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_column_span": 1,
+      "layout_group_label": "6. Informação da destinação do objeto (finalidade)",
+      "section": "6. Informação da destinação do objeto (finalidade)",
+      "layout": "form_grid",
+      "layout_column_index": 0,
+      "layout_row": "row_1",
+      "layout_grid_columns": 1,
+      "full_width": true,
+      "layout_group": "doc_table_9_segment_1",
+      "label_source": "identifier"
+    },
+    {
+      "id": "Grau.Prioridade",
+      "label": "Grau Prioridade",
+      "type": "dropdown",
+      "required": true,
+      "options": [
+        "Baixo",
+        "Médio",
+        "Alto"
+      ],
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_column_span": 1,
+      "layout_group_label": "7. Grau de Prioridade",
+      "section": "7. Grau de Prioridade",
+      "layout": "form_grid",
+      "layout_column_index": 0,
+      "layout_row": "row_1",
+      "layout_grid_columns": 1,
+      "full_width": true,
+      "layout_group": "doc_table_10_segment_1",
+      "label_source": "identifier"
+    },
+    {
+      "id": "previsão.data",
+      "label": "Previsão Data",
+      "type": "date",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_column_span": 1,
+      "layout_group_label": "8. Previsão de data em que deve ser iniciada a prestação dos serviços ou que deva ser adquirido o bem",
+      "section": "8. Previsão de data em que deve ser iniciada a prestação dos serviços ou que deva ser adquirido o bem",
+      "layout": "form_grid",
+      "validation_hint": "Formato exibido: dia/mês/ano.",
+      "automatic": true,
+      "layout_column_index": 0,
+      "layout_row": "row_1",
+      "layout_grid_columns": 1,
+      "full_width": true,
+      "layout_group": "doc_table_11_segment_1",
+      "label_source": "identifier"
+    },
+    {
+      "id": "pca_2025.situacao",
+      "label": "Pca 2025 Situacao",
+      "type": "dropdown",
+      "required": true,
+      "options": [
+        {
+          "label": "Consta no PCA",
+          "value": "Consta(m) no Plano de Contratações Anual – PCA, conforme comprovação em anexo."
+        },
+        {
+          "label": "Não consta no PCA",
+          "value": "Não consta(m) no Plano de Contratações Anual – PCA."
+        }
+      ],
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_column_span": 1,
+      "layout_group_label": "9. Plano de Contratações Anual - PCA 2025",
+      "section": "9. Plano de Contratações Anual - PCA 2025",
+      "layout": "form_grid",
+      "layout_column_index": 0,
+      "layout_row": "row_1",
+      "layout_grid_columns": 1,
+      "full_width": true,
+      "layout_group": "doc_table_12_segment_1",
+      "label_source": "identifier"
+    },
+    {
+      "id": "pca_2025.justificativa",
+      "label": "Pca 2025 Justificativa",
+      "type": "dropdown",
+      "required": true,
+      "options": [
+        {
+          "label": "Não se aplica",
+          "value": "Não se Aplica"
+        },
+        {
+          "label": "Dispensa por valor",
+          "value": "Está dispensada de registro no PCA em razão do provável valor do objeto da contratação não ser superior a R$ 13.098,41 nos termos do art. 5º, IV do Decreto Estadual Nº 44.639/23"
+        },
+        {
+          "label": "Demanda superveniente",
+          "value": "Nos termos do art. 13 do Decreto Estadual Nº 44.639/23, justificamos a não inclusão total ou parcial do(s) item(s) em questão no Plano de Contratações Anual (PCA) de 2025 para o exercício de 2026, devido a demandas supervenientes surgidas após sua elaboração, bem como a lacunas pontuais no levantamento de informações que comprometeram a previsão integral das necessidades. Reconhecemos a oportunidade de aprimoramento no processo de planejamento e destacamos que medidas estão sendo implementadas para garantir maior precisão em exercícios futuros. Ressaltamos, entretanto, que a presente demanda é essencial para a continuidade das atividades do órgão e para o cumprimento de suas finalidades institucionais."
+        },
+        {
+          "label": "Emergência ou calamidade",
+          "value": "Está dispensada de registro no PCA em razão da contratação ser emergencial ou calamidade pública nos termos do art. 5º,III do Decreto Estadual nº 44.639/23"
+        },
+        {
+          "label": "Informações sigilosas",
+          "value": "Está dispensada de registro no PCA em razão das informações serem classificadas como sigilosas, nos termos do disposto na Lei nº 12.527, de 18 de novembro de 2011, ou abrangidas pelas demais hipóteses legais de sigilo;"
+        },
+        {
+          "label": "Verificação posterior",
+          "value": "Será verificado posteriormente pelo setor Administrativo, após análise e oficialização da demanda."
+        }
+      ],
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 3,
+      "layout_column_span": 1,
+      "layout_group_label": "9.1 Justificativa em caso de ausência parcial ou total no PCA 2025",
+      "section": "9.1 Justificativa em caso de ausência parcial ou total no PCA 2025",
+      "layout": "form_grid",
+      "layout_column_index": 0,
+      "layout_row": "row_3",
+      "layout_grid_columns": 1,
+      "full_width": true,
+      "layout_group": "doc_table_12_segment_2",
+      "label_source": "identifier"
+    },
+    {
+      "id": "indicação.vinculacaooudependencia",
+      "label": "Complemento(se for o caso)",
+      "type": "dropdown",
+      "required": true,
+      "options": [
+        "Há vinculação ou interdependência com o objeto de outro(s) Documento(s) de Formalização de Demanda – DFD",
+        "Não há vinculação ou interdependência com o objeto de outro(s) Documento(s) de Formalização de Demanda – DFD"
+      ],
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_column_span": 1,
+      "layout_group_label": "10. indicação de vinculação ou dependência com o objeto de outro documento de formalização de demanda",
+      "section": "10. indicação de vinculação ou dependência com o objeto de outro documento de formalização de demanda",
+      "layout": "form_grid",
+      "layout_column_index": 0,
+      "layout_row": "row_1",
+      "layout_grid_columns": 1,
+      "full_width": true,
+      "layout_group": "doc_table_13_segment_1",
+      "label_source": "document_context"
+    },
+    {
+      "id": "objeto.natureza",
+      "label": "Objeto Natureza",
+      "type": "dropdown",
+      "required": true,
+      "options": [
+        {
+          "label": "Serviço não continuado",
+          "value": "Serviço Não Continuado"
+        },
+        {
+          "label": "Serviço continuado sem dedicação exclusiva",
+          "value": "Serviço continuado SEM dedicação exclusiva de mão de obra"
+        },
+        {
+          "label": "Serviço continuado com dedicação exclusiva",
+          "value": "Serviço continuado COM dedicação exclusiva de mão de obra"
+        },
+        "Material de consumo",
+        {
+          "label": "Material permanente ou equipamento",
+          "value": "Material permanente / Equipamento"
+        },
+        {
+          "label": "Obras e serviços de engenharia",
+          "value": "Obras e Serviços de Engenharia"
+        }
+      ],
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_column_span": 1,
+      "layout_group_label": "11. Natureza do objeto a ser contratado: AJUDA (Aperte a tecla CRTL e click na opção AJUDA)",
+      "section": "11. Natureza do objeto a ser contratado: AJUDA (Aperte a tecla CRTL e click na opção AJUDA)",
+      "layout": "form_grid",
+      "layout_column_index": 0,
+      "layout_row": "row_1",
+      "layout_grid_columns": 1,
+      "full_width": true,
+      "layout_group": "doc_table_14_segment_1",
+      "label_source": "identifier"
+    },
+    {
+      "id": "contratacao.modalidade",
+      "label": "Contratacao Modalidade",
+      "type": "dropdown",
+      "required": true,
+      "options": [
+        {
+          "label": "Inexigibilidade",
+          "value": "CONTRATAÇÃO DIRETA - INEXIGIBILIDADE"
+        },
+        {
+          "label": "Inexigibilidade por credenciamento",
+          "value": "CONTRATAÇÃO DIRETA - INEXIGIBILIDADE - CREDENCIAMENTO"
+        },
+        {
+          "label": "Dispensa",
+          "value": "CONTRATAÇÃO DIRETA - DISPENSA"
+        },
+        {
+          "label": "Contratos advindos de licitação",
+          "value": "ABERTURA DE CONTRATOS INICIAIS ADVINDOS DE LICITAÇÃO"
+        },
+        {
+          "label": "Contrato por demanda — Lei 14.133/21",
+          "value": "UTILIZAÇÃO DE CONTRATOS POR DEMANDA - LEI 14.133/21"
+        },
+        {
+          "label": "Ata sem contrato — Lei 14.133/21",
+          "value": "UTILIZAÇÃO DE ATA SEM CONTRATO - LEI 14.133/21"
+        },
+        {
+          "label": "Adesão a ata — Lei 14.133/21",
+          "value": "ADESÃO A ATA - LEI 14.133/21"
+        },
+        {
+          "label": "Contrato por demanda — Lei 8.666/93",
+          "value": "UTILIZAÇÃO DE CONTRATOS POR DEMANDA - LEI 8.666/93"
+        },
+        {
+          "label": "Ata sem contrato — Lei 8.666/93",
+          "value": "UTILIZAÇÃO DE ATA SEM CONTRATO - LEI 8.666/93"
+        },
+        {
+          "label": "Adesão à ata — Lei 8.666/93",
+          "value": "ADESÃO À ATA - LEI 8.666/93"
+        },
+        {
+          "label": "Verificação posterior",
+          "value": "Será verificado posteriormente pelo Setor Administrativo, após análise e oficialização da demanda."
+        }
+      ],
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_column_span": 1,
+      "layout_group_label": "12. Modalidade e Forma de Contratação Sugerida",
+      "section": "12. Modalidade e Forma de Contratação Sugerida",
+      "layout": "form_grid",
+      "layout_column_index": 0,
+      "layout_row": "row_1",
+      "layout_grid_columns": 1,
+      "full_width": true,
+      "layout_group": "doc_table_15_segment_1",
+      "label_source": "identifier"
+    },
+    {
+      "id": "prazoEntrega.imediata",
+      "label": "Entrega imediata e integral do material ou serviço * Considera-se entrega imediata, até 30 (trinta) dias após o recebimento da nota de empenho",
+      "type": "checkbox",
+      "required": false,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_group_label": "Entrega",
+      "selection": "single",
+      "group": "choice_16_1",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "choice",
+      "choice_required": true,
+      "layout_group": "choice_16_1",
+      "label_source": "document_context"
+    },
+    {
+      "id": "prazoEntrega.parcelada",
+      "label": "Entrega parcelada do material ou serviço",
+      "type": "checkbox",
+      "required": false,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_group_label": "Entrega",
+      "selection": "single",
+      "group": "choice_16_1",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "choice",
+      "choice_required": true,
+      "layout_group": "choice_16_1",
+      "label_source": "document_context"
+    },
+    {
+      "id": "gestor.nome_completo",
+      "label": "Gestor de Contrato e substituto",
+      "type": "text",
+      "required": true,
+      "type_source": "document_context",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Nome completo",
+      "layout_column_index": 1,
+      "layout_row": "row_1",
+      "layout_row_label": "Gestor de Contrato e substituto",
+      "layout_group": "doc_table_18",
+      "label_source": "document_context"
+    },
+    {
+      "id": "gestor.matricula",
+      "label": "Gestor Matricula",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Matrícula",
+      "layout_column_index": 2,
+      "layout_row": "row_1",
+      "layout_row_label": "Gestor de Contrato e substituto",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "gestor.setor",
+      "label": "Gestor Setor",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Setor",
+      "layout_column_index": 3,
+      "layout_row": "row_1",
+      "layout_row_label": "Gestor de Contrato e substituto",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "gestor.ciencia",
+      "label": "Gestor Ciencia",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Ciência",
+      "layout_column_index": 4,
+      "layout_row": "row_1",
+      "layout_row_label": "Gestor de Contrato e substituto",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "gestor_substituto.nome_completo",
+      "label": "Gestor Substituto Nome Completo",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 2,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Nome completo",
+      "layout_column_index": 1,
+      "layout_row": "row_2",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "gestor_substituto.matricula",
+      "label": "Gestor Substituto Matricula",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 2,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Matrícula",
+      "layout_column_index": 2,
+      "layout_row": "row_2",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "gestor_substituto.setor",
+      "label": "Gestor Substituto Setor",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 2,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Setor",
+      "layout_column_index": 3,
+      "layout_row": "row_2",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "gestor_substituto.ciencia",
+      "label": "Gestor Substituto Ciencia",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 2,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Ciência",
+      "layout_column_index": 4,
+      "layout_row": "row_2",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_tecnico.nome_completo",
+      "label": "Fiscal Técnico e Substituto",
+      "type": "text",
+      "required": true,
+      "type_source": "document_context",
+      "section_source": "document_context",
+      "layout_order": 3,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Nome completo",
+      "layout_column_index": 1,
+      "layout_row": "row_3",
+      "layout_row_label": "Fiscal Técnico e Substituto",
+      "layout_group": "doc_table_18",
+      "label_source": "document_context"
+    },
+    {
+      "id": "fiscal_tecnico.matricula",
+      "label": "Fiscal Tecnico Matricula",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 3,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Matrícula",
+      "layout_column_index": 2,
+      "layout_row": "row_3",
+      "layout_row_label": "Fiscal Técnico e Substituto",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_tecnico.setor",
+      "label": "Fiscal Tecnico Setor",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 3,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Setor",
+      "layout_column_index": 3,
+      "layout_row": "row_3",
+      "layout_row_label": "Fiscal Técnico e Substituto",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_tecnico.ciencia",
+      "label": "Fiscal Tecnico Ciencia",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 3,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Ciência",
+      "layout_column_index": 4,
+      "layout_row": "row_3",
+      "layout_row_label": "Fiscal Técnico e Substituto",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_tecnico_substituto.nome_completo",
+      "label": "Fiscal Tecnico Substituto Nome Completo",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 4,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Nome completo",
+      "layout_column_index": 1,
+      "layout_row": "row_4",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_tecnico_substituto.matricula",
+      "label": "Fiscal Tecnico Substituto Matricula",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 4,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Matrícula",
+      "layout_column_index": 2,
+      "layout_row": "row_4",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_tecnico_substituto.setor",
+      "label": "Fiscal Tecnico Substituto Setor",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 4,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Setor",
+      "layout_column_index": 3,
+      "layout_row": "row_4",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_tecnico_substituto.ciencia",
+      "label": "Fiscal Tecnico Substituto Ciencia",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 4,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Ciência",
+      "layout_column_index": 4,
+      "layout_row": "row_4",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_administrativo.nome_completo",
+      "label": "Fiscal Administrativo e Substituto",
+      "type": "text",
+      "required": true,
+      "type_source": "document_context",
+      "section_source": "document_context",
+      "layout_order": 5,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Nome completo",
+      "layout_column_index": 1,
+      "layout_row": "row_5",
+      "layout_row_label": "Fiscal Administrativo e Substituto",
+      "layout_group": "doc_table_18",
+      "label_source": "document_context"
+    },
+    {
+      "id": "fiscal_administrativo.matricula",
+      "label": "Fiscal Administrativo Matricula",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 5,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Matrícula",
+      "layout_column_index": 2,
+      "layout_row": "row_5",
+      "layout_row_label": "Fiscal Administrativo e Substituto",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_administrativo.setor",
+      "label": "Fiscal Administrativo Setor",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 5,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Setor",
+      "layout_column_index": 3,
+      "layout_row": "row_5",
+      "layout_row_label": "Fiscal Administrativo e Substituto",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_administrativo.ciencia",
+      "label": "Fiscal Administrativo Ciencia",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 5,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Ciência",
+      "layout_column_index": 4,
+      "layout_row": "row_5",
+      "layout_row_label": "Fiscal Administrativo e Substituto",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_administrativo_substituto.nome_completo",
+      "label": "Fiscal Administrativo Substituto Nome Completo",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 6,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Nome completo",
+      "layout_column_index": 1,
+      "layout_row": "row_6",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_administrativo_substituto.matricula",
+      "label": "Fiscal Administrativo Substituto Matricula",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 6,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Matrícula",
+      "layout_column_index": 2,
+      "layout_row": "row_6",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_administrativo_substituto.setor",
+      "label": "Fiscal Administrativo Substituto Setor",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 6,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Setor",
+      "layout_column_index": 3,
+      "layout_row": "row_6",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "fiscal_administrativo_substituto.ciencia",
+      "label": "Fiscal Administrativo Substituto Ciencia",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 6,
+      "layout_group_label": "13. Prazo de entrega/ Execução do serviço",
+      "section": "13. Prazo de entrega/ Execução do serviço",
+      "layout": "table",
+      "layout_column": "Ciência",
+      "layout_column_index": 4,
+      "layout_row": "row_6",
+      "layout_group": "doc_table_18",
+      "label_source": "identifier"
+    },
+    {
+      "id": "formalizacao.nome_completo",
+      "label": "João Pessoa, (data da assinatura eletrônica via PBDOC)",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_column_span": 1,
+      "layout_group_label": "15. Responsabilidade pela formalização da demanda e conteúdo do documento",
+      "section": "15. Responsabilidade pela formalização da demanda e conteúdo do documento",
+      "layout": "form_grid",
+      "layout_column_index": 0,
+      "layout_row": "row_1",
+      "layout_grid_columns": 1,
+      "layout_group": "doc_table_19_segment_1",
+      "label_source": "document_context"
+    },
+    {
+      "id": "formalizacao.cargo",
+      "label": "João Pessoa, (data da assinatura eletrônica via PBDOC)",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_column_span": 1,
+      "layout_group_label": "15. Responsabilidade pela formalização da demanda e conteúdo do documento",
+      "section": "15. Responsabilidade pela formalização da demanda e conteúdo do documento",
+      "layout": "form_grid",
+      "layout_column_index": 0,
+      "layout_row": "row_1",
+      "layout_grid_columns": 1,
+      "layout_group": "doc_table_19_segment_1",
+      "label_source": "document_context"
+    },
+    {
+      "id": "formalizacao.matricula",
+      "label": "João Pessoa, (data da assinatura eletrônica via PBDOC)",
+      "type": "text",
+      "required": true,
+      "type_source": "identifier",
+      "section_source": "document_context",
+      "layout_order": 1,
+      "layout_column_span": 1,
+      "layout_group_label": "15. Responsabilidade pela formalização da demanda e conteúdo do documento",
+      "section": "15. Responsabilidade pela formalização da demanda e conteúdo do documento",
+      "layout": "form_grid",
+      "layout_column_index": 0,
+      "layout_row": "row_1",
+      "layout_grid_columns": 1,
+      "layout_group": "doc_table_19_segment_1",
+      "label_source": "document_context"
+    }
+  ],
+  "sections": [
+    {
+      "title": "1. Área Requisitante da Demanda",
+      "fields": [
+        "setor.nome",
+        "responsável.nome",
+        "responsável.matricula",
+        "requisitante.email",
+        "responsavel.numero"
+      ]
+    },
+    {
+      "title": "2. Descrição da Demanda",
+      "fields": [
+        "descrição.demanda"
+      ]
+    },
+    {
+      "title": "Dados do documento",
+      "fields": [
+        "itens",
+        "detalhamento.contratacao"
+      ]
+    },
+    {
+      "title": "4. Justificativa da necessidade da demanda, considerando o planejamento estratégico, as diretrizes de planejamento, se for o caso",
+      "fields": [
+        "justificativa.demanda"
+      ]
+    },
+    {
+      "title": "6. Informação da destinação do objeto (finalidade)",
+      "fields": [
+        "finalidade.objeto"
+      ]
+    },
+    {
+      "title": "7. Grau de Prioridade",
+      "fields": [
+        "Grau.Prioridade"
+      ]
+    },
+    {
+      "title": "8. Previsão de data em que deve ser iniciada a prestação dos serviços ou que deva ser adquirido o bem",
+      "fields": [
+        "previsão.data"
+      ]
+    },
+    {
+      "title": "9. Plano de Contratações Anual - PCA 2025",
+      "fields": [
+        "pca_2025.situacao"
+      ]
+    },
+    {
+      "title": "9.1 Justificativa em caso de ausência parcial ou total no PCA 2025",
+      "fields": [
+        "pca_2025.justificativa"
+      ]
+    },
+    {
+      "title": "10. indicação de vinculação ou dependência com o objeto de outro documento de formalização de demanda",
+      "fields": [
+        "indicação.vinculacaooudependencia"
+      ]
+    },
+    {
+      "title": "11. Natureza do objeto a ser contratado: AJUDA (Aperte a tecla CRTL e click na opção AJUDA)",
+      "fields": [
+        "objeto.natureza"
+      ]
+    },
+    {
+      "title": "12. Modalidade e Forma de Contratação Sugerida",
+      "fields": [
+        "contratacao.modalidade"
+      ]
+    },
+    {
+      "title": "13. Prazo de entrega/ Execução do serviço",
+      "fields": [
+        "prazoEntrega.imediata",
+        "prazoEntrega.parcelada",
+        "gestor.nome_completo",
+        "gestor.matricula",
+        "gestor.setor",
+        "gestor.ciencia",
+        "gestor_substituto.nome_completo",
+        "gestor_substituto.matricula",
+        "gestor_substituto.setor",
+        "gestor_substituto.ciencia",
+        "fiscal_tecnico.nome_completo",
+        "fiscal_tecnico.matricula",
+        "fiscal_tecnico.setor",
+        "fiscal_tecnico.ciencia",
+        "fiscal_tecnico_substituto.nome_completo",
+        "fiscal_tecnico_substituto.matricula",
+        "fiscal_tecnico_substituto.setor",
+        "fiscal_tecnico_substituto.ciencia",
+        "fiscal_administrativo.nome_completo",
+        "fiscal_administrativo.matricula",
+        "fiscal_administrativo.setor",
+        "fiscal_administrativo.ciencia",
+        "fiscal_administrativo_substituto.nome_completo",
+        "fiscal_administrativo_substituto.matricula",
+        "fiscal_administrativo_substituto.setor",
+        "fiscal_administrativo_substituto.ciencia"
+      ]
+    },
+    {
+      "title": "15. Responsabilidade pela formalização da demanda e conteúdo do documento",
+      "fields": [
+        "formalizacao.nome_completo",
+        "formalizacao.cargo",
+        "formalizacao.matricula"
+      ]
+    }
+  ],
+  "output": {
+    "filename_pattern": "{{template.name}}.docx",
+    "folder_pattern": ""
+  },
+  "numbering": {
+    "enabled": false,
+    "key": "dfd-diversos-sedh-sia11div",
+    "padding": 4
+  },
+  "schema_version": 1
+}

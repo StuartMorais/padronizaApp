@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from app.domain.conditions import condition_matches
 from app.domain.field_formats import (
+    currency_to_words_pt_br,
     decimal_from_localized,
     digits_only,
     format_cep,
@@ -43,6 +44,12 @@ def test_brazilian_field_formatters_cover_partial_and_complete_values() -> None:
     assert format_decimal("1.234,5") == "1.234,50"
     assert format_percentage("12.50") == "12,50%"
     assert decimal_from_localized("R$ 1.234,50") == Decimal("1234.50")
+    assert currency_to_words_pt_br("R$ 17.745,00") == (
+        "dezessete mil, setecentos e quarenta e cinco reais"
+    )
+    assert currency_to_words_pt_br("R$ 20.500,25") == (
+        "vinte mil e quinhentos reais e vinte e cinco centavos"
+    )
 
 
 def test_cpf_and_cnpj_validation_and_registry_driven_validation() -> None:

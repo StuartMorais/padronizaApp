@@ -1459,3 +1459,99 @@ def test_real_pbdoc_process_number_and_row_choice_generation_regression(tmp_path
     assert "Processo Pbdoc : SDH-PRC-2026/09999" in body
     marker_cells = [row.cells[0].text.strip() for row in result.tables[0].rows]
     assert marker_cells == ["☐", "☑", "☐"]
+
+
+def test_real_cafil_declaration_detects_process_supplier_and_reference_period(tmp_path: Path) -> None:
+    """Keep CAFIL declarations editable without splitting values inside the object."""
+
+    source = (
+        Path(__file__).parent
+        / "fixtures"
+        / "regression"
+        / "declaracao_cafil_sia31016.docx"
+    )
+    candidates = detect_docx_field_candidates(source, semantic_enabled=True)
+    by_id = {item["field_id"]: item for item in candidates}
+    expected_ids = {
+        "process.number",
+        "procurement.object",
+        "process.total_value",
+        "supplier.document",
+        "supplier.name",
+        "supplier.amount",
+        "cafil.reference_month",
+        "cafil.reference_year",
+    }
+
+    assert expected_ids <= set(by_id)
+    assert "procurement.ata_number" not in by_id
+    assert all(by_id[field_id]["selected"] is False for field_id in expected_ids)
+    assert by_id["procurement.object"]["default_value"].startswith("Adesão à Ata nº 0024/2026")
+    assert by_id["process.total_value"]["type"] == "currency"
+    assert by_id["supplier.amount"]["type"] == "currency"
+    assert by_id["cafil.reference_month"]["type"] == "dropdown"
+    assert by_id["cafil.reference_month"]["options"] == [
+        "JANEIRO",
+        "FEVEREIRO",
+        "MARÇO",
+        "ABRIL",
+        "MAIO",
+        "JUNHO",
+        "JULHO",
+        "AGOSTO",
+        "SETEMBRO",
+        "OUTUBRO",
+        "NOVEMBRO",
+        "DEZEMBRO",
+    ]
+    assert by_id["cafil.reference_year"]["type"] == "integer"
+
+    total_spans = by_id["process.total_value"]["location"]["spans"]
+    assert total_spans[0]["original"] == "R$17.745,00"
+    assert total_spans[1]["render"] == "currency_words"
+    assert by_id["process.total_value"]["source_anchor"]["spans"][1]["render"] == "currency_words"
+
+    prepared = tmp_path / "cafil-prepared.docx"
+    selected = [by_id[field_id] for field_id in expected_ids]
+    apply_docx_field_candidates(source, prepared, selected)
+    fields = smart_fields_from_docx(
+        prepared,
+        candidate_field_definitions(selected),
+    )
+    field_types = {field["id"]: field["type"] for field in fields}
+    assert field_types["process.total_value"] == "currency"
+    assert field_types["supplier.amount"] == "currency"
+    assert field_types["cafil.reference_month"] == "dropdown"
+    assert field_types["cafil.reference_year"] == "integer"
+
+    generated = tmp_path / "cafil-generated.docx"
+    generate_docx(
+        prepared,
+        generated,
+        {
+            "process.number": "SDH-PRC-2027/09999",
+            "procurement.object": "Aquisição de açúcar para atendimento institucional",
+            "process.total_value": "R$ 20.500,00",
+            "supplier.document": "12.345.678/0001-90",
+            "supplier.name": "Fornecedor Teste Ltda",
+            "supplier.amount": "R$ 20.500,00",
+            "cafil.reference_month": "AGOSTO",
+            "cafil.reference_year": "2027",
+        },
+    )
+
+    result = Document(generated)
+    body = "\n".join(paragraph.text for paragraph in result.paragraphs)
+    assert "Processo Pbdoc N°: SDH-PRC-2027/09999" in body
+    assert "Objeto: Aquisição de açúcar para atendimento institucional" in body
+    assert "Valor total do processo: R$ 20.500,00 (vinte mil e quinhentos reais)" in body
+    assert "dezessete mil, setecentos e quarenta e cinco reais" not in body
+    assert "mês de AGOSTO de 2027" in body
+    assert "https://cge.pb.gov.br/site/imagens/gsc/cafil-pb.pdf" in body
+
+    supplier_row = [cell.text for cell in result.tables[0].rows[1].cells]
+    assert supplier_row == [
+        "12.345.678/0001-90",
+        "Fornecedor Teste Ltda",
+        "R$ 20.500,00",
+    ]

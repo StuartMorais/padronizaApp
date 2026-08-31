@@ -40,6 +40,15 @@ def test_default_or_text_is_parsed_once_as_a_supported_tag() -> None:
     assert definition.metadata["tag_type"] == "default_or_text"
 
 
+def test_currency_words_tag_reuses_currency_field_without_creating_a_second_input() -> None:
+    definition = parse_tag("currency_words:process.total_value")
+
+    assert definition.kind is TagKind.FIELD
+    assert definition.field_id == "process.total_value"
+    assert definition.field_type == "currency"
+    assert definition.metadata["render"] == "currency_words"
+
+
 def test_default_or_text_scans_and_generates_default_or_user_text(tmp_path: Path) -> None:
     template = tmp_path / "template.docx"
     default_output = tmp_path / "default.docx"

@@ -4,8 +4,8 @@
 >
 > **Maintenance rule:** update this file after every meaningful architecture change, feature addition, bug fix that affects project assumptions, quality-gate change, or known limitation. Do not use it as a line-by-line changelog; keep it focused on the current state and decisions that a new developer/chat needs to continue safely.
 
-**Last updated:** 2026-08-28  
-**Current baseline:** Scanner V6 semantic/review-first detection + unified four-step Novo/Editar authoring UX + optional official Timbrado for DOCX/PDF + dynamic inline/prose/list regions + learned template-family mappings + safe DOCM ingestion + automatic GitHub Releases  
+**Last updated:** 2026-08-31  
+**Current baseline:** Scanner V6 semantic/review-first detection + CAFIL process/supplier/reference-period recognition + linked currency amount-in-words rendering + unified four-step Novo/Editar authoring UX + optional official Timbrado for DOCX/PDF + dynamic inline/prose/list regions + learned template-family mappings + safe DOCM ingestion + automatic GitHub Releases  
 **Primary platform:** Windows / PySide6 desktop application  
 **Entry point:** `main.py`
 
@@ -360,6 +360,8 @@ Supported semantic/dynamic concepts now include:
 
 - **inline dynamic spans**, such as the number inside `Ata de Registro de Preços nº 0006/2026`;
 - **dynamic paragraph bodies**, exposed as multiline fields while surrounding structure remains fixed;
+- **CAFIL-style administrative facts**, including labeled process object/total value, a compact `CPF/CNPJ | CREDOR | VALOR` supplier row, and the reference month/year embedded in declaration prose;
+- **linked amount-in-words spans** for detected process totals. The approved numeric currency field remains the only user input; a generated internal `{{currency_words:field.id}}` marker renders the matching Brazilian-Portuguese amount in words during DOCX generation;
 - **`repeatable_list`**, a canonical field type for bullet/numbered lists with style/punctuation/min/max metadata;
 - **template-family review memory**, where accepted mappings can relocate to changed values and rejected regions are suppressed from repeated suggestions.
 
@@ -482,9 +484,9 @@ Current coverage policy enforces a **75% minimum** over the non-UI core (`core`,
 At the Scanner V6 semantic baseline validation in the Linux review environment:
 
 ```text
-pytest:             256 passed, 3 skipped (single process)
+pytest:             258 passed, 3 skipped (single process)
 semantic benchmark: 13/13 required, 0 unexpected, 0 fresh semantic preselected
-core coverage:      80.27%
+core coverage:      80.4%
 dead modules:       none
 compileall:         pass
 ```
@@ -640,6 +642,8 @@ The semantic layer is implemented locally and measured with a committed narrativ
 A real DFD regression on 2026-08-26 added two scanner contracts that were previously missing: (1) a 5.1-style block with exactly two alternatives separated by one `OU` is detected as a single-choice dropdown; and (2) a section-7-style sentence containing one red inline span such as `área técnica competente ou à equipe de planejamento da contratação` is detected as a two-option single choice while preserving the surrounding black sentence.
 
 A real SIA31003 declaration regression on 2026-08-27 adds two additional contracts: (1) PBDOC process identifiers such as `Processo Pbdoc : SDH-PRC-2026/04715` are semantic inline fields (`process.number`) even though the value begins with an alphanumeric agency/process prefix; and (2) one exclusive checkbox option per Word table row remains one UI-exclusive choice group. The generated DOCX must preserve the original three-row table and render exactly one selected marker (`☐ / ☑ / ☐` for the second option). The committed fixture is `tests/fixtures/regression/declaracao_inexistencia_contratos_sia31003.docx`.
+
+A real CAFIL declaration regression on 2026-08-31 adds an administrative-document contract for `tests/fixtures/regression/declaracao_cafil_sia31016.docx`. Scanner V6 must offer exactly the meaningful variable regions needed to reuse that declaration: `process.number`, the complete `procurement.object`, `process.total_value`, supplier document/name/amount, and the CAFIL reference month/year. The Ata number printed *inside* the editable object is suppressed as a nested candidate so the author does not receive overlapping fields. The reference month is a 12-option Portuguese dropdown and the year is an integer field. When a detected total has a parenthetical written amount, assisted application writes both the normal currency tag and an internal `currency_words` rendering tag bound to the same field ID; generation therefore updates `R$ 20.500,00 (vinte mil e quinhentos reais)` from one user-entered total instead of leaving stale prose.
 
 ---
 

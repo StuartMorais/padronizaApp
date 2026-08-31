@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
@@ -70,6 +70,92 @@ def format_currency(value: Any) -> str:
     formatted = f"{decimal_value:,.2f}"
     formatted = formatted.replace(",", "_").replace(".", ",").replace("_", ".")
     return f"R$ {formatted}"
+
+
+_UNDER_TWENTY_PT_BR = (
+    "zero", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove",
+    "dez", "onze", "doze", "treze", "quatorze", "quinze", "dezesseis",
+    "dezes" "sete", "dezoito", "dezenove",
+)
+_TENS_PT_BR = {
+    20: "vinte", 30: "trinta", 40: "quarenta", 50: "cinquenta",
+    60: "sessenta", 70: "setenta", 80: "oitenta", 90: "noventa",
+}
+_HUNDREDS_PT_BR = {
+    200: "duzentos", 300: "trezentos", 400: "quatrocentos", 500: "quinhentos",
+    600: "seiscentos", 700: "setecentos", 800: "oitocentos", 900: "novecentos",
+}
+_NUMBER_SCALES_PT_BR = (
+    (1_000_000_000_000, "trilhão", "trilhões"),
+    (1_000_000_000, "bilhão", "bilhões"),
+    (1_000_000, "milhão", "milhões"),
+    (1_000, "mil", "mil"),
+)
+
+
+def number_to_words_pt_br(value: int) -> str:
+    """Return a deterministic Portuguese cardinal representation for integers."""
+
+    number = int(value)
+    if number < 0:
+        return "menos " + number_to_words_pt_br(abs(number))
+    if number < 20:
+        return _UNDER_TWENTY_PT_BR[number]
+    if number < 100:
+        tens, remainder = divmod(number, 10)
+        base = _TENS_PT_BR[tens * 10]
+        return base if remainder == 0 else f"{base} e {number_to_words_pt_br(remainder)}"
+    if number == 100:
+        return "cem"
+    if number < 200:
+        return f"cento e {number_to_words_pt_br(number - 100)}"
+    if number < 1000:
+        hundreds, remainder = divmod(number, 100)
+        base = _HUNDREDS_PT_BR[hundreds * 100]
+        return base if remainder == 0 else f"{base} e {number_to_words_pt_br(remainder)}"
+
+    for scale, singular, plural in _NUMBER_SCALES_PT_BR:
+        if number < scale:
+            continue
+        count, remainder = divmod(number, scale)
+        if scale == 1_000 and count == 1:
+            head = "mil"
+        else:
+            scale_word = singular if count == 1 else plural
+            head = f"{number_to_words_pt_br(count)} {scale_word}"
+        if remainder == 0:
+            return head
+        separator = " e " if remainder < 100 or remainder % 100 == 0 else ", "
+        return head + separator + number_to_words_pt_br(remainder)
+
+    return str(number)
+
+
+def currency_to_words_pt_br(value: Any) -> str:
+    """Spell a localized Brazilian currency value without the surrounding parentheses."""
+
+    try:
+        amount = decimal_from_localized(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError):
+        return str(value or "").strip()
+
+    negative = amount < 0
+    amount = abs(amount)
+    reais = int(amount)
+    cents = int((amount - Decimal(reais)) * 100)
+    parts: list[str] = []
+    if reais or not cents:
+        parts.append(
+            f"{number_to_words_pt_br(reais)} {'real' if reais == 1 else 'reais'}"
+        )
+    if cents:
+        cents_text = f"{number_to_words_pt_br(cents)} {'centavo' if cents == 1 else 'centavos'}"
+        if parts:
+            parts.append("e " + cents_text)
+        else:
+            parts.append(cents_text)
+    result = " ".join(parts)
+    return "menos " + result if negative else result
 
 
 def format_decimal(value: Any, places: int = 2) -> str:

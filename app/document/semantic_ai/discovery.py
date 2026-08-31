@@ -4,7 +4,7 @@ import re
 from typing import Any, Iterable
 
 from app.document.detection.candidates import _candidate
-from app.document.detection.identifiers import _make_field_id, _normalize_space, _unique_field_id
+from app.document.detection.identifiers import _make_field_id, _normalize_space, _slug, _unique_field_id
 from app.document.semantic_ai.anchors import resolve_anchor_spans
 from app.document.semantic_ai.engine import LocalSemanticEngine
 
@@ -26,6 +26,19 @@ _PROCESS_NUMBER_RE = re.compile(
 _CONTRACT_NUMBER_RE = re.compile(
     r"(?i)\bcontrato\s*(?:n(?:[º°o.]|úmero)?\s*)?(?P<value>\d[\d./-]{2,})"
 )
+_PROCESS_OBJECT_RE = re.compile(
+    r"(?i)^\s*objeto\s*:\s*(?P<value>.+?)\s*$"
+)
+_PROCESS_TOTAL_VALUE_RE = re.compile(
+    r"(?i)^\s*valor\s+total\s+do\s+processo\s*:\s*"
+    r"(?P<value>R\$\s*\d{1,3}(?:\.\d{3})*(?:,\d{2})|R\$\s*\d+(?:,\d{2}))"
+    r"(?:\s*\((?P<words>[^()]+)\))?\s*$"
+)
+_CAFIL_REFERENCE_PERIOD_RE = re.compile(
+    r"(?i)\brefer[eê]ncia\s+ao\s+m[eê]s\s+de\s+"
+    r"(?P<month>janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|"
+    r"setembro|outubro|novembro|dezembro)\s+de\s+(?P<year>\d{4})\b"
+)
 _MANAGING_AGENCY_RE = re.compile(
     r"(?i)\b[oó]rg[aã]o\s+gerenciador\s+[ée](?:\s+[ao])?\s+"
     r"(?P<agency>[^,.;]{5,}?)(?:\s+[–—-]\s*(?P<acronym>[A-ZÁÉÍÓÚÇ]{2,}(?:/[A-Z]{2})?))?"
@@ -37,6 +50,21 @@ _ALL_CAPS_NAME_RE = re.compile(
 )
 _REGISTRATION_RE = re.compile(r"(?i)^\s*(?:mat\.?|matr[ií]cula\s*:?)\s*(?P<value>.+?)\s*$")
 _CONCLUSION_RE = re.compile(r"(?i)^\s*(?:diante|ante)\s+do\s+exposto\b")
+
+_MONTH_OPTIONS_PT_BR = (
+    "JANEIRO",
+    "FEVEREIRO",
+    "MARÇO",
+    "ABRIL",
+    "MAIO",
+    "JUNHO",
+    "JULHO",
+    "AGOSTO",
+    "SETEMBRO",
+    "OUTUBRO",
+    "NOVEMBRO",
+    "DEZEMBRO",
+)
 
 
 def discover_semantic_regions(
@@ -69,6 +97,9 @@ def discover_semantic_regions(
         family_fingerprint=family_fingerprint,
     )
     result: list[dict[str, Any]] = list(learned)
+    result.extend(_discover_labeled_process_fields(body, known_ids))
+    result.extend(_discover_supplier_table_fields(body, known_ids))
+    result.extend(_discover_cafil_reference_period(body, known_ids))
     result.extend(_discover_inline_facts(body, known_ids, engine))
     result.extend(_discover_repeatable_lists(body, known_ids, engine))
     result.extend(_discover_numbered_prose(body, known_ids, engine))
@@ -135,6 +166,289 @@ def _remove_nested_semantic_spans(candidates: list[dict[str, Any]]) -> list[dict
         candidate["location"] = {**location, "spans": spans}
         filtered.append(candidate)
     return filtered
+
+
+def _semantic_candidate_metadata(
+    candidate: dict[str, Any],
+    *,
+    concept_id: str,
+    scope: str,
+    section: str,
+) -> dict[str, Any]:
+    candidate["semantic_concept_id"] = concept_id
+    candidate["dynamic_scope"] = scope
+    candidate["semantic_discovery"] = True
+    candidate["section"] = section
+    candidate["section_source"] = "semantic_detection"
+    return candidate
+
+
+def _discover_labeled_process_fields(
+    records: list[Any],
+    known_ids: set[str],
+) -> list[dict[str, Any]]:
+    """Find concrete process values printed after strong administrative labels."""
+
+    result: list[dict[str, Any]] = []
+    for record in records:
+        raw = str(getattr(record, "text", "") or "")
+        if not raw or "{{" in raw:
+            continue
+
+        object_match = _PROCESS_OBJECT_RE.match(raw)
+        if object_match is not None and "procurement.object" not in known_ids:
+            value = str(object_match.group("value") or "").strip()
+            if value:
+                start = object_match.start("value")
+                while start < object_match.end("value") and raw[start].isspace():
+                    start += 1
+                end = start + len(value)
+                known_ids.add("procurement.object")
+                result.append(
+                    _semantic_candidate_metadata(
+                        _candidate(
+                            field_id="procurement.object",
+                            label="Objeto do processo",
+                            field_type="multiline",
+                            confidence=0.91,
+                            source="semantic_prose",
+                            preview=value,
+                            location={
+                                "kind": "text_span",
+                                "paragraph": int(getattr(record, "ordinal", -1)),
+                                "start": start,
+                                "end": end,
+                                "original": raw[start:end],
+                            },
+                            default_value=value,
+                        ),
+                        concept_id="procurement.object",
+                        scope="paragraph",
+                        section="Processo",
+                    )
+                )
+
+        total_match = _PROCESS_TOTAL_VALUE_RE.match(raw)
+        if total_match is None or "process.total_value" in known_ids:
+            continue
+        value = str(total_match.group("value") or "").strip()
+        if not value:
+            continue
+        spans = [
+            {
+                "paragraph": int(getattr(record, "ordinal", -1)),
+                "start": total_match.start("value"),
+                "end": total_match.end("value"),
+                "original": total_match.group("value"),
+            }
+        ]
+        words = str(total_match.group("words") or "").strip()
+        if words:
+            words_start = total_match.start("words")
+            spans.append(
+                {
+                    "paragraph": int(getattr(record, "ordinal", -1)),
+                    "start": words_start,
+                    "end": words_start + len(words),
+                    "original": raw[words_start:words_start + len(words)],
+                    "render": "currency_words",
+                }
+            )
+        known_ids.add("process.total_value")
+        result.append(
+            _semantic_candidate_metadata(
+                _candidate(
+                    field_id="process.total_value",
+                    label="Valor total do processo",
+                    field_type="currency",
+                    confidence=0.94,
+                    source="semantic_inline",
+                    preview=value,
+                    location={"kind": "text_spans", "spans": spans},
+                    default_value=value,
+                ),
+                concept_id="process.total_value",
+                scope="inline",
+                section="Processo",
+            )
+        )
+    return result
+
+
+def _discover_supplier_table_fields(
+    records: list[Any],
+    known_ids: set[str],
+) -> list[dict[str, Any]]:
+    """Recognize a compact CPF/CNPJ | CREDOR | VALOR supplier table.
+
+    Only a single concrete data row is claimed. Multi-row supplier matrices
+    are deliberately left untouched because they need repeatable-table review
+    rather than three unrelated fields.
+    """
+
+    by_table: dict[int, list[Any]] = {}
+    for record in records:
+        table_index = getattr(record, "table_index", None)
+        if table_index is None:
+            continue
+        by_table.setdefault(int(table_index), []).append(record)
+
+    result: list[dict[str, Any]] = []
+    for table_records in by_table.values():
+        by_row: dict[int, list[Any]] = {}
+        for record in table_records:
+            row_index = getattr(record, "row_index", None)
+            if row_index is None:
+                continue
+            by_row.setdefault(int(row_index), []).append(record)
+        if len(by_row) != 2:
+            continue
+
+        header_row_index = min(by_row)
+        value_row_index = max(by_row)
+        header_by_cell = {
+            int(getattr(record, "cell_index", -1)): _slug(getattr(record, "text", ""))
+            for record in by_row[header_row_index]
+            if getattr(record, "cell_index", None) is not None
+        }
+        value_by_cell = {
+            int(getattr(record, "cell_index", -1)): record
+            for record in by_row[value_row_index]
+            if getattr(record, "cell_index", None) is not None
+            and _normalize_space(getattr(record, "text", ""))
+        }
+        if len(header_by_cell) < 3 or len(value_by_cell) < 3:
+            continue
+
+        document_cell = next(
+            (cell for cell, header in header_by_cell.items() if header in {"cpf_cnpj", "cnpj_cpf"}),
+            None,
+        )
+        name_cell = next(
+            (cell for cell, header in header_by_cell.items() if header in {"credor", "fornecedor"}),
+            None,
+        )
+        value_cell = next(
+            (cell for cell, header in header_by_cell.items() if header in {"valor", "valor_total"}),
+            None,
+        )
+        if None in {document_cell, name_cell, value_cell}:
+            continue
+
+        specs = (
+            ("supplier.document", "CPF/CNPJ do fornecedor", "text", document_cell, 0.91),
+            ("supplier.name", "Fornecedor / credor", "text", name_cell, 0.91),
+            ("supplier.amount", "Valor do fornecedor", "currency", value_cell, 0.93),
+        )
+        for field_id, label, field_type, cell_index, confidence in specs:
+            if field_id in known_ids or cell_index is None:
+                continue
+            record = value_by_cell.get(int(cell_index))
+            if record is None:
+                continue
+            raw = str(getattr(record, "text", "") or "")
+            value = raw.strip()
+            if not value:
+                continue
+            start = raw.find(value)
+            known_ids.add(field_id)
+            result.append(
+                _semantic_candidate_metadata(
+                    _candidate(
+                        field_id=field_id,
+                        label=label,
+                        field_type=field_type,
+                        confidence=confidence,
+                        source="semantic_inline",
+                        preview=value,
+                        location={
+                            "kind": "text_span",
+                            "paragraph": int(getattr(record, "ordinal", -1)),
+                            "start": start,
+                            "end": start + len(value),
+                            "original": value,
+                        },
+                        default_value=value,
+                    ),
+                    concept_id=field_id,
+                    scope="inline",
+                    section="Fornecedor",
+                )
+            )
+        if result:
+            break
+    return result
+
+
+def _discover_cafil_reference_period(
+    records: list[Any],
+    known_ids: set[str],
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for record in records:
+        raw = str(getattr(record, "text", "") or "")
+        if not raw or "{{" in raw or "cafil" not in raw.casefold():
+            continue
+        match = _CAFIL_REFERENCE_PERIOD_RE.search(raw)
+        if match is None:
+            continue
+
+        month = str(match.group("month") or "").upper()
+        if "cafil.reference_month" not in known_ids:
+            known_ids.add("cafil.reference_month")
+            result.append(
+                _semantic_candidate_metadata(
+                    _candidate(
+                        field_id="cafil.reference_month",
+                        label="Mês de referência da consulta CAFIL",
+                        field_type="dropdown",
+                        confidence=0.94,
+                        source="semantic_inline",
+                        preview=month,
+                        location={
+                            "kind": "text_span",
+                            "paragraph": int(getattr(record, "ordinal", -1)),
+                            "start": match.start("month"),
+                            "end": match.end("month"),
+                            "original": match.group("month"),
+                        },
+                        options=_MONTH_OPTIONS_PT_BR,
+                        default_value=month,
+                    ),
+                    concept_id="cafil.reference_month",
+                    scope="inline",
+                    section="Consulta CAFIL",
+                )
+            )
+
+        year = str(match.group("year") or "")
+        if "cafil.reference_year" not in known_ids:
+            known_ids.add("cafil.reference_year")
+            result.append(
+                _semantic_candidate_metadata(
+                    _candidate(
+                        field_id="cafil.reference_year",
+                        label="Ano de referência da consulta CAFIL",
+                        field_type="integer",
+                        confidence=0.94,
+                        source="semantic_inline",
+                        preview=year,
+                        location={
+                            "kind": "text_span",
+                            "paragraph": int(getattr(record, "ordinal", -1)),
+                            "start": match.start("year"),
+                            "end": match.end("year"),
+                            "original": year,
+                        },
+                        default_value=year,
+                    ),
+                    concept_id="cafil.reference_year",
+                    scope="inline",
+                    section="Consulta CAFIL",
+                )
+            )
+        break
+    return result
 
 def _discover_inline_facts(
     records: list[Any],
@@ -290,6 +604,11 @@ def _discover_inline_facts(
                         }
                     )
                     seen.add(key)
+
+    process_candidate = grouped.get("process.number")
+    if process_candidate is not None:
+        process_candidate["section"] = "Processo"
+        process_candidate["section_source"] = "semantic_detection"
 
     return list(grouped.values())
 
