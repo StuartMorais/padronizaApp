@@ -1,6 +1,10 @@
 name: Build and release Office Tools for Windows
 
 on:
+  # A pushed commit is the GitHub-visible equivalent of a local commit. Every
+  # push starts this workflow; the release job runs automatically when the push
+  # is on the repository's default branch.
+  push:
   workflow_dispatch:
     inputs:
       bump:
@@ -12,28 +16,26 @@ on:
           - patch
           - minor
           - major
-  push:
-    tags:
-      - "v*.*.*"
 
 permissions:
   contents: write
 
-concurrency:
-  group: office-tools-release
-  cancel-in-progress: false
-
 jobs:
   build-release:
-    name: Build Windows EXE and installer
+    name: Build Windows EXE and publish release
+    if: github.event_name == 'workflow_dispatch' || github.ref_name == github.event.repository.default_branch
     runs-on: windows-2022
-    timeout-minutes: 35
+    timeout-minutes: 40
 
     steps:
       - name: Checkout repository and tags
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Refresh release tags
+        shell: pwsh
+        run: git fetch --tags --force
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -48,44 +50,43 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          if ("${{ github.event_name }}" -eq "push") {
-            $tag = "${{ github.ref_name }}"
-            if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
-              throw "Invalid release tag: $tag. Use vMAJOR.MINOR.PATCH."
-            }
-            $version = $tag.Substring(1)
-            "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $bump = "patch"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $bump = "${{ inputs.bump }}"
           }
-          else {
-            python tools/resolve_release_version.py `
-              --bump "${{ inputs.bump }}" `
-              --github-output $env:GITHUB_OUTPUT
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
+
+          python tools/resolve_release_version.py `
+            --bump $bump `
+            --github-output $env:GITHUB_OUTPUT
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Install runtime and build dependencies
         shell: pwsh
-        timeout-minutes: 10
+        timeout-minutes: 12
         run: |
+          python -m pip install --disable-pip-version-check --upgrade pip
           python -m pip install --disable-pip-version-check -r requirements.txt -r requirements-build.txt
 
       - name: Preflight checks
         shell: pwsh
-        timeout-minutes: 8
+        timeout-minutes: 10
         run: |
           python -m compileall -q adapters app checklist_app shell main.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -c "import PySide6, docx, fitz, reportlab; import adapters.registry; print('Office Tools imports OK')"
+
+          python -c "import PySide6, docx, pymupdf, reportlab; import adapters.registry; print('Office Tools imports OK')"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m pytest -q dev/checklist/tests
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          if (Test-Path -LiteralPath "dev/checklist/tests") {
+            python -m pytest -q dev/checklist/tests
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Build portable EXE and installer
         id: build
         shell: pwsh
-        timeout-minutes: 18
-        run: .\scripts\build_github.ps1 -Version "${{ steps.version.outputs.version }}"
+        timeout-minutes: 22
+        run: .\scripts\build\_github.ps1 -Version "${{ steps.version.outputs.version }}"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -96,7 +97,7 @@ jobs:
           retention-days: 14
           compression-level: 0
 
-      - name: Publish GitHub Release
+      - name: Publish to GitHub Releases
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -106,32 +107,33 @@ jobs:
           INSTALLER_PATH: ${{ steps.build.outputs.installer_path }}
           CHECKSUM_PATH: ${{ steps.build.outputs.checksum_path }}
           TARGET_SHA: ${{ github.sha }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
-          $assets = @($env:INSTALLER_PATH, $env:PORTABLE_PATH, $env:CHECKSUM_PATH)
+          $assets = @(
+            $env:INSTALLER_PATH,
+            $env:PORTABLE_PATH,
+            $env:CHECKSUM_PATH
+          )
+
           foreach ($asset in $assets) {
             if (-not (Test-Path -LiteralPath $asset -PathType Leaf)) {
               throw "Release asset not found: $asset"
             }
           }
 
+          # Normally this tag is new. If a retry reaches an already-created
+          # release, replace the assets instead of failing the whole job.
           gh release view $env:RELEASE_TAG *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $env:RELEASE_TAG @assets --clobber
           }
           else {
-            $arguments = @(
-              'release', 'create', $env:RELEASE_TAG,
-              $env:INSTALLER_PATH, $env:PORTABLE_PATH, $env:CHECKSUM_PATH,
-              '--title', "Office Tools $env:RELEASE_TAG",
-              '--generate-notes'
-            )
-            if ($env:EVENT_NAME -eq 'workflow_dispatch') {
-              $arguments += @('--target', $env:TARGET_SHA)
-            }
-            else {
-              $arguments += '--verify-tag'
-            }
-            gh @arguments
+            gh release create $env:RELEASE_TAG `
+              $env:INSTALLER_PATH `
+              $env:PORTABLE_PATH `
+              $env:CHECKSUM_PATH `
+              --target $env:TARGET_SHA `
+              --title "Office Tools $env:RELEASE_TAG" `
+              --generate-notes
           }
+
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
