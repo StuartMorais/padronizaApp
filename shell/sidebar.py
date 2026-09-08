@@ -2,6 +2,7 @@ from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import QButtonGroup, QFrame, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
 
 from shell import __version__
+from shell.branding import APP_NAME, MODULE_MARK, TAGLINE
 from shell.catalog import MODULES
 from shell.icons import icon
 from shell.widgets import label
@@ -31,8 +32,8 @@ class Sidebar(QFrame):
         brand_row.addWidget(glyph)
         brand_words = QVBoxLayout()
         brand_words.setSpacing(2)
-        brand_words.addWidget(label("Office Tools", "brand"))
-        brand_words.addWidget(label("Seu trabalho, conectado.", "brandSubtitle"))
+        brand_words.addWidget(label(APP_NAME, "brand"))
+        brand_words.addWidget(label(TAGLINE, "brandSubtitle"))
         brand_row.addLayout(brand_words)
         layout.addWidget(brand)
         layout.addSpacing(38)
@@ -50,7 +51,7 @@ class Sidebar(QFrame):
         layout.addSpacing(12)
         layout.addWidget(line)
         layout.addSpacing(12)
-        layout.addWidget(label("  PADRONIZA + CHECKLIST", "navCaption"))
+        layout.addWidget(label(f"  {MODULE_MARK}", "navCaption"))
         layout.addWidget(label(f"  Menu integrado  ·  v{__version__}", "brandSubtitle"))
 
     def _nav(self, page: str, title: str, glyph: str, shortcut: str) -> QPushButton:

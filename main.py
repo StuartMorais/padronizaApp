@@ -1,4 +1,4 @@
-"""The single application entry point for the Office Tools desktop shell."""
+"""The single application entry point for the Nexo desktop workspace."""
 from __future__ import annotations
 
 import logging
@@ -10,6 +10,7 @@ def main() -> int:
         from PySide6.QtWidgets import QMessageBox
         from shell.application import create_application
         from shell.main_window import OfficeMainWindow
+        from shell.branding import APP_NAME
     except ModuleNotFoundError as error:
         if error.name and error.name.startswith("PySide6"):
             print("Instale as dependências: python -m pip install -r requirements.txt")
@@ -21,9 +22,9 @@ def main() -> int:
         window = OfficeMainWindow()
         window.show()
     except Exception:
-        logging.exception("Unable to start Office Tools")
+        logging.exception("Unable to start %s", APP_NAME)
         QMessageBox.critical(
-            None, "Office Tools", "Não foi possível iniciar o aplicativo. Consulte o arquivo de log."
+            None, APP_NAME, "Não foi possível iniciar o aplicativo. Consulte o arquivo de log."
         )
         return 1
     return application.exec()

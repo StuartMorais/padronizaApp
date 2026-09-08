@@ -3,6 +3,7 @@ from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QBoxLayout, QFrame, QHBoxLayout, QVBoxLayout, QWidget
 
 from shell.app_card import AppCard
+from shell.branding import APP_NAME, MODULE_MARK
 from shell.catalog import MODULES
 from shell.widgets import ScrollPage, button, icon_tile, label, page_heading
 
@@ -54,7 +55,7 @@ class HomeDashboard(ScrollPage):
         self.body.addWidget(preferences)
 
         footer = QHBoxLayout()
-        footer.addWidget(label("PADRONIZA + CHECKLIST", "footer"))
+        footer.addWidget(label(f"{APP_NAME}  ·  {MODULE_MARK}", "footer"))
         footer.addStretch()
         footer.addWidget(label("Um só lugar para organizar o trabalho.", "caption"))
         self.body.addLayout(footer)

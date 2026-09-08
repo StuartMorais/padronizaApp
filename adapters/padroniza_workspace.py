@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from shell.design import palette
+from shell.theme import normalize_theme
+
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -26,16 +29,17 @@ PAGE_DESCRIPTIONS = {
 
 
 class PadronizaWorkspaceWrapper(QWidget):
-    """Office Tools presentation layer for the embedded Padroniza workspace.
+    """Nexo presentation layer for the embedded Padroniza workspace.
 
     The original Padroniza UI keeps all business logic and page widgets intact.
     This wrapper removes the extra standalone chrome (menu + internal sidebar)
-    and replaces it with an Office Tools-like hero and compact top navigation.
+    and replaces it with an Nexo-like hero and compact top navigation.
     """
 
-    def __init__(self, workspace: QWidget) -> None:
+    def __init__(self, workspace: QWidget, theme: str = "light") -> None:
         super().__init__()
         self.workspace = workspace
+        self.theme = normalize_theme(theme)
         self.workspace.setObjectName("PadronizaInnerWorkspace")
         self.setObjectName("PadronizaWorkspaceShell")
         self._page_keys = [
@@ -65,7 +69,7 @@ class PadronizaWorkspaceWrapper(QWidget):
         self._prepare_inner_workspace()
         self._simplify_inner_pages()
         self._build_ui()
-        self._apply_styles()
+        self.set_theme(self.theme)
         self._sync_state()
 
     def _prepare_inner_workspace(self) -> None:
@@ -108,7 +112,7 @@ class PadronizaWorkspaceWrapper(QWidget):
         title.setObjectName("PadronizaHeroTitle")
 
         subtitle = QLabel(
-            "Agora com visual integrado ao Office Tools: um único fluxo para criar documentos, "
+            "Integrado ao Nexo: um único fluxo para criar documentos, "
             "gerenciar modelos, acompanhar recentes e converter arquivos."
         )
         subtitle.setWordWrap(True)
@@ -209,391 +213,127 @@ class PadronizaWorkspaceWrapper(QWidget):
         self.context_label.setText(PAGE_DESCRIPTIONS.get(key, ""))
         self.section_hint.setText(f"Área atual: {button.text() if button is not None else 'Início'}")
 
-    def _apply_styles(self) -> None:
-        wrapper_styles = """
-            QWidget#PadronizaWorkspaceShell {
-                background: #F4F6FA;
-            }
-            QFrame#PadronizaHero,
-            QFrame#PadronizaNavBar {
-                background: #FFFFFF;
-                border: 1px solid #DEE5EF;
-                border-radius: 16px;
-            }
-            QLabel#PadronizaHeroEyebrow {
-                color: #6C7A91;
-                font-size: 11px;
-                font-weight: 700;
-                letter-spacing: 0.08em;
-            }
-            QLabel#PadronizaHeroTitle {
-                color: #1C2B44;
-                font-size: 28px;
-                font-weight: 700;
-            }
-            QLabel#PadronizaHeroSubtitle,
-            QLabel#PadronizaHeroContext,
-            QLabel#PadronizaSectionHint {
-                color: #52637D;
-                font-size: 13px;
-            }
-            QPushButton[heroRole="primary"] {
-                background: #315FDB;
-                color: #FFFFFF;
-                border: 1px solid #315FDB;
-                border-radius: 8px;
-                padding: 9px 16px;
-                font-size: 13px;
-                font-weight: 600;
-                min-height: 18px;
-                min-width: 190px;
-            }
-            QPushButton[heroRole="primary"]:hover {
-                background: #264FC3;
-                border-color: #264FC3;
-            }
-            QPushButton[heroRole="secondary"] {
-                background: #FFFFFF;
-                color: #34445E;
-                border: 1px solid #D4DBE7;
-                border-radius: 8px;
-                padding: 9px 16px;
-                font-size: 13px;
-                font-weight: 600;
-                min-height: 18px;
-                min-width: 190px;
-            }
-            QPushButton[heroRole="secondary"]:hover {
-                background: #EFF4FF;
-                border-color: #AFC2EA;
-            }
-            QPushButton[padNav="true"] {
-                background: #FFFFFF;
-                color: #34445E;
-                border: 1px solid #D4DBE7;
-                border-radius: 8px;
-                padding: 8px 14px;
-                font-size: 12px;
-                font-weight: 600;
-                min-height: 18px;
-            }
-            QPushButton[padNav="true"]:hover {
-                background: #EFF4FF;
-                border-color: #AFC2EA;
-            }
-            QPushButton[padNav="true"]:checked {
-                background: #315FDB;
-                color: #FFFFFF;
-                border-color: #315FDB;
-            }
+    def set_theme(self, theme: str) -> None:
+        self.theme = normalize_theme(theme)
+        p = palette(self.theme)
+        accent = p["accent"]
+        accent_hover = p["accent_hover"]
+
+        wrapper_styles = f"""
+            QWidget#PadronizaWorkspaceShell {{ background: {p['bg']}; color: {p['text']}; }}
+            QFrame#PadronizaHero, QFrame#PadronizaNavBar {{
+                background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 16px;
+            }}
+            QLabel#PadronizaHeroEyebrow {{ color: {p['muted']}; font-size: 11px; font-weight: 700; }}
+            QLabel#PadronizaHeroTitle {{ color: {p['title']}; font-size: 28px; font-weight: 700; }}
+            QLabel#PadronizaHeroSubtitle, QLabel#PadronizaHeroContext, QLabel#PadronizaSectionHint {{
+                color: {p['muted']}; font-size: 13px;
+            }}
+            QPushButton[heroRole="primary"] {{
+                background: {accent}; color: {'#101525' if self.theme == 'dark' else '#FFFFFF'};
+                border: 1px solid {accent}; border-radius: 8px; padding: 9px 16px;
+                font-size: 13px; font-weight: 700; min-width: 190px;
+            }}
+            QPushButton[heroRole="primary"]:hover {{ background: {accent_hover}; border-color: {accent_hover}; }}
+            QPushButton[heroRole="secondary"], QPushButton[padNav="true"] {{
+                background: {p['surface']}; color: {p['text']}; border: 1px solid {p['border_strong']};
+                border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 600;
+            }}
+            QPushButton[heroRole="secondary"] {{ min-width: 190px; padding: 9px 16px; font-size: 13px; }}
+            QPushButton[heroRole="secondary"]:hover, QPushButton[padNav="true"]:hover {{
+                background: {p['accent_soft']}; border-color: {p['accent_border']};
+            }}
+            QPushButton[padNav="true"]:checked {{
+                background: {accent}; color: {'#101525' if self.theme == 'dark' else '#FFFFFF'}; border-color: {accent};
+            }}
         """
 
-        inner_overrides = """
-            QMenuBar {
-                max-height: 0px;
-                min-height: 0px;
-                border: none;
-                padding: 0px;
-                margin: 0px;
-            }
-            QListWidget#sidebar {
-                max-width: 0px;
-                min-width: 0px;
-                border: none;
-                padding: 0px;
-                margin: 0px;
-            }
-            QWidget#PadronizaInnerWorkspace {
-                background-color: #F4F6FA;
-                color: #1F2937;
-            }
-            QLabel {
-                color: #1F2937;
-            }
-            QLabel#homeEyebrow,
-            QLabel#homeSectionHint,
-            QLabel#homeMetricCaption,
-            QLabel#homeActionText,
-            QLabel#homeSubtitle,
-            QLabel#mutedText,
-            QLabel#draftResumeText,
-            QLabel#assistedDetectionText {
-                color: #52637D;
-            }
-            QLabel#homeTitle,
-            QLabel#pageTitle,
-            QLabel#templateTitle,
-            QLabel#homeSectionTitle,
-            QLabel#homeActionTitle,
-            QLabel#homeMetricTitle,
-            QLabel#draftResumeTitle,
-            QLabel#assistedDetectionTitle {
-                color: #1C2B44;
-                font-weight: 700;
-            }
-            QLabel#homeMetricValue {
-                color: #315FDB;
-                font-size: 22px;
-                font-weight: 700;
-            }
-            QFrame#homeHero,
-            QFrame#homePanel,
-            QFrame#homeMetricCard,
-            QFrame#homeActionCard,
-            QFrame#generateTemplateBar,
-            QFrame#draftResumeBanner,
-            QFrame#assistedDetectionBanner,
-            QFrame#templateCard,
-            QGroupBox,
-            QFrame#selectorBar {
-                background: #FFFFFF;
-                border: 1px solid #DEE5EF;
-                border-radius: 14px;
-            }
-            QGroupBox {
-                margin-top: 14px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 12px;
-                padding: 0 6px;
-                color: #34445E;
-                background: #F4F6FA;
-                font-weight: 600;
-            }
-            QPushButton,
-            QComboBox,
-            QLineEdit,
-            QSpinBox,
-            QDateEdit,
-            QPlainTextEdit,
-            QTableWidget,
-            QListWidget,
-            QScrollArea {
-                background-color: #FFFFFF;
-            }
-            QLineEdit,
-            QPlainTextEdit,
-            QComboBox,
-            QDateEdit,
-            QSpinBox {
-                border-radius: 8px;
-                border: 1px solid #D4DBE7;
-                padding: 8px 10px;
-                color: #1F2937;
-            }
-            QLineEdit:hover,
-            QPlainTextEdit:hover,
-            QComboBox:hover,
-            QDateEdit:hover,
-            QSpinBox:hover {
-                border-color: #B8C4D8;
-            }
-            QLineEdit:focus,
-            QPlainTextEdit:focus,
-            QComboBox:focus,
-            QDateEdit:focus,
-            QSpinBox:focus,
-            QPushButton:focus {
-                border: 1px solid #315FDB;
-                outline: none;
-            }
-            QPushButton {
-                border-radius: 8px;
-                border: 1px solid #D4DBE7;
-                padding: 8px 14px;
-                color: #34445E;
-                background: #FFFFFF;
-            }
-            QPushButton:hover {
-                background: #EFF4FF;
-                border-color: #AFC2EA;
-            }
-            QPushButton:disabled,
-            QLineEdit:disabled,
-            QPlainTextEdit:disabled,
-            QComboBox:disabled,
-            QSpinBox:disabled,
-            QDateEdit:disabled {
-                color: #8B98AD;
-                background: #F7F9FC;
-                border-color: #E2E8F0;
-            }
-            QPushButton#primaryButton {
-                background: #315FDB;
-                color: #FFFFFF;
-                border-color: #315FDB;
-            }
-            QPushButton#primaryButton:hover {
-                background: #264FC3;
-                border-color: #264FC3;
-            }
-            QTableWidget {
-                gridline-color: #E6ECF4;
-                border: 1px solid #DDE5F0;
-                border-radius: 10px;
-                selection-background-color: #315FDB;
-                selection-color: #FFFFFF;
-            }
-            QHeaderView::section {
-                background: #1F2E45;
-                color: #FFFFFF;
-                padding: 8px 10px;
-                border: none;
-                border-right: 1px solid #2F4669;
-                font-weight: 600;
-            }
-            QTableWidget::item {
-                padding: 6px;
-                color: #24344D;
-            }
-            QFrame#homeActionCard {
-                background: #FFFFFF;
-                border: 1px solid #DDE5F0;
-                border-radius: 12px;
-            }
-            QFrame#homeActionCard:hover {
-                background: #F8FAFD;
-                border-color: #B8C8E2;
-            }
-            QPushButton#homeActionButton {
-                background: transparent;
-                border: none;
-                padding: 4px 0;
-                color: #315FDB;
-                font-weight: 700;
-                text-align: left;
-            }
-            QPushButton#homeActionButton:hover {
-                background: transparent;
-                border: none;
-                color: #264FC3;
-                text-decoration: none;
-            }
-            QFrame#homeMetricCard {
-                background: #FFFFFF;
-                border: 1px solid #DDE5F0;
-                border-radius: 12px;
-            }
-            QFrame#homePanel {
-                background: #FFFFFF;
-                border: 1px solid #DDE5F0;
-                border-radius: 14px;
-            }
-            QFrame#templateCreationHeader {
-                background: #FFFFFF;
-                border: 1px solid #DDE5F0;
-                border-radius: 12px;
-            }
-            QFrame#templateCreationStep {
-                background: #F8FAFD;
-                border: 1px solid #DCE4EF;
-                border-radius: 10px;
-            }
-            QFrame#templateCreationStep[stepState="current"] {
-                background: #F3F7FF;
-                border: 1px solid #AFC5EF;
-            }
-            QFrame#templateCreationStep[stepState="done"] {
-                background: #F6FAF7;
-                border: 1px solid #C6DDCD;
-            }
-            QFrame#templateDocxDropZone {
-                background: #FAFCFF;
-                border: 1px dashed #BBC8D8;
-                border-radius: 12px;
-            }
-            QFrame#templateDocxDropZone:hover {
-                background: #F6F9FE;
-                border-color: #9CB2D1;
-            }
-            QFrame#templateDocxDropZone[dragActive="true"] {
-                background: #EEF5FF;
-                border-color: #779FE0;
-            }
-            QFrame#templateDocxDropZone[selected="true"] {
-                background: #F5FAF7;
-                border: 1px solid #AFCDB9;
-            }
-            QFrame#templateDocxDropZone[selected="true"]:hover {
-                background: #F2F8F4;
-                border-color: #96BEA3;
-            }
-            QScrollArea {
-                border: none;
-                background: transparent;
-            }
-            QScrollBar:vertical {
-                background: transparent;
-                width: 10px;
-                margin: 4px 2px 4px 2px;
-            }
-            QScrollBar::handle:vertical {
-                background: #C8D2E0;
-                min-height: 42px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #AEBCCD;
-            }
-            QScrollBar::add-line:vertical,
-            QScrollBar::sub-line:vertical {
-                height: 0px;
-                border: none;
-                background: transparent;
-            }
-            QScrollBar::add-page:vertical,
-            QScrollBar::sub-page:vertical {
-                background: transparent;
-            }
-            QScrollBar:horizontal {
-                background: transparent;
-                height: 10px;
-                margin: 2px 4px 2px 4px;
-            }
-            QScrollBar::handle:horizontal {
-                background: #C8D2E0;
-                min-width: 42px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background: #AEBCCD;
-            }
-            QScrollBar::add-line:horizontal,
-            QScrollBar::sub-line:horizontal {
-                width: 0px;
-                border: none;
-                background: transparent;
-            }
-            QScrollBar::add-page:horizontal,
-            QScrollBar::sub-page:horizontal {
-                background: transparent;
-            }
-            QScrollBar::corner {
-                background: transparent;
-            }
-            QStatusBar {
-                background: #FFFFFF;
-                border-top: 1px solid #E5EAF2;
-                color: #52637D;
-            }
+        inner_overrides = f"""
+            QMenuBar {{ max-height: 0px; min-height: 0px; border: none; padding: 0; margin: 0; }}
+            QListWidget#sidebar {{ max-width: 0px; min-width: 0px; border: none; padding: 0; margin: 0; }}
+            QWidget#PadronizaInnerWorkspace {{ background: {p['bg']}; color: {p['text']}; }}
+            QLabel {{ background: transparent; color: {p['text']}; }}
+            QLabel#homeEyebrow, QLabel#homeSectionHint, QLabel#homeMetricCaption, QLabel#homeActionText,
+            QLabel#homeSubtitle, QLabel#mutedText, QLabel#draftResumeText, QLabel#assistedDetectionText {{ color: {p['muted']}; }}
+            QLabel#homeTitle, QLabel#pageTitle, QLabel#templateTitle, QLabel#homeSectionTitle,
+            QLabel#homeActionTitle, QLabel#homeMetricTitle, QLabel#draftResumeTitle, QLabel#assistedDetectionTitle {{
+                color: {p['title']}; font-weight: 700;
+            }}
+            QLabel#homeMetricValue {{ color: {accent}; font-size: 22px; font-weight: 700; }}
+            QFrame#homeHero, QFrame#homePanel, QFrame#homeMetricCard, QFrame#homeActionCard,
+            QFrame#generateTemplateBar, QFrame#draftResumeBanner, QFrame#assistedDetectionBanner,
+            QFrame#templateCard, QGroupBox, QFrame#selectorBar, QFrame#templateCreationHeader {{
+                background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 14px;
+            }}
+            QFrame#homeActionCard:hover {{ background: {p['surface_alt']}; border-color: {p['accent_border']}; }}
+            QGroupBox {{ margin-top: 14px; padding-top: 10px; }}
+            QGroupBox::title {{
+                subcontrol-origin: margin; left: 12px; padding: 0 6px; color: {p['text']};
+                background: {p['bg']}; font-weight: 600;
+            }}
+            QLineEdit, QPlainTextEdit, QComboBox, QDateEdit, QSpinBox {{
+                background: {p['surface']}; color: {p['text']}; border: 1px solid {p['border_strong']};
+                border-radius: 8px; padding: 8px 10px; selection-background-color: {accent};
+                selection-color: {'#101525' if self.theme == 'dark' else '#FFFFFF'};
+            }}
+            QLineEdit:hover, QPlainTextEdit:hover, QComboBox:hover, QDateEdit:hover, QSpinBox:hover {{ border-color: {p['accent_border']}; }}
+            QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QDateEdit:focus, QSpinBox:focus, QPushButton:focus {{ border: 1px solid {accent}; }}
+            QPushButton {{
+                background: {p['surface']}; color: {p['text']}; border: 1px solid {p['border_strong']};
+                border-radius: 8px; padding: 8px 14px;
+            }}
+            QPushButton:hover {{ background: {p['accent_soft']}; border-color: {p['accent_border']}; }}
+            QPushButton:disabled, QLineEdit:disabled, QPlainTextEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDateEdit:disabled {{
+                color: {p['disabled']}; background: {p['disabled_bg']}; border-color: {p['border']};
+            }}
+            QPushButton#primaryButton {{ background: {accent}; color: {'#101525' if self.theme == 'dark' else '#FFFFFF'}; border-color: {accent}; }}
+            QPushButton#primaryButton:hover {{ background: {accent_hover}; border-color: {accent_hover}; }}
+            QPushButton#homeActionButton {{ background: transparent; border: none; color: {accent}; text-align: left; font-weight: 700; }}
+            QPushButton#homeActionButton:hover {{ background: transparent; border: none; color: {accent_hover}; }}
+            QTableWidget {{
+                background: {p['surface']}; color: {p['text']}; gridline-color: {p['border']};
+                border: 1px solid {p['border']}; border-radius: 10px; selection-background-color: {p['accent_soft']};
+                selection-color: {p['text']};
+            }}
+            QHeaderView::section {{
+                background: {p['table_header']}; color: {p['text']}; padding: 8px 10px; border: none;
+                border-right: 1px solid {p['border']}; border-bottom: 1px solid {p['border']}; font-weight: 700;
+            }}
+            QTableWidget::item {{ padding: 6px; color: {p['text']}; }}
+            QFrame#templateCreationStep {{ background: {p['surface_alt']}; border: 1px solid {p['border']}; border-radius: 10px; }}
+            QFrame#templateCreationStep[stepState="current"] {{ background: {p['accent_soft']}; border-color: {p['accent_border']}; }}
+            QFrame#templateCreationStep[stepState="done"] {{ background: {p['teal_soft']}; border-color: {p['teal_border']}; }}
+            QFrame#templateDocxDropZone {{ background: {p['surface_alt']}; border: 1px dashed {p['border_strong']}; border-radius: 12px; }}
+            QFrame#templateDocxDropZone:hover {{ background: {p['accent_soft']}; border-color: {p['accent_border']}; }}
+            QFrame#templateDocxDropZone[dragActive="true"] {{ background: {p['accent_soft']}; border-color: {accent}; }}
+            QFrame#templateDocxDropZone[selected="true"] {{ background: {p['teal_soft']}; border: 1px solid {p['teal_border']}; }}
+            QScrollArea {{ border: none; background: transparent; }}
+            QScrollBar:vertical {{ background: transparent; width: 10px; margin: 4px 2px; }}
+            QScrollBar::handle:vertical {{ background: {p['scroll']}; min-height: 42px; border-radius: 4px; }}
+            QScrollBar::handle:vertical:hover {{ background: {p['scroll_hover']}; }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; border: none; background: transparent; }}
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
+            QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px 4px; }}
+            QScrollBar::handle:horizontal {{ background: {p['scroll']}; min-width: 42px; border-radius: 4px; }}
+            QScrollBar::handle:horizontal:hover {{ background: {p['scroll_hover']}; }}
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; border: none; background: transparent; }}
+            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{ background: transparent; }}
+            QScrollBar::corner {{ background: transparent; }}
+            QStatusBar {{ background: {p['surface']}; border-top: 1px solid {p['border']}; color: {p['muted']}; }}
         """
 
         self.setStyleSheet(wrapper_styles)
-        light_stylesheet_path = (
-            self.workspace.theme_manager.project_root
-            / "app"
-            / "ui"
-            / "styles"
-            / "light.qss"
+        base_stylesheet_path = (
+            self.workspace.theme_manager.project_root / "app" / "ui" / "styles" / f"{self.theme}.qss"
         )
-        base_styles = (
-            light_stylesheet_path.read_text(encoding="utf-8")
-            if light_stylesheet_path.exists()
-            else ""
-        )
+        base_styles = base_stylesheet_path.read_text(encoding="utf-8") if base_stylesheet_path.exists() else ""
         self.workspace.setStyleSheet(base_styles + "\n" + inner_overrides)
+        theme_combo = getattr(self.workspace, "theme_combo", None)
+        if theme_combo is not None:
+            index = theme_combo.findData(self.theme)
+            theme_combo.blockSignals(True)
+            theme_combo.setCurrentIndex(max(index, 0))
+            theme_combo.blockSignals(False)
 
     def can_leave(self) -> bool:
         hook = getattr(self.workspace, "can_leave", None)

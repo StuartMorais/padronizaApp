@@ -7,11 +7,11 @@ from adapters.contracts import WorkspaceContext
 
 
 def create_padroniza(context: WorkspaceContext) -> QWidget:
-    """Create Padroniza inside the existing Office Tools QApplication.
+    """Create Padroniza inside the existing Nexo QApplication.
 
     Startup work that belongs to Padroniza (persistent storage, settings schema,
     logging and template discovery roots) is preserved, while application-wide
-    identity, icon, event loop and styling remain owned by Office Tools.
+    identity, icon, event loop and styling remain owned by Nexo.
     """
     from app.core.application_logging import configure_application_logging
     from app.core.paths import initialize_persistent_storage, resolve_application_paths
@@ -28,7 +28,7 @@ def create_padroniza(context: WorkspaceContext) -> QWidget:
 
     application = QApplication.instance()
     if application is None:
-        raise RuntimeError("Office Tools must create QApplication before Padroniza.")
+        raise RuntimeError("Nexo must create QApplication before Padroniza.")
 
     paths = resolve_application_paths()
     initialize_persistent_storage(paths)
@@ -51,4 +51,4 @@ def create_padroniza(context: WorkspaceContext) -> QWidget:
         embedded=True,
         return_home=context.return_home,
     )
-    return PadronizaWorkspaceWrapper(workspace)
+    return PadronizaWorkspaceWrapper(workspace, context.get_theme())

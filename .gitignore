@@ -1,0 +1,31 @@
+# Python / environments
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Build output
+build/
+dist/
+release/
+*.spec
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Runtime/transient data
+*.log
+data/logs/*
+!data/logs/.gitkeep
+data/template_editor_work/*
+!data/template_editor_work/.gitkeep
+data/template_editor_drafts/*
+!data/template_editor_drafts/.gitkeep
+output/*
+!output/.gitkeep
+backups/*
+!backups/.gitkeep

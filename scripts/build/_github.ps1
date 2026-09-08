@@ -32,7 +32,7 @@ function Find-ProjectRoot {
         $candidate = $candidate.Parent
     }
 
-    throw "Could not locate the Office Tools repository root from $PSScriptRoot"
+    throw "Could not locate the Nexo repository root from $PSScriptRoot"
 }
 
 function Assert-LastExitCode {
@@ -94,8 +94,8 @@ $MainPy = Join-Path $ProjectRoot 'main.py'
 $AssetsDir = Join-Path $ProjectRoot 'assets'
 $TemplatesDir = Join-Path $ProjectRoot 'templates'
 $PadronizaStylesDir = Join-Path $ProjectRoot 'app\ui\styles'
-$IconPath = Join-Path $AssetsDir 'office-tools.ico'
-$InstallerScript = Join-Path $ProjectRoot 'installer\OfficeTools.iss'
+$IconPath = Join-Path $AssetsDir 'nexo.ico'
+$InstallerScript = Join-Path $ProjectRoot 'installer\Nexo.iss'
 $BuildDir = Join-Path $ProjectRoot 'build'
 $DistDir = Join-Path $ProjectRoot 'dist'
 $ReleaseDir = Join-Path $ProjectRoot 'release'
@@ -109,7 +109,7 @@ Assert-Directory $PadronizaStylesDir
 
 Write-Host "Repository root: $ProjectRoot"
 Write-Host "=============================================="
-Write-Host " Office Tools v$Version"
+Write-Host " Nexo v$Version"
 Write-Host " PyInstaller one-file EXE + Inno installer"
 Write-Host "=============================================="
 
@@ -130,7 +130,7 @@ New-Item -ItemType Directory -Path $ReleaseDir -Force | Out-Null
 $BuildVersionFile = Join-Path $ProjectRoot 'shell\_build_version.py'
 Set-Content -LiteralPath $BuildVersionFile -Value "VERSION = `"$Version`"" -Encoding UTF8
 
-$versionInfoPath = Join-Path $BuildDir 'office_tools_version_info.txt'
+$versionInfoPath = Join-Path $BuildDir 'nexo_version_info.txt'
 $versionInfo = @"
 VSVersionInfo(
   ffi=FixedFileInfo(
@@ -146,12 +146,12 @@ VSVersionInfo(
   kids=[
     StringFileInfo([
       StringTable('040904B0', [
-        StringStruct('CompanyName', 'Office Tools'),
-        StringStruct('FileDescription', 'Office Tools - Padroniza + Checklist'),
+        StringStruct('CompanyName', 'Nexo'),
+        StringStruct('FileDescription', 'Nexo - Padroniza + Checklist'),
         StringStruct('FileVersion', '$Version'),
-        StringStruct('InternalName', 'OfficeTools'),
-        StringStruct('OriginalFilename', 'OfficeTools.exe'),
-        StringStruct('ProductName', 'Office Tools'),
+        StringStruct('InternalName', 'Nexo'),
+        StringStruct('OriginalFilename', 'Nexo.exe'),
+        StringStruct('ProductName', 'Nexo'),
         StringStruct('ProductVersion', '$Version')
       ])
     ]),
@@ -170,7 +170,7 @@ $arguments = @(
     '--clean',
     '--windowed',
     '--onefile',
-    '--name', 'OfficeTools',
+    '--name', 'Nexo',
     '--distpath', $DistDir,
     '--workpath', (Join-Path $BuildDir 'pyinstaller'),
     '--specpath', $BuildDir,
@@ -191,12 +191,12 @@ Write-Host 'Running PyInstaller...'
 python -m PyInstaller @arguments
 Assert-LastExitCode -Message 'PyInstaller failed.'
 
-$BuiltExe = Join-Path $DistDir 'OfficeTools.exe'
+$BuiltExe = Join-Path $DistDir 'Nexo.exe'
 if (-not (Test-Path -LiteralPath $BuiltExe -PathType Leaf)) {
     throw "Built executable not found: $BuiltExe"
 }
 
-$PortablePath = Join-Path $ReleaseDir "OfficeTools-v$Version.exe"
+$PortablePath = Join-Path $ReleaseDir "Nexo-v$Version.exe"
 Copy-Item -LiteralPath $BuiltExe -Destination $PortablePath -Force
 
 $iscc = Find-InnoSetupCompiler
@@ -218,7 +218,7 @@ Write-Host 'Building installer...'
 & $iscc "/DMyAppVersion=$Version" $InstallerScript
 Assert-LastExitCode -Message 'Inno Setup failed.'
 
-$InstallerPath = Join-Path $ReleaseDir "OfficeTools-Setup-v$Version.exe"
+$InstallerPath = Join-Path $ReleaseDir "Nexo-Setup-v$Version.exe"
 if (-not (Test-Path -LiteralPath $InstallerPath -PathType Leaf)) {
     throw "Installer not found: $InstallerPath"
 }

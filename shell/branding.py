@@ -1,0 +1,6 @@
+APP_NAME = "Nexo"
+APP_ID = "NexoDesktop"
+ORGANIZATION = "Nexo"
+TAGLINE = "Seu trabalho, conectado."
+MODULE_MARK = "PADRONIZA + CHECKLIST"
+PRODUCT_DESCRIPTION = "Documentos, revisão e conformidade em um só lugar."

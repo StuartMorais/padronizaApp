@@ -27,9 +27,9 @@ class SettingsMixin:
         )
         if embedded:
             self.theme_combo.setEnabled(False)
-            self.theme_combo.setToolTip("A aparência é controlada pelo Office Tools.")
+            self.theme_combo.setToolTip("A aparência é controlada pelo Nexo.")
             self.high_contrast_checkbox.setEnabled(False)
-            self.high_contrast_checkbox.setToolTip("A aparência é controlada pelo Office Tools.")
+            self.high_contrast_checkbox.setToolTip("A aparência é controlada pelo Nexo.")
         self.confirmations_checkbox.setChecked(
             bool(self.settings.value("ui/confirm_destructive", True, type=bool))
         )

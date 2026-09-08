@@ -1,4 +1,4 @@
-name: Office Tools quality checks
+name: Nexo quality checks
 
 on:
   workflow_dispatch:

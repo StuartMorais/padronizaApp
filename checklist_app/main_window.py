@@ -322,10 +322,10 @@ class ChecklistMainWindow(QMainWindow):
         self.btn_theme.setText("Modo claro" if self.current_theme == "dark" else "Modo escuro")
 
     def section_row_color(self) -> str:
-        return "#243244" if self.current_theme == "dark" else "#d9dde3"
+        return "#202A39" if self.current_theme == "dark" else "#EEF2F7"
 
     def code_accent_color(self) -> str:
-        return "#7db7ff" if self.current_theme == "dark" else "#0f62b8"
+        return "#72D8CF" if self.current_theme == "dark" else "#0F8F87"
 
     # --------------------------------------------------------------- home page
     def create_home_page(self) -> QWidget:

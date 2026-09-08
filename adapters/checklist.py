@@ -6,20 +6,18 @@ from adapters.contracts import WorkspaceContext
 
 
 def create_checklist(context: WorkspaceContext) -> QWidget:
-    """Create Checklist inside the existing Office Tools QApplication."""
+    """Create Checklist inside the existing Nexo QApplication."""
     from checklist_app.main_window import ChecklistMainWindow
     from checklist_app.theme import build_qss
     from adapters.checklist_workspace import ChecklistWorkspaceWrapper
 
     application = QApplication.instance()
     if application is None:
-        raise RuntimeError("Office Tools must create QApplication before Checklist.")
+        raise RuntimeError("Nexo must create QApplication before Checklist.")
 
     workspace = ChecklistMainWindow()
-    # Embedded modules use the Office Tools light palette. Force the Checklist
-    # presentation state to light as well so saved standalone dark-mode state
-    # cannot leak into explicit table-cell colors or scanner accents.
-    workspace.current_theme = "light"
-    workspace.setStyleSheet(build_qss("light"))
+    theme = context.get_theme()
+    workspace.current_theme = theme
+    workspace.setStyleSheet(build_qss(theme))
     workspace.refresh_all()
     return ChecklistWorkspaceWrapper(workspace, context)

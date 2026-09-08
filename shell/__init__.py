@@ -1,3 +1,5 @@
 """Shared navigation, presentation and preferences; no document processing."""
 
-__version__ = "0.1.1"
+from shell._build_version import VERSION
+
+__version__ = VERSION

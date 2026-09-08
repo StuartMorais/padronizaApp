@@ -143,7 +143,7 @@ class MainWindow(
         )
 
     # Lightweight QMainWindow-compatible chrome --------------------------------
-    # Padroniza is a QWidget so it can be embedded in Office Tools, while these
+    # Padroniza is a QWidget so it can be embedded in Nexo, while these
     # helpers preserve the original menu/status/central-widget API used by the UI.
     def menuBar(self) -> QMenuBar:
         return self._menu_bar
@@ -209,7 +209,7 @@ class MainWindow(
         file_menu.addSeparator()
 
         exit_action = QAction(
-            'Voltar ao Office Tools' if self.embedded else 'Sair',
+            'Voltar ao Nexo' if self.embedded else 'Sair',
             self,
         )
         if self.embedded and self._return_home is not None:

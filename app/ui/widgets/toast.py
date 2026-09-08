@@ -193,7 +193,7 @@ def show_toast(
     kind: str = "success",
     duration: int = 3600,
 ) -> ToastNotification:
-    # When Padroniza is embedded in Office Tools, keep notifications inside
+    # When Padroniza is embedded in Nexo, keep notifications inside
     # the Padroniza workspace instead of covering the entire shell window.
     host = parent
     while host.parentWidget() is not None and not bool(host.property("padronizaWorkspace")):

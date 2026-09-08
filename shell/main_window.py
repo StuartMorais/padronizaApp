@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QMainWindow, QS
 from adapters.contracts import WorkspaceContext, WorkspaceFactory
 from adapters.registry import WORKSPACE_FACTORIES
 from shell.about_page import AboutPage
+from shell.branding import APP_NAME, MODULE_MARK
 from shell.catalog import MODULES, PAGE_TITLES
 from shell.dashboard import HomeDashboard
 from shell.preferences import Preferences
@@ -24,7 +25,7 @@ class OfficeMainWindow(QMainWindow):
         self.current_page = "home"
         self.setMinimumSize(960, 650)
         self.resize(1280, 860)
-        self.setStyleSheet(stylesheet())
+        self.setStyleSheet(stylesheet(self.preferences.theme))
 
         root = QWidget()
         root.setObjectName("OfficeShell")
@@ -49,7 +50,7 @@ class OfficeMainWindow(QMainWindow):
         self.breadcrumb = label("Início", "breadcrumb")
         header_layout.addWidget(self.breadcrumb)
         header_layout.addStretch(1)
-        header_layout.addWidget(label("PADRONIZA + CHECKLIST", "headerMark"))
+        header_layout.addWidget(label(MODULE_MARK, "headerMark"))
         right_layout.addWidget(header)
 
         self.pages = QStackedWidget()
@@ -61,7 +62,10 @@ class OfficeMainWindow(QMainWindow):
         self.about_page = AboutPage()
         self.page_widgets: dict[str, QWidget] = {"home": self.home_page}
         self.pages.addWidget(self.home_page)
-        context = WorkspaceContext(return_home=lambda: self.navigate("home"))
+        context = WorkspaceContext(
+            return_home=lambda: self.navigate("home"),
+            get_theme=lambda: self.preferences.theme,
+        )
         registry = WORKSPACE_FACTORIES if factories is None else factories
         self.hosts = {}
         for spec in MODULES:
@@ -75,6 +79,7 @@ class OfficeMainWindow(QMainWindow):
 
         self.sidebar.navigate_requested.connect(self.navigate)
         self.home_page.navigate_requested.connect(self.navigate)
+        self.settings_page.preferences_saved.connect(self.apply_theme)
         self.shortcuts = []
         for keys, page in (("Ctrl+1", "home"), ("Ctrl+2", "padroniza"), ("Ctrl+3", "checklist"), ("Ctrl+,", "settings"), ("F1", "about")):
             shortcut = QShortcut(QKeySequence(keys), self)
@@ -104,12 +109,27 @@ class OfficeMainWindow(QMainWindow):
         host = self.hosts.get(page)
         if host:
             host.ensure_loaded()
+            if host.workspace is not None:
+                set_theme = getattr(host.workspace, "set_theme", None)
+                if callable(set_theme):
+                    set_theme(self.preferences.theme)
         self.pages.setCurrentWidget(self.page_widgets[page])
         self.current_page = page
         self.sidebar.set_current(page)
         self.breadcrumb.setText(PAGE_TITLES[page])
-        self.setWindowTitle(f"Office Tools — {PAGE_TITLES[page]}")
+        self.setWindowTitle(f"{APP_NAME} — {PAGE_TITLES[page]}")
         return True
+
+
+    def apply_theme(self) -> None:
+        theme = self.preferences.theme
+        self.setStyleSheet(stylesheet(theme))
+        for host in self.hosts.values():
+            if host.workspace is None:
+                continue
+            set_theme = getattr(host.workspace, "set_theme", None)
+            if callable(set_theme):
+                set_theme(theme)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         # Check all loaded workspaces, including hidden ones with pending work.

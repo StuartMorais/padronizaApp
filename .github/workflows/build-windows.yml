@@ -1,4 +1,4 @@
-name: Build and release Office Tools for Windows
+name: Build and release Nexo for Windows
 
 on:
   # A pushed commit is the GitHub-visible equivalent of a local commit. Every
@@ -74,7 +74,7 @@ jobs:
           python -m compileall -q adapters app checklist_app shell main.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          python -c "import PySide6, docx, pymupdf, reportlab; import adapters.registry; print('Office Tools imports OK')"
+          python -c "import PySide6, docx, pymupdf, reportlab; import adapters.registry; print('Nexo imports OK')"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           if (Test-Path -LiteralPath "dev/checklist/tests") {
@@ -91,7 +91,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OfficeTools-${{ steps.version.outputs.version }}-windows
+          name: Nexo-${{ steps.version.outputs.version }}-windows
           path: release/*
           if-no-files-found: error
           retention-days: 14
@@ -132,7 +132,7 @@ jobs:
               $env:PORTABLE_PATH `
               $env:CHECKSUM_PATH `
               --target $env:TARGET_SHA `
-              --title "Office Tools $env:RELEASE_TAG" `
+              --title "Nexo $env:RELEASE_TAG" `
               --generate-notes
           }
 

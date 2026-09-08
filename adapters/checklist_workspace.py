@@ -12,6 +12,9 @@ from PySide6.QtWidgets import (
 )
 
 from adapters.contracts import WorkspaceContext
+from checklist_app.theme import build_qss
+from shell.design import palette
+from shell.theme import normalize_theme
 from checklist_app.main_window import CHECKLIST_PAGE, HOME_PAGE, SCANNER_PAGE
 
 
@@ -23,19 +26,20 @@ PAGE_INFO = {
 
 
 class ChecklistWorkspaceWrapper(QWidget):
-    """Unified Office Tools presentation layer for the Checklist module."""
+    """Unified Nexo presentation layer for the Checklist module."""
 
     def __init__(self, workspace: QWidget, context: WorkspaceContext) -> None:
         super().__init__()
         self.workspace = workspace
         self.context = context
+        self.theme = normalize_theme(context.get_theme())
         self.setObjectName("ChecklistWorkspaceShell")
         self.workspace.setObjectName("ChecklistInnerWorkspace")
         self._nav_buttons: dict[int, QPushButton] = {}
 
         self._prepare_inner_workspace()
         self._build_ui()
-        self._apply_styles()
+        self.set_theme(self.theme)
         self._sync_state()
 
     def _prepare_inner_workspace(self) -> None:
@@ -54,7 +58,7 @@ class ChecklistWorkspaceWrapper(QWidget):
 
         # Runtime paths are useful for debugging but add visual noise to the
         # integrated library panel. Keep storage behavior unchanged, just hide
-        # the technical path label in the normal Office Tools workspace.
+        # the technical path label in the normal Nexo workspace.
         for label in self.workspace.findChildren(QLabel):
             if label.text().startswith("Dados locais:"):
                 label.hide()
@@ -200,319 +204,117 @@ class ChecklistWorkspaceWrapper(QWidget):
         if hasattr(self, "status_strip"):
             self.status_strip.setVisible(page != HOME_PAGE)
 
-    def _apply_styles(self) -> None:
-        wrapper_qss = """
-            QWidget#ChecklistWorkspaceShell {
-                background: #F4F6FA;
-                color: #24344D;
-            }
-            QFrame#ChecklistHero,
-            QFrame#ChecklistNavBar,
-            QFrame#ChecklistStatusStrip {
-                background: #FFFFFF;
-                border: 1px solid #DEE5EF;
-                border-radius: 16px;
-            }
-            QFrame#ChecklistStatusStrip {
-                border-radius: 10px;
-            }
-            QLabel#ChecklistHeroEyebrow {
-                color: #6C7A91;
-                font-size: 11px;
-                font-weight: 700;
-            }
-            QLabel#ChecklistHeroTitle {
-                color: #1C2B44;
-                font-size: 28px;
-                font-weight: 700;
-            }
-            QLabel#ChecklistHeroSubtitle,
-            QLabel#ChecklistHeroContext,
-            QLabel#ChecklistSectionHint {
-                color: #52637D;
-                font-size: 13px;
-            }
-            QPushButton[heroRole="primary"] {
-                background: #087E79;
-                color: #FFFFFF;
-                border: 1px solid #087E79;
-                border-radius: 8px;
-                padding: 9px 16px;
-                font-size: 13px;
-                font-weight: 600;
-                min-width: 190px;
-            }
-            QPushButton[heroRole="primary"]:hover {
-                background: #066B66;
-                border-color: #066B66;
-            }
-            QPushButton[heroRole="secondary"],
-            QPushButton[statusAction="true"] {
-                background: #FFFFFF;
-                color: #34445E;
-                border: 1px solid #D4DBE7;
-                border-radius: 8px;
-                padding: 9px 16px;
-                font-size: 13px;
-                font-weight: 600;
-                min-width: 190px;
-            }
-            QPushButton[statusAction="true"] {
-                min-width: 76px;
-                padding: 5px 12px;
-            }
-            QPushButton[heroRole="secondary"]:hover,
-            QPushButton[statusAction="true"]:hover {
-                background: #F0F7F6;
-                border-color: #A9CECA;
-            }
-            QPushButton[checkNav="true"] {
-                background: #FFFFFF;
-                color: #465A7D;
-                border: 1px solid #D8E0EE;
-                border-radius: 8px;
-                padding: 8px 14px;
-                font-size: 12px;
-                font-weight: 600;
-            }
-            QPushButton[checkNav="true"]:hover {
-                background: #F0F7F6;
-                border-color: #A9CECA;
-            }
-            QPushButton[checkNav="true"]:checked {
-                background: #087E79;
-                color: #FFFFFF;
-                border-color: #087E79;
-            }
+    def set_theme(self, theme: str) -> None:
+        self.theme = normalize_theme(theme)
+        p = palette(self.theme)
+        teal = p["teal"]
+        teal_hover = p["teal_hover"]
+        button_text = "#0E1A19" if self.theme == "dark" else "#FFFFFF"
+
+        wrapper_qss = f"""
+            QWidget#ChecklistWorkspaceShell {{ background: {p['bg']}; color: {p['text']}; }}
+            QFrame#ChecklistHero, QFrame#ChecklistNavBar, QFrame#ChecklistStatusStrip {{
+                background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 16px;
+            }}
+            QFrame#ChecklistStatusStrip {{ border-radius: 10px; }}
+            QLabel#ChecklistHeroEyebrow {{ color: {p['muted']}; font-size: 11px; font-weight: 700; }}
+            QLabel#ChecklistHeroTitle {{ color: {p['title']}; font-size: 28px; font-weight: 700; }}
+            QLabel#ChecklistHeroSubtitle, QLabel#ChecklistHeroContext, QLabel#ChecklistSectionHint {{
+                color: {p['muted']}; font-size: 13px;
+            }}
+            QPushButton[heroRole="primary"] {{
+                background: {teal}; color: {button_text}; border: 1px solid {teal}; border-radius: 8px;
+                padding: 9px 16px; font-size: 13px; font-weight: 700; min-width: 190px;
+            }}
+            QPushButton[heroRole="primary"]:hover {{ background: {teal_hover}; border-color: {teal_hover}; }}
+            QPushButton[heroRole="secondary"], QPushButton[statusAction="true"], QPushButton[checkNav="true"] {{
+                background: {p['surface']}; color: {p['text']}; border: 1px solid {p['border_strong']};
+                border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 600;
+            }}
+            QPushButton[heroRole="secondary"] {{ padding: 9px 16px; font-size: 13px; min-width: 190px; }}
+            QPushButton[statusAction="true"] {{ min-width: 76px; padding: 5px 12px; }}
+            QPushButton[heroRole="secondary"]:hover, QPushButton[statusAction="true"]:hover, QPushButton[checkNav="true"]:hover {{
+                background: {p['teal_soft']}; border-color: {p['teal_border']};
+            }}
+            QPushButton[checkNav="true"]:checked {{ background: {teal}; color: {button_text}; border-color: {teal}; }}
         """
 
-        inner_qss = """
-            QWidget#ChecklistInnerWorkspace,
-            QWidget#ChecklistInnerWorkspace > QWidget {
-                background: #F4F6FA;
-                color: #24344D;
-            }
-            QLabel { background: transparent; }
-            QFrame#workspaceBar { max-height: 0px; min-height: 0px; border: none; }
-            QFrame#homeHero { max-height: 0px; min-height: 0px; border: none; }
-
-            QFrame#card,
-            QFrame#panelCard,
-            QFrame#templateHeader,
-            QFrame#scannerHero,
-            QFrame#paperPanel,
-            QFrame#guidancePanel,
-            QFrame#officialHeader {
-                background: #FFFFFF;
-                border: 1px solid #DEE5EF;
-                border-radius: 14px;
-            }
-            QFrame#scannerHero {
-                background: #F8FBFB;
-                border-color: #D5E9E6;
-            }
-            QFrame#paperPanel,
-            QFrame#officialHeader {
-                border-color: #D5DDE9;
-            }
-            QFrame#guidancePanel {
-                background: #F8FAFC;
-            }
-
-            QLabel#pageTitle,
-            QLabel#sectionTitle,
-            QLabel#officialTitle {
-                color: #1C2B44;
-            }
-            QLabel#mutedText {
-                color: #52637D;
-            }
-            QLabel#metricValue {
-                color: #087E79;
-            }
-            QLabel#statusBadge {
-                background: #F3F7FA;
-                color: #34445E;
-                border: 1px solid #DEE5EF;
-            }
-
-            QLineEdit,
-            QPlainTextEdit,
-            QComboBox {
-                background: #FFFFFF;
-                color: #24344D;
-                border: 1px solid #D4DBE7;
-                border-radius: 8px;
-                padding: 8px 10px;
-                selection-background-color: #087E79;
-                selection-color: #FFFFFF;
-            }
-            QLineEdit:hover,
-            QPlainTextEdit:hover,
-            QComboBox:hover {
-                border-color: #B6C4D7;
-            }
-            QLineEdit:focus,
-            QPlainTextEdit:focus,
-            QComboBox:focus {
-                border: 1px solid #087E79;
-            }
-
-            QPushButton {
-                background: #FFFFFF;
-                color: #34445E;
-                border: 1px solid #D4DBE7;
-                border-radius: 8px;
-                padding: 7px 13px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background: #F0F7F6;
-                border-color: #A9CECA;
-            }
-            QPushButton#primaryButton {
-                background: #087E79;
-                color: #FFFFFF;
-                border-color: #087E79;
-            }
-            QPushButton#primaryButton:hover {
-                background: #066B66;
-                border-color: #066B66;
-            }
-            QPushButton#dangerButton {
-                background: #FFFFFF;
-                color: #A53A3A;
-                border-color: #E5BABA;
-            }
-            QPushButton#dangerButton:hover {
-                background: #FFF5F5;
-                border-color: #D89494;
-            }
-            QPushButton:disabled,
-            QLineEdit:disabled,
-            QPlainTextEdit:disabled,
-            QComboBox:disabled {
-                color: #8B98AD;
-                background: #F7F9FC;
-                border-color: #E3E8F0;
-            }
-
-            QListWidget#libraryList {
-                background: #FFFFFF;
-                border: 1px solid #DEE5EF;
-                border-radius: 10px;
-                padding: 6px;
-                outline: 0;
-            }
-            QListWidget#libraryList::item {
-                color: #34445E;
-                border: 1px solid transparent;
-                border-radius: 8px;
-                padding: 10px 12px;
-                margin: 0;
-            }
-            QListWidget#libraryList::item:hover {
-                background: #F8FBFA;
-                border-color: #E2ECEA;
-            }
-            QListWidget#libraryList::item:selected {
-                background: #E5F4F1;
-                color: #066B66;
-                border: 1px solid #BEDFD9;
-            }
-            QListWidget#libraryList::item:selected:hover {
-                background: #DCEFEA;
-                border-color: #B4D8D1;
-            }
-
-            QTableWidget,
-            QTableWidget#checklistSheetTable {
-                background: #FFFFFF;
-                alternate-background-color: #FAFBFD;
-                color: #24344D;
-                border: 1px solid #D8E0EA;
-                border-radius: 10px;
-                gridline-color: #E6EBF2;
-                selection-background-color: #E5F4F1;
-                selection-color: #173F3D;
-            }
-            QTableWidget::item,
-            QTableWidget#checklistSheetTable::item {
-                padding: 6px;
-                border: none;
-            }
-            QTableWidget::item:selected,
-            QTableWidget#checklistSheetTable::item:selected {
-                background: #E5F4F1;
-                color: #173F3D;
-            }
-            QHeaderView::section,
-            QTableWidget#checklistSheetTable QHeaderView::section {
-                background: #EDF2F7;
-                color: #34445E;
-                border: none;
-                border-right: 1px solid #DCE3EC;
-                border-bottom: 1px solid #DCE3EC;
-                padding: 8px;
-                font-weight: 700;
-            }
-            QSplitter#checklistBodySplitter::handle {
-                background: transparent;
-                width: 8px;
-            }
-            QSplitter#checklistBodySplitter::handle:hover {
-                background: #E3EEEC;
-            }
-            QFrame#sheetToolbar {
-                background: transparent;
-                border: none;
-            }
-            QFrame#guidancePanel {
-                background: #FFFFFF;
-                border: 1px solid #DEE5EF;
-                border-radius: 14px;
-            }
-            QLabel[inspectorLabel="true"] {
-                color: #34445E;
-                font-size: 12px;
-                font-weight: 700;
-            }
-
-            QScrollBar:vertical {
-                background: transparent;
-                width: 10px;
-                margin: 3px 2px;
-            }
-            QScrollBar::handle:vertical {
-                background: #C9D3E3;
-                min-height: 32px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical:hover { background: #AEBBD0; }
-            QScrollBar::add-line:vertical,
-            QScrollBar::sub-line:vertical { height: 0; }
-            QScrollBar::add-page:vertical,
-            QScrollBar::sub-page:vertical { background: transparent; }
-            QScrollBar:horizontal {
-                background: transparent;
-                height: 10px;
-                margin: 2px 3px;
-            }
-            QScrollBar::handle:horizontal {
-                background: #C9D3E3;
-                min-width: 32px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:horizontal:hover { background: #AEBBD0; }
-            QScrollBar::add-line:horizontal,
-            QScrollBar::sub-line:horizontal { width: 0; }
-            QScrollBar::add-page:horizontal,
-            QScrollBar::sub-page:horizontal { background: transparent; }
-            QScrollBar::corner { background: transparent; }
+        inner_qss = f"""
+            QWidget#ChecklistInnerWorkspace {{ background: {p['bg']}; color: {p['text']}; }}
+            QLabel {{ background: transparent; color: {p['text']}; }}
+            QFrame#workspaceBar, QFrame#homeHero {{ max-height: 0px; min-height: 0px; border: none; }}
+            QFrame#card, QFrame#panelCard, QFrame#templateHeader, QFrame#scannerHero, QFrame#paperPanel,
+            QFrame#guidancePanel, QFrame#officialHeader {{
+                background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 14px;
+            }}
+            QFrame#scannerHero {{ background: {p['teal_soft']}; border-color: {p['teal_border']}; }}
+            QFrame#guidancePanel {{ background: {p['surface']}; }}
+            QLabel#pageTitle, QLabel#sectionTitle, QLabel#officialTitle {{ color: {p['title']}; }}
+            QLabel#mutedText {{ color: {p['muted']}; }}
+            QLabel#metricValue {{ color: {teal}; }}
+            QLabel#statusBadge {{ background: {p['surface_alt']}; color: {p['text']}; border: 1px solid {p['border']}; }}
+            QLabel[inspectorLabel="true"] {{ color: {p['text']}; font-size: 12px; font-weight: 700; }}
+            QLineEdit, QPlainTextEdit, QComboBox {{
+                background: {p['surface']}; color: {p['text']}; border: 1px solid {p['border_strong']};
+                border-radius: 8px; padding: 8px 10px; selection-background-color: {teal}; selection-color: {button_text};
+            }}
+            QLineEdit:hover, QPlainTextEdit:hover, QComboBox:hover {{ border-color: {p['teal_border']}; }}
+            QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus {{ border: 1px solid {teal}; }}
+            QPushButton {{
+                background: {p['surface']}; color: {p['text']}; border: 1px solid {p['border_strong']};
+                border-radius: 8px; padding: 7px 13px; font-weight: 600;
+            }}
+            QPushButton:hover {{ background: {p['teal_soft']}; border-color: {p['teal_border']}; }}
+            QPushButton#primaryButton {{ background: {teal}; color: {button_text}; border-color: {teal}; }}
+            QPushButton#primaryButton:hover {{ background: {teal_hover}; border-color: {teal_hover}; }}
+            QPushButton#dangerButton {{ background: {p['surface']}; color: {p['danger']}; border-color: {p['danger']}; }}
+            QPushButton#dangerButton:hover {{ background: {p['danger_soft']}; }}
+            QPushButton:disabled, QLineEdit:disabled, QPlainTextEdit:disabled, QComboBox:disabled {{
+                color: {p['disabled']}; background: {p['disabled_bg']}; border-color: {p['border']};
+            }}
+            QListWidget#libraryList {{
+                background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 10px; padding: 6px; outline: 0;
+            }}
+            QListWidget#libraryList::item {{
+                color: {p['text']}; border: 1px solid transparent; border-radius: 8px; padding: 10px 12px; margin: 0;
+            }}
+            QListWidget#libraryList::item:hover {{ background: {p['surface_alt']}; border-color: {p['border']}; }}
+            QListWidget#libraryList::item:selected {{ background: {p['teal_soft']}; color: {teal}; border: 1px solid {p['teal_border']}; }}
+            QListWidget#libraryList::item:selected:hover {{ background: {p['teal_soft']}; border-color: {p['teal_border']}; }}
+            QTableWidget, QTableWidget#checklistSheetTable {{
+                background: {p['surface']}; alternate-background-color: {p['surface_alt']}; color: {p['text']};
+                border: 1px solid {p['border']}; border-radius: 10px; gridline-color: {p['border']};
+                selection-background-color: {p['teal_soft']}; selection-color: {p['text']};
+            }}
+            QTableWidget::item, QTableWidget#checklistSheetTable::item {{ padding: 6px; border: none; }}
+            QTableWidget::item:selected, QTableWidget#checklistSheetTable::item:selected {{ background: {p['teal_soft']}; color: {p['text']}; }}
+            QHeaderView::section, QTableWidget#checklistSheetTable QHeaderView::section {{
+                background: {p['table_header']}; color: {p['text']}; border: none; border-right: 1px solid {p['border']};
+                border-bottom: 1px solid {p['border']}; padding: 8px; font-weight: 700;
+            }}
+            QSplitter#checklistBodySplitter::handle {{ background: transparent; width: 8px; }}
+            QSplitter#checklistBodySplitter::handle:hover {{ background: {p['teal_soft']}; }}
+            QFrame#sheetToolbar {{ background: transparent; border: none; }}
+            QScrollBar:vertical {{ background: transparent; width: 10px; margin: 3px 2px; }}
+            QScrollBar::handle:vertical {{ background: {p['scroll']}; min-height: 32px; border-radius: 4px; }}
+            QScrollBar::handle:vertical:hover {{ background: {p['scroll_hover']}; }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
+            QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px 3px; }}
+            QScrollBar::handle:horizontal {{ background: {p['scroll']}; min-width: 32px; border-radius: 4px; }}
+            QScrollBar::handle:horizontal:hover {{ background: {p['scroll_hover']}; }}
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
+            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{ background: transparent; }}
+            QScrollBar::corner {{ background: transparent; }}
         """
 
         self.setStyleSheet(wrapper_qss)
-        self.workspace.setStyleSheet(self.workspace.styleSheet() + "\n" + inner_qss)
+        self.workspace.current_theme = self.theme
+        self.workspace.setStyleSheet(build_qss(self.theme) + "\n" + inner_qss)
+        # Section row colors are assigned explicitly when the sheet is built, so
+        # refresh after a theme change to keep the table consistent.
+        if hasattr(self.workspace, "checklist_table"):
+            self.workspace.refresh_checklist_sheet()
 
     def can_leave(self) -> bool:
         return True
