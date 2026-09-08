@@ -193,7 +193,13 @@ def show_toast(
     kind: str = "success",
     duration: int = 3600,
 ) -> ToastNotification:
-    host = parent.window()
+    # When Padroniza is embedded in Office Tools, keep notifications inside
+    # the Padroniza workspace instead of covering the entire shell window.
+    host = parent
+    while host.parentWidget() is not None and not bool(host.property("padronizaWorkspace")):
+        host = host.parentWidget()
+    if not bool(host.property("padronizaWorkspace")):
+        host = parent.window()
     active = getattr(
         host,
         "_padroniza_toasts",

@@ -1,0 +1,2883 @@
+{
+  "schema_version": 1,
+  "kind": "semantic_learning",
+  "data": {
+    "semantic_schema_version": 1,
+    "reviews": [
+      {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "document_fingerprint": "7d9d97e80596ea63bcdbeb5ce900d3e77bcc260740474127fe82a9a7a754da1f",
+        "location_signature": "1dd19a0430b4e67feab0c413",
+        "field_id": "process.number",
+        "label": "Número do processo",
+        "type": "text",
+        "concept_id": "process.number",
+        "dynamic_scope": "inline",
+        "section": "Processo",
+        "semantic_context": "Número do processo | Processo | Processo Pbdoc N°:",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+          "spans": [
+            {
+              "paragraph": 5,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 19,
+              "end": 37,
+              "original": "SDH-PRC-2026/03089",
+              "left_context": "Processo Pbdoc N°: ",
+              "right_context": "",
+              "paragraph_fingerprint": "52b284121c3af5205ea7"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-31T14:48:19",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "document_fingerprint": "7d9d97e80596ea63bcdbeb5ce900d3e77bcc260740474127fe82a9a7a754da1f",
+        "location_signature": "d98be7ee43d499a7cb6f5b95",
+        "field_id": "procurement.object",
+        "label": "Objeto do processo",
+        "type": "multiline",
+        "concept_id": "procurement.object",
+        "dynamic_scope": "paragraph",
+        "section": "Processo",
+        "semantic_context": "Objeto do processo | Processo | Objeto:",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+          "spans": [
+            {
+              "paragraph": 7,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 8,
+              "end": 90,
+              "original": "Adesão à Ata nº 0024/2026 - Aquisição de café - WW DISTRIBUIDORA DE ALIMENTOS LTDA",
+              "left_context": "Objeto: ",
+              "right_context": "",
+              "paragraph_fingerprint": "2329f56f04e0b702ec15"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-31T14:48:19",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "document_fingerprint": "7d9d97e80596ea63bcdbeb5ce900d3e77bcc260740474127fe82a9a7a754da1f",
+        "location_signature": "b83cf4e740792e61e358199d",
+        "field_id": "process.total_value",
+        "label": "Valor total do processo",
+        "type": "currency",
+        "concept_id": "process.total_value",
+        "dynamic_scope": "inline",
+        "section": "Processo",
+        "semantic_context": "Valor total do processo | Processo",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+          "spans": [
+            {
+              "paragraph": 9,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 25,
+              "end": 36,
+              "original": "R$17.745,00",
+              "left_context": "Valor total do processo: ",
+              "right_context": " (dezessete mil, setecentos e quarenta e cinco reais)",
+              "paragraph_fingerprint": "ac43f04b846c64f1ae2e"
+            },
+            {
+              "paragraph": 9,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 38,
+              "end": 88,
+              "original": "dezessete mil, setecentos e quarenta e cinco reais",
+              "left_context": "Valor total do processo: R$17.745,00 (",
+              "right_context": ")",
+              "paragraph_fingerprint": "ac43f04b846c64f1ae2e",
+              "render": "currency_words"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-31T14:48:19",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "document_fingerprint": "7d9d97e80596ea63bcdbeb5ce900d3e77bcc260740474127fe82a9a7a754da1f",
+        "location_signature": "e2ae2c079aefcf36d4b97e1d",
+        "field_id": "supplier.document",
+        "label": "CPF/CNPJ do fornecedor",
+        "type": "text",
+        "concept_id": "supplier.document",
+        "dynamic_scope": "inline",
+        "section": "Fornecedor",
+        "semantic_context": "CPF/CNPJ do fornecedor | Fornecedor",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+          "spans": [
+            {
+              "paragraph": 14,
+              "story": "body",
+              "table_index": 0,
+              "row_index": 1,
+              "cell_index": 0,
+              "start": 0,
+              "end": 17,
+              "original": "17.698.441/0001-0",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "d02a35c0fa00305dd678"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-31T14:48:19",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "document_fingerprint": "7d9d97e80596ea63bcdbeb5ce900d3e77bcc260740474127fe82a9a7a754da1f",
+        "location_signature": "e2eb45f8b75982a0f8884e09",
+        "field_id": "supplier.name",
+        "label": "Fornecedor / credor",
+        "type": "text",
+        "concept_id": "supplier.name",
+        "dynamic_scope": "inline",
+        "section": "Fornecedor",
+        "semantic_context": "Fornecedor / credor | Fornecedor",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+          "spans": [
+            {
+              "paragraph": 15,
+              "story": "body",
+              "table_index": 0,
+              "row_index": 1,
+              "cell_index": 1,
+              "start": 0,
+              "end": 34,
+              "original": "WW Distribuidora de Alimentos LTDA",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "4cbcc9d285cc126efe99"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-31T14:48:19",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "document_fingerprint": "7d9d97e80596ea63bcdbeb5ce900d3e77bcc260740474127fe82a9a7a754da1f",
+        "location_signature": "2a6ed180d80565b2214533da",
+        "field_id": "supplier.amount",
+        "label": "Valor do fornecedor",
+        "type": "currency",
+        "concept_id": "supplier.amount",
+        "dynamic_scope": "inline",
+        "section": "Fornecedor",
+        "semantic_context": "Valor do fornecedor | Fornecedor",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+          "spans": [
+            {
+              "paragraph": 16,
+              "story": "body",
+              "table_index": 0,
+              "row_index": 1,
+              "cell_index": 2,
+              "start": 0,
+              "end": 11,
+              "original": "R$17.745,00",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "74d6a5928350f4e5416d"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-31T14:48:19",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "document_fingerprint": "7d9d97e80596ea63bcdbeb5ce900d3e77bcc260740474127fe82a9a7a754da1f",
+        "location_signature": "23ed3f2e90353d9ed267e518",
+        "field_id": "cafil.reference_year",
+        "label": "Ano de referência da consulta CAFIL",
+        "type": "integer",
+        "concept_id": "cafil.reference_year",
+        "dynamic_scope": "inline",
+        "section": "Consulta CAFIL",
+        "semantic_context": "Ano de referência da consulta CAFIL | Consulta CAFIL | Declaramos ainda que a pesquisa foi realizada na data de hoje, com referência ao mês de JULHO de | , e o resultado está disponível no site: https://cge.pb.gov.br/site/imagens/gsc/cafil-pb.pdf, conforme documento em anex",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+          "spans": [
+            {
+              "paragraph": 19,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 97,
+              "end": 101,
+              "original": "2026",
+              "left_context": "mos ainda que a pesquisa foi realizada na data de hoje, com referência ao mês de JULHO de ",
+              "right_context": ", e o resultado está disponível no site: https://cge.pb.gov.br/site/imagens/gsc/cafil-pb.p",
+              "paragraph_fingerprint": "f2e6e735b24130562d2e"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-31T14:48:19",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+        "document_fingerprint": "7d9d97e80596ea63bcdbeb5ce900d3e77bcc260740474127fe82a9a7a754da1f",
+        "location_signature": "494258c571f726cfb89d49a9",
+        "field_id": "cafil.reference_month",
+        "label": "Mês de referência da consulta CAFIL",
+        "type": "dropdown",
+        "concept_id": "cafil.reference_month",
+        "dynamic_scope": "inline",
+        "section": "Consulta CAFIL",
+        "semantic_context": "Mês de referência da consulta CAFIL | Consulta CAFIL | Declaramos ainda que a pesquisa foi realizada na data de hoje, com referência ao mês de | de 2026, e o resultado está disponível no site: https://cge.pb.gov.br/site/imagens/gsc/cafil-pb.pdf, conforme documento",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "563d723484214e017d6a2839a89d4474",
+          "spans": [
+            {
+              "paragraph": 19,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 88,
+              "end": 93,
+              "original": "JULHO",
+              "left_context": "Declaramos ainda que a pesquisa foi realizada na data de hoje, com referência ao mês de ",
+              "right_context": " de 2026, e o resultado está disponível no site: https://cge.pb.gov.br/site/imagens/gsc/ca",
+              "paragraph_fingerprint": "f2e6e735b24130562d2e"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-31T14:48:19",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "6c5123e6adeb9a1172fbe880",
+        "field_id": "procurement.items",
+        "label": "Materiais / itens",
+        "type": "repeatable_list",
+        "concept_id": "procurement.items",
+        "dynamic_scope": "list",
+        "section": "",
+        "semantic_context": "Materiais / itens",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "list",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 8,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 0,
+              "end": 46,
+              "original": "• Cadernos;\n• Canetas hidrográficas;\n• Pilhas.",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "08ef00ca21d875062b7c"
+            }
+          ]
+        },
+        "list_style": "bullet",
+        "list_punctuation": "semicolon",
+        "minimum_items": 1,
+        "reviewed_at": "2026-08-28T09:22:23",
+        "review_count": 3
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "a94fc10029a97b069f006d36",
+        "field_id": "procurement.ata_number",
+        "label": "Número da Ata",
+        "type": "text",
+        "concept_id": "procurement.ata_number",
+        "dynamic_scope": "inline",
+        "section": "",
+        "semantic_context": "Número da Ata | vinculados, e visando atender à demanda de forma ágil e econômica, optou-se pela adesão à Ata de Registro de Preços nº | , cujo órgão gerenciador é a Secretaria de Estado da Administração – SEAD/PB, formalizada em conformidade com a Lei nº 1",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 10,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 295,
+              "end": 304,
+              "original": "0006/2026",
+              "left_context": " à demanda de forma ágil e econômica, optou-se pela adesão à Ata de Registro de Preços nº ",
+              "right_context": ", cujo órgão gerenciador é a Secretaria de Estado da Administração – SEAD/PB, formalizada ",
+              "paragraph_fingerprint": "998378f0dccdc243a081"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-28T09:22:23",
+        "review_count": 3
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "b76c56f37e8d7bc0e0d3090c",
+        "field_id": "procurement.managing_agency",
+        "label": "Órgão gerenciador",
+        "type": "text",
+        "concept_id": "procurement.managing_agency",
+        "dynamic_scope": "inline",
+        "section": "",
+        "semantic_context": "Órgão gerenciador | da de forma ágil e econômica, optou-se pela adesão à Ata de Registro de Preços nº 0006/2026, cujo órgão gerenciador é a | – SEAD/PB, formalizada em conformidade com a Lei nº 14.133/2021, o art. 22 do Decreto nº 11.462/2023, e a jurisprudênci",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 10,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 333,
+              "end": 370,
+              "original": "Secretaria de Estado da Administração",
+              "left_context": "optou-se pela adesão à Ata de Registro de Preços nº 0006/2026, cujo órgão gerenciador é a ",
+              "right_context": " – SEAD/PB, formalizada em conformidade com a Lei nº 14.133/2021, o art. 22 do Decreto nº ",
+              "paragraph_fingerprint": "998378f0dccdc243a081"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-28T09:22:23",
+        "review_count": 3
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "43b1c336107524cbc6e8c4a2",
+        "field_id": "organization.acronym",
+        "label": "Sigla do órgão",
+        "type": "text",
+        "concept_id": "organization.acronym",
+        "dynamic_scope": "inline",
+        "section": "",
+        "semantic_context": "Sigla do órgão | ela adesão à Ata de Registro de Preços nº 0006/2026, cujo órgão gerenciador é a Secretaria de Estado da Administração – | , formalizada em conformidade com a Lei nº 14.133/2021, o art. 22 do Decreto nº 11.462/2023, e a jurisprudência do Tribu",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 10,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 373,
+              "end": 380,
+              "original": "SEAD/PB",
+              "left_context": "e Preços nº 0006/2026, cujo órgão gerenciador é a Secretaria de Estado da Administração – ",
+              "right_context": ", formalizada em conformidade com a Lei nº 14.133/2021, o art. 22 do Decreto nº 11.462/202",
+              "paragraph_fingerprint": "998378f0dccdc243a081"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-28T09:22:23",
+        "review_count": 3
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "1e69da070fcf99133fb7ed01",
+        "field_id": "justification.celerity",
+        "label": "Celeridade do Processo",
+        "type": "multiline",
+        "concept_id": "justification.celerity",
+        "dynamic_scope": "paragraph",
+        "section": "",
+        "semantic_context": "Celeridade do Processo | Celeridade do Processo:",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 12,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 24,
+              "end": 227,
+              "original": "A adesão possibilita a contratação imediata do fornecedor registrado, reduzindo prazos e assegurando o pronto atendimento das demandas relacionadas ao fornecimento de materiais de expediente essenciais. ",
+              "left_context": "Celeridade do Processo:\n",
+              "right_context": "",
+              "paragraph_fingerprint": "82c196acb260f437fbdb"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-28T09:22:23",
+        "review_count": 3
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "a3a5a3d9cbbf404aabcc7294",
+        "field_id": "justification.economy",
+        "label": "Economicidade",
+        "type": "multiline",
+        "concept_id": "justification.economy",
+        "dynamic_scope": "paragraph",
+        "section": "",
+        "semantic_context": "Economicidade | Economicidade:",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 14,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 15,
+              "end": 259,
+              "original": "Os preços registrados na ARP nº 0006/2026 demonstram-se compatíveis ou inferiores aos praticados no mercado, garantindo condições economicamente vantajosas e evitando custos adicionais decorrentes da realização de um novo processo licitatório. ",
+              "left_context": "Economicidade:\n",
+              "right_context": "",
+              "paragraph_fingerprint": "d53860ab35d26a40fe00"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-28T09:22:23",
+        "review_count": 3
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "ce984e27aad112fb5e8a130f",
+        "field_id": "justification.efficiency",
+        "label": "Eficiência Administrativa",
+        "type": "multiline",
+        "concept_id": "justification.efficiency",
+        "dynamic_scope": "paragraph",
+        "section": "",
+        "semantic_context": "Eficiência Administrativa | Eficiência Administrativa:",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 16,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 27,
+              "end": 223,
+              "original": "A adesão evita a duplicidade de procedimentos e otimiza os recursos humanos e materiais da Secretaria, permitindo que as equipes concentrem esforços nas atividades finalísticas da gestão pública. ",
+              "left_context": "Eficiência Administrativa:\n",
+              "right_context": "",
+              "paragraph_fingerprint": "f2061b2f19d1584d564f"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-28T09:22:23",
+        "review_count": 3
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "00acf2b5b5e78b2132e58c57",
+        "field_id": "justification.legal_security",
+        "label": "Segurança Jurídica",
+        "type": "multiline",
+        "concept_id": "justification.legal_security",
+        "dynamic_scope": "paragraph",
+        "section": "",
+        "semantic_context": "Segurança Jurídica | Segurança Jurídica:",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 18,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 20,
+              "end": 236,
+              "original": "A ata foi formalizada mediante processo licitatório regular, observando os princípios da legalidade, impessoalidade, moralidade, publicidade e eficiência, assegurando confiabilidade técnica e jurídica à contratação. ",
+              "left_context": "Segurança Jurídica:\n",
+              "right_context": "",
+              "paragraph_fingerprint": "ebb81e2e2416a2f7ff59"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-28T09:22:23",
+        "review_count": 3
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "a58bb5a1f36f675a7e699a5a",
+        "field_id": "justification.continuity",
+        "label": "Atendimento Contínuo e Essencial",
+        "type": "multiline",
+        "concept_id": "justification.continuity",
+        "dynamic_scope": "paragraph",
+        "section": "",
+        "semantic_context": "Atendimento Contínuo e Essencial | Atendimento Contínuo e Essencial:",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 20,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 34,
+              "end": 286,
+              "original": "O fornecimento de cadernos, canetas, canetas hidrográficas e pilhas é indispensável para o adequado funcionamento das atividades administrativas e operacionais, garantindo organização, registro de informações e suporte às ações institucionais da SEDH. ",
+              "left_context": "Atendimento Contínuo e Essencial:\n",
+              "right_context": "",
+              "paragraph_fingerprint": "473ffe2dc74a272c4a48"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-28T09:22:23",
+        "review_count": 3
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "50dbf0c24167dccc229d290d",
+        "field_id": "justification.conclusion",
+        "label": "Conclusão da justificativa",
+        "type": "multiline",
+        "concept_id": "justification.conclusion",
+        "dynamic_scope": "paragraph",
+        "section": "",
+        "semantic_context": "Conclusão da justificativa",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 23,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 0,
+              "end": 425,
+              "original": "Diante do exposto, a adesão à Ata de Registro de Preços nº 0006/2026 – SEAD/PB configura-se como a solução mais eficiente, econômica e segura para garantir o fornecimento dos materiais de expediente necessários ao adequado funcionamento das atividades da SEDH, contribuindo para a qualidade dos serviços prestados e para a satisfação do público atendido, atendendo plenamente ao interesse público e à boa gestão dos recursos.",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "1e317027c0ad05b38dbb"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-28T09:22:23",
+        "review_count": 2
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "f8e50a627133f4e079624cf1",
+        "field_id": "person.name",
+        "label": "Nome do signatário",
+        "type": "text",
+        "concept_id": "person.name",
+        "dynamic_scope": "inline",
+        "section": "",
+        "semantic_context": "Nome do signatário",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 26,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 0,
+              "end": 29,
+              "original": "LUCILEIDE DA SILVA NASCIMENTO",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "9a76fc9854235d15f8ae"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-28T09:22:23",
+        "review_count": 2
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "37c071ba92a40de9dc74a427",
+        "field_id": "person.role",
+        "label": "Cargo / função",
+        "type": "text",
+        "concept_id": "person.role",
+        "dynamic_scope": "inline",
+        "section": "",
+        "semantic_context": "Cargo / função",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 27,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 0,
+              "end": 25,
+              "original": "Assistente Administrativa",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "b279478e53dff763b090"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-28T09:22:23",
+        "review_count": 2
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "a0e75da76f8e7b851105c5a2",
+        "field_id": "person.registration",
+        "label": "Matrícula",
+        "type": "text",
+        "concept_id": "person.registration",
+        "dynamic_scope": "inline",
+        "section": "",
+        "semantic_context": "Matrícula | Mat.",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 28,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 5,
+              "end": 14,
+              "original": "917.108-8",
+              "left_context": "Mat. ",
+              "right_context": "",
+              "paragraph_fingerprint": "3a478ea195c22a6ac0b0"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-28T09:22:23",
+        "review_count": 2
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "98a1d1d116366cb645b326a5",
+        "field_id": "auto.nome_completo",
+        "label": "Nome completo",
+        "type": "text",
+        "concept_id": "person.name",
+        "dynamic_scope": "",
+        "section": "1. Identificação do solicitante",
+        "semantic_context": "Nome completo | 1. Identificação do solicitante",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 8,
+              "story": "body",
+              "table_index": 1,
+              "row_index": 1,
+              "cell_index": 1,
+              "start": 0,
+              "end": 24,
+              "original": "XXXXXXXXXXXXXXXXXXXXXXXX",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "a649dbb05965890c0ba7"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "7e28b21f33bd60114a41674b",
+        "field_id": "auto.matricula",
+        "label": "Matrícula",
+        "type": "text",
+        "concept_id": "person.registration",
+        "dynamic_scope": "",
+        "section": "1. Identificação do solicitante",
+        "semantic_context": "Matrícula | 1. Identificação do solicitante",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 10,
+              "story": "body",
+              "table_index": 1,
+              "row_index": 1,
+              "cell_index": 3,
+              "start": 0,
+              "end": 10,
+              "original": "__________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "6d5c178ed7f514499254"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "af081305ecb47bb310024687",
+        "field_id": "auto.e_mail",
+        "label": "E-mail",
+        "type": "email",
+        "concept_id": "contact.email",
+        "dynamic_scope": "",
+        "section": "1. Identificação do solicitante",
+        "semantic_context": "E-mail | 1. Identificação do solicitante",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 12,
+              "story": "body",
+              "table_index": 1,
+              "row_index": 2,
+              "cell_index": 1,
+              "start": 0,
+              "end": 21,
+              "original": "servidor@orgao.gov.br",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "f099d2ea666d8a17ae5d"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "b6bd0e2e6401dec7445ca270",
+        "field_id": "auto.telefone",
+        "label": "Telefone",
+        "type": "phone",
+        "concept_id": "contact.phone",
+        "dynamic_scope": "",
+        "section": "1. Identificação do solicitante",
+        "semantic_context": "Telefone | 1. Identificação do solicitante",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 14,
+              "story": "body",
+              "table_index": 1,
+              "row_index": 2,
+              "cell_index": 3,
+              "start": 0,
+              "end": 15,
+              "original": "(83) 99999-9999",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "7e01c116aaa31ab727ec"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "87b0091ea2b650ed1a3d5aee",
+        "field_id": "auto.cpf",
+        "label": "CPF",
+        "type": "cpf",
+        "concept_id": "process.number",
+        "dynamic_scope": "",
+        "section": "1. Identificação do solicitante",
+        "semantic_context": "CPF | 1. Identificação do solicitante",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 16,
+              "story": "body",
+              "table_index": 1,
+              "row_index": 3,
+              "cell_index": 1,
+              "start": 0,
+              "end": 14,
+              "original": "000.000.000-00",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "a68ad65994d4c6ec32db"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "6e62611b4a55e1bb6dbbd9d2",
+        "field_id": "auto.data_da_solicitacao",
+        "label": "Data da solicitação",
+        "type": "date",
+        "concept_id": "procurement.ata_number",
+        "dynamic_scope": "",
+        "section": "1. Identificação do solicitante",
+        "semantic_context": "Data da solicitação | 1. Identificação do solicitante",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 18,
+              "story": "body",
+              "table_index": 1,
+              "row_index": 3,
+              "cell_index": 3,
+              "start": 0,
+              "end": 10,
+              "original": "__/__/____",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "60b7e506b6d44126e84a"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "fc5279d2dc4aabd31d8e9c35",
+        "field_id": "auto.pais",
+        "label": "País",
+        "type": "text",
+        "concept_id": "process.number",
+        "dynamic_scope": "",
+        "section": "1. Identificação do solicitante",
+        "semantic_context": "País | 1. Identificação do solicitante",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 20,
+              "story": "body",
+              "table_index": 1,
+              "row_index": 4,
+              "cell_index": 1,
+              "start": 0,
+              "end": 6,
+              "original": "Brasil",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "b08b0a5c8892079ef208"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "f5ee324af0b6c21de6f10ef9",
+        "field_id": "auto.endereco_completo",
+        "label": "Endereço completo",
+        "type": "text",
+        "concept_id": "process.number",
+        "dynamic_scope": "",
+        "section": "1. Identificação do solicitante",
+        "semantic_context": "Endereço completo | 1. Identificação do solicitante",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 24,
+              "story": "body",
+              "table_index": 1,
+              "row_index": 5,
+              "cell_index": 1,
+              "start": 0,
+              "end": 40,
+              "original": "________________________________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "12abb1b37e110bac6573"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "b4448355c9c77b002164104d",
+        "field_id": "auto.titulo_da_demanda",
+        "label": "Título da demanda",
+        "type": "text",
+        "concept_id": "justification.general",
+        "dynamic_scope": "",
+        "section": "2. Dados da solicitação",
+        "semantic_context": "Título da demanda | 2. Dados da solicitação",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 28,
+              "story": "body",
+              "table_index": 3,
+              "row_index": 0,
+              "cell_index": 1,
+              "start": 0,
+              "end": 40,
+              "original": "________________________________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "12abb1b37e110bac6573"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "ef08d0f4aff17ab1e96fd17d",
+        "field_id": "auto.data_inicial",
+        "label": "Data inicial",
+        "type": "date",
+        "concept_id": "procurement.ata_number",
+        "dynamic_scope": "",
+        "section": "2. Dados da solicitação",
+        "semantic_context": "Data inicial | 2. Dados da solicitação",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 30,
+              "story": "body",
+              "table_index": 3,
+              "row_index": 1,
+              "cell_index": 1,
+              "start": 0,
+              "end": 10,
+              "original": "__/__/____",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "60b7e506b6d44126e84a"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "a42c314101358f8bd043766e",
+        "field_id": "auto.data_final",
+        "label": "Data final",
+        "type": "date",
+        "concept_id": "procurement.ata_number",
+        "dynamic_scope": "",
+        "section": "2. Dados da solicitação",
+        "semantic_context": "Data final | 2. Dados da solicitação",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 32,
+              "story": "body",
+              "table_index": 3,
+              "row_index": 1,
+              "cell_index": 3,
+              "start": 0,
+              "end": 10,
+              "original": "__/__/____",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "60b7e506b6d44126e84a"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "1100643d4833384eb789d87c",
+        "field_id": "auto.prazo_desejado",
+        "label": "Prazo desejado",
+        "type": "date",
+        "concept_id": "justification.general",
+        "dynamic_scope": "",
+        "section": "2. Dados da solicitação",
+        "semantic_context": "Prazo desejado | 2. Dados da solicitação",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 40,
+              "story": "body",
+              "table_index": 3,
+              "row_index": 3,
+              "cell_index": 3,
+              "start": 0,
+              "end": 10,
+              "original": "__/__/____",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "60b7e506b6d44126e84a"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "92ae640051726e7e0b6a20b9",
+        "field_id": "auto.forma_de_execucao",
+        "label": "Forma de execução",
+        "type": "checkbox_group",
+        "concept_id": "procurement.ata_number",
+        "dynamic_scope": "",
+        "section": "2. Dados da solicitação",
+        "semantic_context": "Forma de execução | 2. Dados da solicitação",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 42,
+              "story": "body",
+              "table_index": 3,
+              "row_index": 4,
+              "cell_index": 1,
+              "start": 0,
+              "end": 35,
+              "original": "☐ Presencial   ☐ Remota   ☐ Híbrida",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "f5606e4e5460c5313845"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "70c1e2b9042fa06e30a872f7",
+        "field_id": "auto.requer_acesso_externo",
+        "label": "Requer acesso externo",
+        "type": "checkbox_group",
+        "concept_id": "procurement.ata_number",
+        "dynamic_scope": "",
+        "section": "2. Dados da solicitação",
+        "semantic_context": "Requer acesso externo | 2. Dados da solicitação",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 44,
+              "story": "body",
+              "table_index": 3,
+              "row_index": 4,
+              "cell_index": 3,
+              "start": 0,
+              "end": 13,
+              "original": "☐ Sim   ☐ Não",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "eed1af702899f9147029"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "63629437df1fbf25eb2f534a",
+        "field_id": "auto.informar_de_forma_objetiva_a_atividade_servico_ou_resultado_necessario",
+        "label": "Informar de forma objetiva a atividade, serviço ou resultado necessário.",
+        "type": "text",
+        "concept_id": "process.number",
+        "dynamic_scope": "",
+        "section": "2. Dados da solicitação",
+        "semantic_context": "Informar de forma objetiva a atividade, serviço ou resultado necessário. | 2. Dados da solicitação",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 47,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 0,
+              "end": 92,
+              "original": "____________________________________________________________________________________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "82ea74097eb9571baaf1"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "2a24d5152457e59a0c2fee02",
+        "field_id": "auto.campo_49",
+        "label": "Campo 49",
+        "type": "text",
+        "concept_id": "procurement.ata_number",
+        "dynamic_scope": "",
+        "section": "2. Dados da solicitação",
+        "semantic_context": "Campo 49 | 2. Dados da solicitação",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 48,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 0,
+              "end": 92,
+              "original": "____________________________________________________________________________________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "82ea74097eb9571baaf1"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "3f7c660f3e28c3cb924d6577",
+        "field_id": "auto.itens_servicos_solicitados",
+        "label": "Itens / serviços solicitados",
+        "type": "repeatable_table",
+        "concept_id": "procurement.items",
+        "dynamic_scope": "",
+        "section": "3. Itens / serviços solicitados",
+        "semantic_context": "Itens / serviços solicitados | 3. Itens / serviços solicitados",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": []
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "3c7a54f698d85623a3778c49",
+        "field_id": "auto.documentacao_disponivel",
+        "label": "Documentação disponível",
+        "type": "checkbox_group",
+        "concept_id": "contract.number",
+        "dynamic_scope": "",
+        "section": "4. Avaliação técnica",
+        "semantic_context": "Documentação disponível | 4. Avaliação técnica",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 87,
+              "story": "body",
+              "table_index": 7,
+              "row_index": 1,
+              "cell_index": 1,
+              "start": 0,
+              "end": 47,
+              "original": "☐ Conforme   ☐ Parcial   ☐ Não conforme   ☐ N/A",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "c95a778e56901680938a"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "7221f9f97606b8af79488280",
+        "field_id": "auto.documentacao_disponivel_observacao_curta",
+        "label": "Documentação disponível — Observação curta",
+        "type": "text",
+        "concept_id": "process.number",
+        "dynamic_scope": "",
+        "section": "4. Avaliação técnica",
+        "semantic_context": "Documentação disponível — Observação curta | 4. Avaliação técnica",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 88,
+              "story": "body",
+              "table_index": 7,
+              "row_index": 1,
+              "cell_index": 2,
+              "start": 0,
+              "end": 16,
+              "original": "________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "4cf00d828a49141d245d"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "2f4c547da9c1c920638fce0d",
+        "field_id": "auto.compatibilidade_tecnica",
+        "label": "Compatibilidade técnica",
+        "type": "checkbox_group",
+        "concept_id": "contract.number",
+        "dynamic_scope": "",
+        "section": "4. Avaliação técnica",
+        "semantic_context": "Compatibilidade técnica | 4. Avaliação técnica",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 90,
+              "story": "body",
+              "table_index": 7,
+              "row_index": 2,
+              "cell_index": 1,
+              "start": 0,
+              "end": 47,
+              "original": "☐ Conforme   ☐ Parcial   ☐ Não conforme   ☐ N/A",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "c95a778e56901680938a"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "afc224fd7d6be8f309cb61e5",
+        "field_id": "auto.compatibilidade_tecnica_observacao_curta",
+        "label": "Compatibilidade técnica — Observação curta",
+        "type": "text",
+        "concept_id": "person.name",
+        "dynamic_scope": "",
+        "section": "4. Avaliação técnica",
+        "semantic_context": "Compatibilidade técnica — Observação curta | 4. Avaliação técnica",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 91,
+              "story": "body",
+              "table_index": 7,
+              "row_index": 2,
+              "cell_index": 2,
+              "start": 0,
+              "end": 16,
+              "original": "________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "4cf00d828a49141d245d"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "9f777bada3349566683d9004",
+        "field_id": "auto.acesso_ao_ambiente",
+        "label": "Acesso ao ambiente",
+        "type": "checkbox_group",
+        "concept_id": "contract.number",
+        "dynamic_scope": "",
+        "section": "4. Avaliação técnica",
+        "semantic_context": "Acesso ao ambiente | 4. Avaliação técnica",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 93,
+              "story": "body",
+              "table_index": 7,
+              "row_index": 3,
+              "cell_index": 1,
+              "start": 0,
+              "end": 47,
+              "original": "☐ Conforme   ☐ Parcial   ☐ Não conforme   ☐ N/A",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "c95a778e56901680938a"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "5db0c8c766cf7cb4c3a83be2",
+        "field_id": "auto.acesso_ao_ambiente_observacao_curta",
+        "label": "Acesso ao ambiente — Observação curta",
+        "type": "text",
+        "concept_id": "process.number",
+        "dynamic_scope": "",
+        "section": "4. Avaliação técnica",
+        "semantic_context": "Acesso ao ambiente — Observação curta | 4. Avaliação técnica",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 94,
+              "story": "body",
+              "table_index": 7,
+              "row_index": 3,
+              "cell_index": 2,
+              "start": 0,
+              "end": 16,
+              "original": "________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "4cf00d828a49141d245d"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "7de57d6a77192d09fd5b2b1d",
+        "field_id": "auto.risco_operacional",
+        "label": "Risco operacional",
+        "type": "checkbox_group",
+        "concept_id": "contract.number",
+        "dynamic_scope": "",
+        "section": "4. Avaliação técnica",
+        "semantic_context": "Risco operacional | 4. Avaliação técnica",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 96,
+              "story": "body",
+              "table_index": 7,
+              "row_index": 4,
+              "cell_index": 1,
+              "start": 0,
+              "end": 47,
+              "original": "☐ Conforme   ☐ Parcial   ☐ Não conforme   ☐ N/A",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "c95a778e56901680938a"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "eba45eb6e994524031818eff",
+        "field_id": "auto.risco_operacional_observacao_curta",
+        "label": "Risco operacional — Observação curta",
+        "type": "text",
+        "concept_id": "person.name",
+        "dynamic_scope": "",
+        "section": "4. Avaliação técnica",
+        "semantic_context": "Risco operacional — Observação curta | 4. Avaliação técnica",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 97,
+              "story": "body",
+              "table_index": 7,
+              "row_index": 4,
+              "cell_index": 2,
+              "start": 0,
+              "end": 16,
+              "original": "________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "4cf00d828a49141d245d"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "9dc55f6bf7c3494db8427200",
+        "field_id": "auto.atendimento_integral_em_uma_unica_etapa_com_entrega_e_validacao_completa",
+        "label": "Atendimento integral em uma única etapa, com entrega e validação completas.",
+        "type": "checkbox",
+        "concept_id": "justification.continuity",
+        "dynamic_scope": "",
+        "section": "5. Alternativas e justificativa",
+        "semantic_context": "Atendimento integral em uma única etapa, com entrega e validação completas. | 5. Alternativas e justificativa | Atendimento integral em uma única etapa, com entrega e validação completas.",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 101,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 0,
+              "end": 1,
+              "original": "☐",
+              "left_context": "",
+              "right_context": " Atendimento integral em uma única etapa, com entrega e validação completas.",
+              "paragraph_fingerprint": "6986cbfcc496c43639b2"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "3c97606da09b2abdaa6ab38e",
+        "field_id": "auto.atendimento_parcelado_por_etapas_conforme_cronograma_aprovado_e_disponib",
+        "label": "Atendimento parcelado por etapas, conforme cronograma aprovado e disponibilidade operacional.",
+        "type": "checkbox",
+        "concept_id": "justification.conclusion",
+        "dynamic_scope": "",
+        "section": "5. Alternativas e justificativa",
+        "semantic_context": "Atendimento parcelado por etapas, conforme cronograma aprovado e disponibilidade operacional. | 5. Alternativas e justificativa | Atendimento parcelado por etapas, conforme cronograma aprovado e disponibilidade operacional.",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 103,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 0,
+              "end": 1,
+              "original": "☐",
+              "left_context": "",
+              "right_context": " Atendimento parcelado por etapas, conforme cronograma aprovado e disponibilidade operacio",
+              "paragraph_fingerprint": "53f33bc63f112ca1edb8"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "84645553bbf11109879abeba",
+        "field_id": "auto.justificativa_da_escolha",
+        "label": "Justificativa da escolha",
+        "type": "multiline",
+        "concept_id": "justification.general",
+        "dynamic_scope": "",
+        "section": "5. Alternativas e justificativa",
+        "semantic_context": "Justificativa da escolha | 5. Alternativas e justificativa",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 105,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 0,
+              "end": 92,
+              "original": "____________________________________________________________________________________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "82ea74097eb9571baaf1"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "50e4a9e2e86dea254dbc1fab",
+        "field_id": "auto.campo_107",
+        "label": "Campo 107",
+        "type": "text",
+        "concept_id": "justification.conclusion",
+        "dynamic_scope": "",
+        "section": "5. Alternativas e justificativa",
+        "semantic_context": "Campo 107 | 5. Alternativas e justificativa",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 106,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 0,
+              "end": 92,
+              "original": "____________________________________________________________________________________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "82ea74097eb9571baaf1"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "0c77e8fa5d65ea743ad4c28b",
+        "field_id": "auto.ha_anexos",
+        "label": "Há anexos?",
+        "type": "checkbox_group",
+        "concept_id": "procurement.items",
+        "dynamic_scope": "",
+        "section": "6. Materiais, anexos e condições",
+        "semantic_context": "Há anexos? | 6. Materiais, anexos e condições",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 110,
+              "story": "body",
+              "table_index": 10,
+              "row_index": 0,
+              "cell_index": 1,
+              "start": 0,
+              "end": 13,
+              "original": "☐ Sim   ☐ Não",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "eed1af702899f9147029"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "cd3ea8f4aafa30f73ce3941e",
+        "field_id": "auto.quantidade_de_anexos",
+        "label": "Quantidade de anexos",
+        "type": "integer",
+        "concept_id": "procurement.items",
+        "dynamic_scope": "",
+        "section": "6. Materiais, anexos e condições",
+        "semantic_context": "Quantidade de anexos | 6. Materiais, anexos e condições",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 112,
+              "story": "body",
+              "table_index": 10,
+              "row_index": 0,
+              "cell_index": 3,
+              "start": 0,
+              "end": 4,
+              "original": "____",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "c0a694d0d434fedd6599"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "d5fef7f840d248e4a6974810",
+        "field_id": "auto.material_disponivel_em_estoque",
+        "label": "Material disponível em estoque?",
+        "type": "checkbox_group",
+        "concept_id": "procurement.items",
+        "dynamic_scope": "",
+        "section": "6. Materiais, anexos e condições",
+        "semantic_context": "Material disponível em estoque? | 6. Materiais, anexos e condições",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 114,
+              "story": "body",
+              "table_index": 10,
+              "row_index": 1,
+              "cell_index": 1,
+              "start": 0,
+              "end": 13,
+              "original": "☐ Sim   ☐ Não",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "eed1af702899f9147029"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "27bb851a6aaa34f1e7e0421f",
+        "field_id": "auto.consulta_realizada_em",
+        "label": "Consulta realizada em",
+        "type": "date",
+        "concept_id": "procurement.items",
+        "dynamic_scope": "",
+        "section": "6. Materiais, anexos e condições",
+        "semantic_context": "Consulta realizada em | 6. Materiais, anexos e condições",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 116,
+              "story": "body",
+              "table_index": 10,
+              "row_index": 1,
+              "cell_index": 3,
+              "start": 0,
+              "end": 10,
+              "original": "__/__/____",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "60b7e506b6d44126e84a"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "0aecc39bf50c403da272bd35",
+        "field_id": "auto.responsavel_pela_analise",
+        "label": "Responsável pela análise",
+        "type": "text",
+        "concept_id": "procurement.items",
+        "dynamic_scope": "",
+        "section": "6. Materiais, anexos e condições",
+        "semantic_context": "Responsável pela análise | 6. Materiais, anexos e condições",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 120,
+              "story": "body",
+              "table_index": 10,
+              "row_index": 2,
+              "cell_index": 3,
+              "start": 0,
+              "end": 16,
+              "original": "________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "4cf00d828a49141d245d"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "fa55fb4662977d487758e0ad",
+        "field_id": "auto.observacao_complementar",
+        "label": "Observação complementar",
+        "type": "multiline",
+        "concept_id": "procurement.items",
+        "dynamic_scope": "",
+        "section": "6. Materiais, anexos e condições",
+        "semantic_context": "Observação complementar | 6. Materiais, anexos e condições",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 122,
+              "story": "body",
+              "table_index": 10,
+              "row_index": 3,
+              "cell_index": 1,
+              "start": 0,
+              "end": 72,
+              "original": "________________________________________________________________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "17ff933d99027b5ab2b1"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "10e56fc7a048646dccf1e447",
+        "field_id": "auto.declaro_que_as_informacoes_registradas_neste_formulario_correspondem_a_n",
+        "label": "Declaro que as informações registradas neste formulário correspondem à necessidade apresentada — Li e concordo",
+        "type": "checkbox",
+        "concept_id": "justification.continuity",
+        "dynamic_scope": "",
+        "section": "7. Ciência e aprovação",
+        "semantic_context": "Declaro que as informações registradas neste formulário correspondem à necessidade apresentada — Li e concordo | 7. Ciência e aprovação | Declaro que as informações registradas neste formulário correspondem à necessidade apresentada. | Li e concordo",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 125,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 98,
+              "end": 99,
+              "original": "☐",
+              "left_context": "que as informações registradas neste formulário correspondem à necessidade apresentada.   ",
+              "right_context": " Li e concordo",
+              "paragraph_fingerprint": "e50420e994c4a8daede4"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "4c1a04ad5ab7ec409772d0e9",
+        "field_id": "auto.responsavel_pela_autorizacao",
+        "label": "Responsável pela autorização",
+        "type": "text",
+        "concept_id": "person.name",
+        "dynamic_scope": "",
+        "section": "7. Ciência e aprovação",
+        "semantic_context": "Responsável pela autorização | 7. Ciência e aprovação",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 127,
+              "story": "body",
+              "table_index": 12,
+              "row_index": 0,
+              "cell_index": 1,
+              "start": 0,
+              "end": 24,
+              "original": "________________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "0ff65c15e02c69dbe935"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "791a948e6107b4c96e092e62",
+        "field_id": "auto.data",
+        "label": "Data",
+        "type": "date",
+        "concept_id": "procurement.ata_number",
+        "dynamic_scope": "",
+        "section": "7. Ciência e aprovação",
+        "semantic_context": "Data | 7. Ciência e aprovação",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 129,
+              "story": "body",
+              "table_index": 12,
+              "row_index": 0,
+              "cell_index": 3,
+              "start": 0,
+              "end": 10,
+              "original": "__/__/____",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "60b7e506b6d44126e84a"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+        "document_fingerprint": "41f248266f40bc834397d6d270622ecfaa08c1e88160403aa5d93051ec8a3c5f",
+        "location_signature": "44cd48b5f2ba3b4541740cd1",
+        "field_id": "auto.motivo_da_decisao",
+        "label": "Motivo da decisão",
+        "type": "text",
+        "concept_id": "procurement.ata_number",
+        "dynamic_scope": "",
+        "section": "7. Ciência e aprovação",
+        "semantic_context": "Motivo da decisão | 7. Ciência e aprovação",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "b2bd2650e02ce1fd94abef9505dcae84",
+          "spans": [
+            {
+              "paragraph": 133,
+              "story": "body",
+              "table_index": 12,
+              "row_index": 1,
+              "cell_index": 3,
+              "start": 0,
+              "end": 24,
+              "original": "________________________",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "0ff65c15e02c69dbe935"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:40:27",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+        "document_fingerprint": "19323dfa0a10de84c7c844dfcdb65f08e30638bca4929c2dc1fbeef0f8c80bb0",
+        "location_signature": "8a95608fb6ea53e7e8893d9e",
+        "field_id": "auto.full_name",
+        "label": "Full name",
+        "type": "text",
+        "concept_id": "justification.general",
+        "dynamic_scope": "",
+        "section": "",
+        "semantic_context": "Full name",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+          "spans": [
+            {
+              "paragraph": 4,
+              "story": "body",
+              "table_index": 0,
+              "row_index": 0,
+              "cell_index": 1,
+              "start": 0,
+              "end": 0,
+              "original": "",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "e3b0c44298fc1c149afb"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:39:41",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+        "document_fingerprint": "19323dfa0a10de84c7c844dfcdb65f08e30638bca4929c2dc1fbeef0f8c80bb0",
+        "location_signature": "99d7af390bf080a49555c53f",
+        "field_id": "auto.email",
+        "label": "Email",
+        "type": "email",
+        "concept_id": "contact.email",
+        "dynamic_scope": "",
+        "section": "",
+        "semantic_context": "Email",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+          "spans": [
+            {
+              "paragraph": 6,
+              "story": "body",
+              "table_index": 0,
+              "row_index": 1,
+              "cell_index": 1,
+              "start": 0,
+              "end": 0,
+              "original": "",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "e3b0c44298fc1c149afb"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:39:41",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+        "document_fingerprint": "19323dfa0a10de84c7c844dfcdb65f08e30638bca4929c2dc1fbeef0f8c80bb0",
+        "location_signature": "57827fd67d1ba9a9c3b92618",
+        "field_id": "auto.date",
+        "label": "Date",
+        "type": "date",
+        "concept_id": "contact.phone",
+        "dynamic_scope": "",
+        "section": "",
+        "semantic_context": "Date",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+          "spans": [
+            {
+              "paragraph": 8,
+              "story": "body",
+              "table_index": 0,
+              "row_index": 2,
+              "cell_index": 1,
+              "start": 0,
+              "end": 0,
+              "original": "",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "e3b0c44298fc1c149afb"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:39:41",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+        "document_fingerprint": "19323dfa0a10de84c7c844dfcdb65f08e30638bca4929c2dc1fbeef0f8c80bb0",
+        "location_signature": "401cda657a03750c5939221d",
+        "field_id": "auto.priority",
+        "label": "Priority",
+        "type": "text",
+        "concept_id": "contact.phone",
+        "dynamic_scope": "",
+        "section": "",
+        "semantic_context": "Priority",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+          "spans": [
+            {
+              "paragraph": 10,
+              "story": "body",
+              "table_index": 0,
+              "row_index": 3,
+              "cell_index": 1,
+              "start": 0,
+              "end": 0,
+              "original": "",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "e3b0c44298fc1c149afb"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:39:41",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+        "document_fingerprint": "19323dfa0a10de84c7c844dfcdb65f08e30638bca4929c2dc1fbeef0f8c80bb0",
+        "location_signature": "ebfc436856437f0c6c5da186",
+        "field_id": "auto.department",
+        "label": "Department",
+        "type": "text",
+        "concept_id": "contact.phone",
+        "dynamic_scope": "",
+        "section": "",
+        "semantic_context": "Department",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+          "spans": [
+            {
+              "paragraph": 12,
+              "story": "body",
+              "table_index": 0,
+              "row_index": 4,
+              "cell_index": 1,
+              "start": 0,
+              "end": 0,
+              "original": "",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "e3b0c44298fc1c149afb"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:39:41",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+        "document_fingerprint": "19323dfa0a10de84c7c844dfcdb65f08e30638bca4929c2dc1fbeef0f8c80bb0",
+        "location_signature": "c290ac560fa6fa05fcda0aee",
+        "field_id": "auto.approved",
+        "label": "Approved",
+        "type": "checkbox",
+        "concept_id": "contact.phone",
+        "dynamic_scope": "",
+        "section": "",
+        "semantic_context": "Approved",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+          "spans": [
+            {
+              "paragraph": 14,
+              "story": "body",
+              "table_index": 0,
+              "row_index": 5,
+              "cell_index": 1,
+              "start": 0,
+              "end": 0,
+              "original": "",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "e3b0c44298fc1c149afb"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:39:41",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+        "document_fingerprint": "19323dfa0a10de84c7c844dfcdb65f08e30638bca4929c2dc1fbeef0f8c80bb0",
+        "location_signature": "e8b093edfe5c4c47e8ed2438",
+        "field_id": "auto.notes",
+        "label": "Notes",
+        "type": "multiline",
+        "concept_id": "justification.economy",
+        "dynamic_scope": "",
+        "section": "",
+        "semantic_context": "Notes",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+          "spans": [
+            {
+              "paragraph": 16,
+              "story": "body",
+              "table_index": 0,
+              "row_index": 6,
+              "cell_index": 1,
+              "start": 0,
+              "end": 0,
+              "original": "",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "e3b0c44298fc1c149afb"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:39:41",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+        "document_fingerprint": "19323dfa0a10de84c7c844dfcdb65f08e30638bca4929c2dc1fbeef0f8c80bb0",
+        "location_signature": "148f1075f179de79ab8e7fa7",
+        "field_id": "auto.text_samples_plain_sentence_12345_symbols",
+        "label": "Text samples: plain sentence; 12345; symbols: @ # $ % &",
+        "type": "email",
+        "concept_id": "contact.email",
+        "dynamic_scope": "",
+        "section": "",
+        "semantic_context": "Text samples: plain sentence; 12345; symbols: @ # $ % & | Text samples: plain sentence; 12345; symbols: @ # $ % &; | ; URL: https://example.com",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+          "spans": [
+            {
+              "paragraph": 18,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 57,
+              "end": 74,
+              "original": "email@example.com",
+              "left_context": "Text samples: plain sentence; 12345; symbols: @ # $ % &; ",
+              "right_context": "; URL: https://example.com",
+              "paragraph_fingerprint": "41c4e3925be4ba4ce1fe"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:39:41",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+        "document_fingerprint": "19323dfa0a10de84c7c844dfcdb65f08e30638bca4929c2dc1fbeef0f8c80bb0",
+        "location_signature": "4545f4cc7f3f2c7ddc1d8c5a",
+        "field_id": "auto.signature",
+        "label": "Signature",
+        "type": "text",
+        "concept_id": "person.role",
+        "dynamic_scope": "",
+        "section": "",
+        "semantic_context": "Signature | Checklist/bullets: • item one  • item two  • item three  |  Signature:",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "65c0dc16a5ca9df7eda6b8169417999b",
+          "spans": [
+            {
+              "paragraph": 19,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 71,
+              "end": 91,
+              "original": "____________________",
+              "left_context": "Checklist/bullets: • item one  • item two  • item three  |  Signature: ",
+              "right_context": "",
+              "paragraph_fingerprint": "9559357f8bf5f2d92800"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T15:39:41",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "c9b18bba6174bc51dcd2060feea7b8da",
+        "document_fingerprint": "48c88c18dd1e51b08becd6bb9e2431f6d82f652c336a7ccfd36644769e7cbbfa",
+        "location_signature": "a88bde4c674a57dfbed021a6",
+        "field_id": "process.number",
+        "label": "Número do processo",
+        "type": "text",
+        "concept_id": "process.number",
+        "dynamic_scope": "inline",
+        "section": "",
+        "semantic_context": "Número do processo | Processo Pbdoc :",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "c9b18bba6174bc51dcd2060feea7b8da",
+          "spans": [
+            {
+              "paragraph": 8,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 17,
+              "end": 35,
+              "original": "SDH-PRC-2026/04715",
+              "left_context": "Processo Pbdoc : ",
+              "right_context": "",
+              "paragraph_fingerprint": "52473ef76503b916d9e3"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T13:31:27",
+        "review_count": 2
+      },
+      {
+        "family_fingerprint": "c9b18bba6174bc51dcd2060feea7b8da",
+        "document_fingerprint": "48c88c18dd1e51b08becd6bb9e2431f6d82f652c336a7ccfd36644769e7cbbfa",
+        "location_signature": "d9930c03cdde2600cc907f27",
+        "field_id": "procurement.ata_number",
+        "label": "Número da Ata",
+        "type": "text",
+        "concept_id": "procurement.ata_number",
+        "dynamic_scope": "inline",
+        "section": "",
+        "semantic_context": "Número da Ata | Objeto: Adesão à Ata nº | - Serviço de fornecimento de alimentação para eventos - Drop's Buffet, Eventos e Escola Gastronômica",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "c9b18bba6174bc51dcd2060feea7b8da",
+          "spans": [
+            {
+              "paragraph": 9,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 24,
+              "end": 33,
+              "original": "0128/2025",
+              "left_context": "Objeto: Adesão à Ata nº ",
+              "right_context": " - Serviço de fornecimento de alimentação para eventos - Drop's Buffet, Eventos e Escola G",
+              "paragraph_fingerprint": "e889ed3a3c87c51dfe1b"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T13:31:27",
+        "review_count": 2
+      },
+      {
+        "family_fingerprint": "c9b18bba6174bc51dcd2060feea7b8da",
+        "document_fingerprint": "48c88c18dd1e51b08becd6bb9e2431f6d82f652c336a7ccfd36644769e7cbbfa",
+        "location_signature": "5c47ea12883096656dcc9c80",
+        "field_id": "auto.ocorrencia_verificada",
+        "label": "Ocorrência verificada",
+        "type": "checkbox_group",
+        "concept_id": "procurement.object",
+        "dynamic_scope": "",
+        "section": "",
+        "semantic_context": "Ocorrência verificada",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "c9b18bba6174bc51dcd2060feea7b8da",
+          "spans": []
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T13:31:27",
+        "review_count": 2
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "953cb8a1158864a9044aab30",
+        "field_id": "justification.conclusion",
+        "label": "Conclusão da justificativa",
+        "type": "multiline",
+        "concept_id": "justification.conclusion",
+        "dynamic_scope": "paragraph",
+        "section": "",
+        "semantic_context": "Conclusão da justificativa",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "paragraph",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 23,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 0,
+              "end": 425,
+              "original": "Diante do exposto, a adesão à Ata de Registro de Preços nº 0006/2026 – SEAD/PB configura-se como a solução mais eficiente, econômica e segura para garantir o fornecimento dos materiais de expediente necessários ao adequado funcionamento das atividades da SEDH, contribuindo para a qualidade dos serviços prestados e para a satisfação do público atendido, atendendo plenamente ao interesse público e à boa gestão dos recursos.",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "1e317027c0ad05b38dbb"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T13:30:52",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "a475aabeb27b39d5ed3079af",
+        "field_id": "person.name",
+        "label": "Nome do signatário",
+        "type": "text",
+        "concept_id": "person.name",
+        "dynamic_scope": "inline",
+        "section": "",
+        "semantic_context": "Nome do signatário",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 26,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 0,
+              "end": 29,
+              "original": "LUCILEIDE DA SILVA NASCIMENTO",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "9a76fc9854235d15f8ae"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T13:30:52",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "06804d92dc753bf776b7b1e7",
+        "field_id": "person.role",
+        "label": "Cargo / função",
+        "type": "text",
+        "concept_id": "person.role",
+        "dynamic_scope": "inline",
+        "section": "",
+        "semantic_context": "Cargo / função",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 27,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 0,
+              "end": 25,
+              "original": "Assistente Administrativa",
+              "left_context": "",
+              "right_context": "",
+              "paragraph_fingerprint": "b279478e53dff763b090"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T13:30:52",
+        "review_count": 1
+      },
+      {
+        "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+        "document_fingerprint": "5cac705a10e3f4fd2cff861dabfe6c22c3ac785073863ce14a16cfdbcd4f521e",
+        "location_signature": "773be70740945375bce3faa5",
+        "field_id": "person.registration",
+        "label": "Matrícula",
+        "type": "text",
+        "concept_id": "person.registration",
+        "dynamic_scope": "inline",
+        "section": "",
+        "semantic_context": "Matrícula | Mat.",
+        "accepted": true,
+        "source_anchor": {
+          "version": 1,
+          "scope": "inline",
+          "family_fingerprint": "a0b339de5bbd40ade3e797a8c05b83d4",
+          "spans": [
+            {
+              "paragraph": 28,
+              "story": "body",
+              "table_index": null,
+              "row_index": null,
+              "cell_index": null,
+              "start": 5,
+              "end": 14,
+              "original": "917.108-8",
+              "left_context": "Mat. ",
+              "right_context": "",
+              "paragraph_fingerprint": "3a478ea195c22a6ac0b0"
+            }
+          ]
+        },
+        "list_style": "",
+        "list_punctuation": "",
+        "minimum_items": 0,
+        "reviewed_at": "2026-08-27T13:30:52",
+        "review_count": 1
+      }
+    ]
+  }
+}

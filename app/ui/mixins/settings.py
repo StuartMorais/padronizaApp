@@ -11,7 +11,8 @@ from app.ui.theme import ThemeManager
 class SettingsMixin:
     def _load_preferences(self) -> None:
         self._loading_preferences = True
-        theme = self.theme_manager.current_theme()
+        embedded = bool(getattr(self, "embedded", False))
+        theme = ThemeManager.LIGHT if embedded else self.theme_manager.current_theme()
         index = self.theme_combo.findData(theme)
         self.theme_combo.blockSignals(True)
         self.theme_combo.setCurrentIndex(max(index, 0))
@@ -22,8 +23,13 @@ class SettingsMixin:
         self.font_size_spin.setValue(int(self.settings.value("accessibility/font_size", 10) or 10))
         self.font_size_spin.blockSignals(False)
         self.high_contrast_checkbox.setChecked(
-            bool(self.settings.value("accessibility/high_contrast", False, type=bool))
+            False if embedded else bool(self.settings.value("accessibility/high_contrast", False, type=bool))
         )
+        if embedded:
+            self.theme_combo.setEnabled(False)
+            self.theme_combo.setToolTip("A aparência é controlada pelo Office Tools.")
+            self.high_contrast_checkbox.setEnabled(False)
+            self.high_contrast_checkbox.setToolTip("A aparência é controlada pelo Office Tools.")
         self.confirmations_checkbox.setChecked(
             bool(self.settings.value("ui/confirm_destructive", True, type=bool))
         )
@@ -79,7 +85,8 @@ class SettingsMixin:
             "O Padroniza usa automaticamente o backend de maior fidelidade e recorre ao integrado quando necessário."
         )
         self._loading_preferences = False
-        self.theme_manager.apply_theme(theme)
+        if not embedded:
+            self.theme_manager.apply_theme(theme)
 
     def _save_preferences(self, *_args) -> None:
         if self._loading_preferences:
@@ -87,7 +94,8 @@ class SettingsMixin:
         self.settings.setValue("output/root", self.output_root_input.text().strip())
         self.settings.setValue("output/conflict", self.output_conflict_combo.currentData() or "rename")
         self.settings.setValue("accessibility/font_size", self.font_size_spin.value())
-        self.settings.setValue("accessibility/high_contrast", self.high_contrast_checkbox.isChecked())
+        if not bool(getattr(self, "embedded", False)):
+            self.settings.setValue("accessibility/high_contrast", self.high_contrast_checkbox.isChecked())
         self.settings.setValue("ui/confirm_destructive", self.confirmations_checkbox.isChecked())
         self.settings.setValue("backup/automatic", self.auto_backup_checkbox.isChecked())
         self.settings.setValue("backup/before_destructive_actions", self.before_destructive_checkbox.isChecked())
@@ -102,7 +110,8 @@ class SettingsMixin:
                 self.project_root,
                 self.portable_checkbox.isChecked(),
             )
-        self.theme_manager.apply_theme(self.theme_manager.current_theme())
+        if not bool(getattr(self, "embedded", False)):
+            self.theme_manager.apply_theme(self.theme_manager.current_theme())
 
     def _browse_backup_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(
@@ -147,6 +156,14 @@ class SettingsMixin:
         self._apply_theme(ThemeManager.DARK if enabled else ThemeManager.LIGHT)
 
     def _apply_theme(self, theme: str) -> None:
+        if bool(getattr(self, "embedded", False)):
+            theme = ThemeManager.LIGHT
+            index = self.theme_combo.findData(theme)
+            if index >= 0:
+                self.theme_combo.blockSignals(True)
+                self.theme_combo.setCurrentIndex(index)
+                self.theme_combo.blockSignals(False)
+            return
         self.theme_manager.apply_theme(theme)
         dark = theme == ThemeManager.DARK
         self.dark_mode_action.blockSignals(True)

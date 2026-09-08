@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QAction
@@ -14,8 +14,9 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMainWindow,
     QPushButton,
+    QMenuBar,
+    QStatusBar,
     QScrollArea,
     QSpinBox,
     QStackedWidget,
@@ -58,7 +59,7 @@ class MainWindow(
     RecentArchiveMixin,
     BackupActionsMixin,
     NavigationMixin,
-    QMainWindow,
+    QWidget,
 ):
     def __init__(
         self,
@@ -67,8 +68,24 @@ class MainWindow(
         *,
         default_output_dir: Path | None = None,
         managed_storage: bool = False,
+        embedded: bool = False,
+        return_home: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
+        self.embedded = bool(embedded)
+        self.setProperty("padronizaWorkspace", True)
+        self._return_home = return_home
+        self._menu_bar = QMenuBar(self)
+        self._status_bar = QStatusBar(self)
+        self._status_bar_added = False
+        self._central_widget: QWidget | None = None
+        self._window_layout = QVBoxLayout(self)
+        self._window_layout.setContentsMargins(0, 0, 0, 0)
+        self._window_layout.setSpacing(0)
+        self._window_layout.addWidget(self._menu_bar)
+        if self.embedded:
+            self.theme_manager = theme_manager
+            self.theme_manager.set_target(self)
         self.project_root = Path(project_root)
         self.theme_manager = theme_manager
         self.managed_storage = bool(managed_storage)
@@ -104,8 +121,11 @@ class MainWindow(
         self.autosave_timer.timeout.connect(self._save_current_draft)
 
         self.setWindowTitle('Padroniza — Suíte de Documentos')
-        self.resize(1400, 860)
-        self.setMinimumSize(1080, 700)
+        if self.embedded:
+            self.setMinimumSize(820, 560)
+        else:
+            self.resize(1400, 860)
+            self.setMinimumSize(1080, 700)
 
         self._create_menu_bar()
         self._create_interface()
@@ -121,6 +141,43 @@ class MainWindow(
             1200,
             self._run_scheduled_backup_if_due,
         )
+
+    # Lightweight QMainWindow-compatible chrome --------------------------------
+    # Padroniza is a QWidget so it can be embedded in Office Tools, while these
+    # helpers preserve the original menu/status/central-widget API used by the UI.
+    def menuBar(self) -> QMenuBar:
+        return self._menu_bar
+
+    def statusBar(self) -> QStatusBar:
+        if not self._status_bar_added:
+            self._window_layout.addWidget(self._status_bar)
+            self._status_bar_added = True
+        return self._status_bar
+
+    def setCentralWidget(self, widget: QWidget) -> None:
+        if self._central_widget is widget:
+            return
+        if self._central_widget is not None:
+            self._window_layout.removeWidget(self._central_widget)
+            self._central_widget.setParent(None)
+        self._central_widget = widget
+        # Menu is index 0; keep status bar at the bottom if it already exists.
+        self._window_layout.insertWidget(1, widget, 1)
+
+    def can_leave(self) -> bool:
+        # Workspaces stay alive while navigating, so no destructive cleanup is
+        # needed here. Autosave continues to run normally in the background.
+        return True
+
+    def can_close(self) -> bool:
+        self.autosave_timer.stop()
+        if (
+            self._active_template_id
+            and self._form_dirty
+            and not self._draft_choice_pending
+        ):
+            self._persist_current_draft(self._active_template_id)
+        return True
 
     # UI -----------------------------------------------------------------------
     def _create_menu_bar(self) -> None:
@@ -151,8 +208,14 @@ class MainWindow(
 
         file_menu.addSeparator()
 
-        exit_action = QAction('Sair', self)
-        exit_action.triggered.connect(self.close)
+        exit_action = QAction(
+            'Voltar ao Office Tools' if self.embedded else 'Sair',
+            self,
+        )
+        if self.embedded and self._return_home is not None:
+            exit_action.triggered.connect(self._return_home)
+        else:
+            exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
         templates_submenu = tools_menu.addMenu(
@@ -324,7 +387,8 @@ class MainWindow(
             'Tutorial do aplicativo',
             self,
         )
-        tutorial_action.setShortcut("F1")
+        if not self.embedded:
+            tutorial_action.setShortcut("F1")
         tutorial_action.triggered.connect(
             self._show_tutorial_page
         )

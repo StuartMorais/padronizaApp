@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 from app.core.settings import APPLICATION, ORGANIZATION
 
@@ -17,13 +17,20 @@ class ThemeManager:
         self,
         app: QApplication,
         project_root: Path,
+        target: QWidget | None = None,
     ) -> None:
         self.app = app
         self.project_root = Path(project_root)
+        self.target = target
         self.settings = QSettings(
             ORGANIZATION,
             APPLICATION,
         )
+
+
+    def set_target(self, target: QWidget | None) -> None:
+        """Scope future theme changes to a widget instead of QApplication."""
+        self.target = target
 
     def current_theme(self) -> str:
         value = str(
@@ -80,8 +87,13 @@ QTableWidget::item:selected, QListWidget::item:selected { background-color: #fff
 """
 
         font_size = int(self.settings.value("accessibility/font_size", 10) or 10)
-        self.app.setFont(QFont("Segoe UI", max(8, min(18, font_size))))
-        self.app.setStyleSheet(stylesheet)
+        target = self.target
+        if target is None:
+            self.app.setFont(QFont("Segoe UI", max(8, min(18, font_size))))
+            self.app.setStyleSheet(stylesheet)
+        else:
+            target.setFont(QFont("Segoe UI", max(8, min(18, font_size))))
+            target.setStyleSheet(stylesheet)
         self.settings.setValue(
             "appearance/theme",
             theme,

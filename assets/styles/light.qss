@@ -1,0 +1,120 @@
+QWidget#OfficeShell, QStackedWidget#ShellPages, QWidget#ShellCanvas {
+    background: #F4F6FA;
+    color: #24344D;
+}
+QScrollArea#ShellScroll { background: #F4F6FA; border: none; }
+QFrame#ShellHeader { background: #FFFFFF; border-bottom: 1px solid #E5EAF2; }
+QLabel[role] { background: transparent; color: #24344D; font-size: 14px; }
+QLabel[role="body"] { font-size: 14px; }
+QLabel[role="muted"] { color: #65748B; font-size: 14px; }
+QLabel[role="caption"] { color: #6C7A91; font-size: 12px; }
+QLabel[role="eyebrow"] { color: #6C7A91; font-size: 11px; font-weight: 600; }
+QLabel[role="pageTitle"] { color: #1C2B44; font-size: 31px; font-weight: 700; }
+QLabel[role="cardTitle"] { color: #24344D; font-size: 26px; font-weight: 700; }
+QLabel[role="cardSubtitle"] { color: #425573; font-size: 14px; font-weight: 600; }
+QLabel[role="sectionTitle"] { color: #34445E; font-size: 15px; font-weight: 600; }
+QLabel[role="breadcrumb"] { color: #34445E; font-size: 13px; font-weight: 600; }
+QLabel[role="headerMark"] { color: #7B879C; font-size: 10px; font-weight: 600; }
+QLabel[role="footer"] { color: #8490A3; font-size: 10px; font-weight: 600; }
+QLabel[role="keycap"] {
+    color: #7F8B9E; background: #F6F8FC; border: 1px solid #E9EDF4;
+    border-radius: 5px; padding: 4px 8px; font-size: 11px;
+}
+QLabel[role="tag"] { color: #66768F; font-size: 12px; }
+QLabel[role="tag"][accent="blue"] { color: #5272A8; }
+QLabel[role="tag"][accent="teal"] { color: #447F7D; }
+QLabel[role="iconTile"] { border-radius: 13px; background: #EDF1F7; }
+QLabel[role="iconTile"][tone="blue"] { background: #EBF1FF; }
+QLabel[role="iconTile"][tone="teal"] { background: #E6F5F2; }
+QLabel[role="badge"] {
+    background: #FFF3D9; color: #886524; border-radius: 6px;
+    padding: 6px 10px; font-size: 12px; font-weight: 600;
+}
+QLabel[role="success"] { color: #087E79; font-size: 13px; }
+QLabel[role="error"] { color: #AE3434; font-size: 13px; }
+QFrame[role="appCard"], QFrame[role="panel"] {
+    background: #FFFFFF; border: 1px solid #DEE5EF; border-radius: 16px;
+}
+QFrame[role="appCard"][accent="blue"]:hover { border: 1px solid #9CB6F3; }
+QFrame[role="appCard"][accent="teal"]:hover { border: 1px solid #92C9C2; }
+QFrame[role="settingsBanner"] {
+    background: #FFFFFF; border: 1px solid #E2E7F0; border-radius: 12px;
+}
+QPushButton[role="primary"] {
+    background: #315FDB; color: #FFFFFF; border: 2px solid transparent;
+    border-radius: 8px; font-size: 13px; font-weight: 600; padding: 6px 18px;
+}
+QPushButton[role="primary"]:hover { background: #264FC3; }
+QPushButton[role="primary"]:pressed { background: #2144A8; }
+QPushButton[role="primary"]:focus { border: 2px solid #ADC2FF; }
+QPushButton[role="primary"][accent="teal"] { background: #087E79; }
+QPushButton[role="primary"][accent="teal"]:hover { background: #066B66; }
+QPushButton[role="primary"][accent="teal"]:pressed { background: #075B57; }
+QPushButton[role="primary"][accent="teal"]:focus { border: 2px solid #97D6CA; }
+QPushButton[role="secondary"] {
+    background: #FFFFFF; color: #465A7D; border: 1px solid #D8E0EE;
+    border-radius: 8px; font-size: 12px; font-weight: 600; padding: 6px 15px;
+}
+QPushButton[role="secondary"]:hover { background: #F0F4FC; border-color: #BACAE6; }
+QPushButton[role="secondary"]:pressed { background: #E6ECF8; }
+QPushButton[role="secondary"]:focus { border: 1px solid #315FDB; }
+QFrame#Sidebar { background: #15243B; }
+QFrame#SidebarDivider { background: #2A3B55; border: none; }
+QLabel[role="brand"] { color: #F8FAFF; font-size: 19px; font-weight: 700; }
+QLabel[role="brandSubtitle"] { color: #8F9FB8; font-size: 10px; }
+QLabel[role="navCaption"] { color: #8395B1; font-size: 10px; font-weight: 600; }
+QPushButton[role="nav"] {
+    background: transparent; color: #B9C7E1; border: 1px solid transparent;
+    border-radius: 8px; text-align: left; padding: 0 14px; font-size: 13px;
+}
+QPushButton[role="nav"]:hover { background: #1D304C; color: #FFFFFF; }
+QPushButton[role="nav"]:checked { background: #263E60; color: #FFFFFF; font-weight: 600; }
+QPushButton[role="nav"]:focus { border: 1px solid #698BBB; }
+QComboBox#startPageCombo {
+    background: #FFFFFF; color: #34445E; border: 1px solid #CBD5E3;
+    border-radius: 7px; padding: 6px 12px; font-size: 14px;
+}
+QComboBox#startPageCombo:focus { border: 1px solid #315FDB; }
+QComboBox#startPageCombo QAbstractItemView {
+    background: #FFFFFF; color: #34445E; selection-background-color: #E6EEFF;
+    selection-color: #234B9D; padding: 4px;
+}
+QCheckBox#rememberWindow { color: #34445E; font-size: 14px; spacing: 10px; }
+QScrollArea#ShellScroll QScrollBar:vertical { background: transparent; width: 10px; margin: 2px; }
+QScrollArea#ShellScroll QScrollBar::handle:vertical { background: #C9D3E3; border-radius: 3px; min-height: 28px; }
+QScrollArea#ShellScroll QScrollBar::add-line:vertical, QScrollArea#ShellScroll QScrollBar::sub-line:vertical { height: 0; }
+QScrollArea#ShellScroll QScrollBar::add-page:vertical, QScrollArea#ShellScroll QScrollBar::sub-page:vertical { background: transparent; }
+
+
+/* Unified scrollbars */
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 4px 2px;
+}
+QScrollBar::handle:vertical {
+    background: #C8D2E0;
+    min-height: 42px;
+    border-radius: 4px;
+}
+QScrollBar::handle:vertical:hover { background: #AEBCCD; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0; border: none; background: transparent;
+}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+QScrollBar:horizontal {
+    background: transparent;
+    height: 10px;
+    margin: 2px 4px;
+}
+QScrollBar::handle:horizontal {
+    background: #C8D2E0;
+    min-width: 42px;
+    border-radius: 4px;
+}
+QScrollBar::handle:horizontal:hover { background: #AEBCCD; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0; border: none; background: transparent;
+}
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
+QScrollBar::corner { background: transparent; }
