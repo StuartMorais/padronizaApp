@@ -1,0 +1,44 @@
+name: Office Tools quality checks
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - "**"
+    tags-ignore:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  quality-windows:
+    name: Compile and test on Windows
+    runs-on: windows-2022
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
+
+      - name: Install dependencies
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check -r requirements.txt -r requirements-build.txt
+
+      - name: Compile source
+        shell: pwsh
+        run: python -m compileall -q adapters app checklist_app shell main.py
+
+      - name: Run Checklist regression tests
+        shell: pwsh
+        run: python -m pytest -q dev/checklist/tests

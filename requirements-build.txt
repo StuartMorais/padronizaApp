@@ -1,0 +1,2 @@
+PyInstaller>=6.15,<7
+pytest>=8.0
