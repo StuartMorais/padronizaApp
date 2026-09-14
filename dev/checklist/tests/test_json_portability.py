@@ -73,3 +73,32 @@ def test_import_rejects_unrelated_json(tmp_path: Path):
         assert "não parece conter" in str(exc)
     else:
         raise AssertionError("Unrelated JSON should be rejected")
+
+
+def test_multi_checklist_round_trip(tmp_path: Path):
+    from checklist_app.storage import export_checklists_json
+
+    first = sample_checklist()
+    second = sample_checklist()
+    second["id"] = "checklist-two"
+    second["title"] = "Checklist Dois"
+
+    path = export_checklists_json([first, second], tmp_path / "multi.json")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["schema"] == CHECKLIST_JSON_SCHEMA
+    assert payload["count"] == 2
+    assert len(payload["checklists"]) == 2
+
+    imported = import_checklists_json(path)
+    assert [item["title"] for item in imported] == ["Checklist Demo", "Checklist Dois"]
+
+
+def test_export_checklists_rejects_empty_selection(tmp_path: Path):
+    from checklist_app.storage import export_checklists_json
+
+    try:
+        export_checklists_json([], tmp_path / "empty.json")
+    except ValueError as exc:
+        assert "pelo menos um checklist" in str(exc)
+    else:
+        raise AssertionError("Empty export selection should be rejected")

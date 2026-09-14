@@ -19,30 +19,43 @@ CHECKLIST_JSON_SCHEMA = "checklist-app.checklist"
 CHECKLIST_JSON_VERSION = 1
 
 
-def export_checklist_json(template: dict[str, Any], destination: str | Path) -> Path:
-    """Export one normalized checklist as a portable JSON file.
+def export_checklists_json(templates: list[dict[str, Any]], destination: str | Path) -> Path:
+    """Export one or more normalized checklists as a portable JSON file.
 
-    The exported envelope is intentionally independent from the application's
-    internal checklistTemplates.json library, so users can share/import a
-    checklist without replacing their entire local library.
+    A single checklist keeps the original ``checklist`` field for backward
+    compatibility. Multiple checklists use ``checklists`` so one file can be
+    shared/imported without replacing the receiver's local library.
     """
+    normalized = [normalize_template(template) for template in templates]
+    if not normalized:
+        raise ValueError("Selecione pelo menos um checklist para exportar.")
+
     destination_path = Path(destination)
     if destination_path.suffix.lower() != ".json":
         destination_path = destination_path.with_suffix(".json")
     destination_path.parent.mkdir(parents=True, exist_ok=True)
 
-    payload = {
+    payload: dict[str, Any] = {
         "schema": CHECKLIST_JSON_SCHEMA,
         "version": CHECKLIST_JSON_VERSION,
         "exportedAt": datetime.now().isoformat(timespec="seconds"),
-        "checklist": normalize_template(template),
     }
+    if len(normalized) == 1:
+        payload["checklist"] = normalized[0]
+    else:
+        payload["checklists"] = normalized
+        payload["count"] = len(normalized)
 
     temporary_path = destination_path.with_suffix(destination_path.suffix + ".tmp")
     with temporary_path.open("w", encoding="utf-8") as file:
         json.dump(payload, file, ensure_ascii=False, indent=2)
     temporary_path.replace(destination_path)
     return destination_path
+
+
+def export_checklist_json(template: dict[str, Any], destination: str | Path) -> Path:
+    """Backward-compatible convenience wrapper for exporting one checklist."""
+    return export_checklists_json([template], destination)
 
 
 def import_checklists_json(source: str | Path, existing_ids: set[str] | None = None) -> list[dict[str, Any]]:
@@ -64,10 +77,17 @@ def import_checklists_json(source: str | Path, existing_ids: set[str] | None = N
         version = int(payload.get("version") or 0)
         if version != CHECKLIST_JSON_VERSION:
             raise ValueError(f"Versão JSON de checklist não suportada: {version}.")
+
+        checklists = payload.get("checklists")
         checklist = payload.get("checklist")
-        if not isinstance(checklist, dict):
-            raise ValueError("O JSON não contém um checklist válido.")
-        raw_templates = [checklist]
+        if isinstance(checklists, list):
+            if not checklists or not all(isinstance(item, dict) for item in checklists):
+                raise ValueError("O JSON não contém checklists válidos.")
+            raw_templates = checklists
+        elif isinstance(checklist, dict):
+            raw_templates = [checklist]
+        else:
+            raise ValueError("O JSON não contém checklist(s) válido(s).")
     elif isinstance(payload, dict):
         # Backward-friendly import of a single raw checklist object. Require at
         # least one recognizable checklist key so arbitrary JSON is not silently

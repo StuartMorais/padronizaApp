@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QDialog,
+    QDialogButtonBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -46,6 +47,7 @@ from .storage import (
     BACKUP_DIR,
     DATA_FILE,
     export_checklist_json,
+    export_checklists_json,
     import_checklists_json,
     load_templates,
     new_id,
@@ -248,13 +250,7 @@ class ChecklistMainWindow(QMainWindow):
         layout.addWidget(pdf_button)
 
         json_button = QPushButton("JSON ▾")
-        json_menu = QMenu(json_button)
-        import_json_action = QAction("Importar checklist JSON…", self)
-        import_json_action.triggered.connect(self.import_checklist_json)
-        export_json_action = QAction("Exportar checklist ativo…", self)
-        export_json_action.triggered.connect(self.export_active_checklist_json)
-        json_menu.addAction(import_json_action)
-        json_menu.addAction(export_json_action)
+        json_menu = self.create_json_menu(json_button)
         json_button.setMenu(json_menu)
         layout.addWidget(json_button)
 
@@ -270,6 +266,27 @@ class ChecklistMainWindow(QMainWindow):
         layout.addWidget(self.btn_theme)
 
         return bar
+
+    def create_json_menu(self, parent: QWidget) -> QMenu:
+        menu = QMenu(parent)
+
+        import_action = QAction("Importar checklist(s) JSON…", self)
+        import_action.triggered.connect(self.import_checklist_json)
+        menu.addAction(import_action)
+        menu.addSeparator()
+
+        export_one_action = QAction("Exportar checklist específico…", self)
+        export_one_action.triggered.connect(self.export_specific_checklist_json)
+        menu.addAction(export_one_action)
+
+        export_many_action = QAction("Exportar vários checklists…", self)
+        export_many_action.triggered.connect(self.export_multiple_checklists_json)
+        menu.addAction(export_many_action)
+
+        export_all_action = QAction("Exportar todos os checklists…", self)
+        export_all_action.triggered.connect(self.export_all_checklists_json)
+        menu.addAction(export_all_action)
+        return menu
 
     def navigate_to(self, page: int) -> None:
         if not hasattr(self, "pages"):
@@ -587,14 +604,7 @@ class ChecklistMainWindow(QMainWindow):
         self.btn_delete_checklist.clicked.connect(self.delete_active_checklist)
 
         self.btn_json = QPushButton("Importar / Exportar JSON ▾")
-        json_menu = QMenu(self.btn_json)
-        import_json_action = QAction("Importar checklist JSON…", self)
-        import_json_action.triggered.connect(self.import_checklist_json)
-        export_json_action = QAction("Exportar checklist ativo…", self)
-        export_json_action.triggered.connect(self.export_active_checklist_json)
-        json_menu.addAction(import_json_action)
-        json_menu.addAction(export_json_action)
-        self.btn_json.setMenu(json_menu)
+        self.btn_json.setMenu(self.create_json_menu(self.btn_json))
 
         actions = QGridLayout()
         actions.setHorizontalSpacing(6)
@@ -1799,16 +1809,164 @@ class ChecklistMainWindow(QMainWindow):
         self.refresh_all()
         self.show_status("Item excluído.")
 
-    def export_active_checklist_json(self) -> None:
-        template = self.get_active_template()
-        if not template:
-            self.show_status("Selecione um checklist para exportar em JSON.")
+    def _select_checklists_for_json_export(self, *, multiple: bool) -> list[dict[str, Any]]:
+        if not self.templates:
+            self.show_status("Não há checklists para exportar.")
+            return []
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Selecionar checklists para exportar")
+        dialog.resize(580, 480)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+
+        title = QLabel("Escolha os checklists")
+        title.setObjectName("sectionTitle")
+        hint = QLabel(
+            "Marque as caixas dos checklists que deseja exportar."
+            if multiple
+            else "Selecione um checklist para exportar."
+        )
+        hint.setObjectName("mutedText")
+        layout.addWidget(title)
+        layout.addWidget(hint)
+
+        checklist_list = QListWidget()
+        checklist_list.setObjectName("jsonExportChecklistList")
+        checklist_list.setAlternatingRowColors(False)
+        checklist_list.setSelectionMode(
+            QAbstractItemView.SelectionMode.NoSelection
+            if multiple
+            else QAbstractItemView.SelectionMode.SingleSelection
+        )
+
+        for template in self.templates:
+            title_text = str(template.get("title") or "Checklist sem nome")
+            subtitle = str(template.get("subtitle") or "").strip()
+            sections = template.get("sections") if isinstance(template.get("sections"), list) else []
+            item_count = sum(
+                len(section.get("items", []))
+                for section in sections
+                if isinstance(section, dict)
+            )
+            label = f"{title_text} — {len(sections)} seção(ões), {item_count} item(ns)"
+            if subtitle:
+                label += f"\n{subtitle}"
+
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, str(template.get("id") or ""))
+
+            if multiple:
+                item.setFlags(
+                    item.flags()
+                    | Qt.ItemFlag.ItemIsUserCheckable
+                    | Qt.ItemFlag.ItemIsEnabled
+                )
+                item.setCheckState(
+                    Qt.CheckState.Checked
+                    if str(template.get("id") or "") == self.active_checklist_id
+                    else Qt.CheckState.Unchecked
+                )
+            checklist_list.addItem(item)
+
+            if not multiple and str(template.get("id") or "") == self.active_checklist_id:
+                item.setSelected(True)
+                checklist_list.setCurrentItem(item)
+
+        layout.addWidget(checklist_list, 1)
+
+        selection_count = QLabel("")
+        selection_count.setObjectName("mutedText")
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
+        )
+        export_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        export_button.setText("Exportar")
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+
+        if multiple:
+            selection_row = QHBoxLayout()
+            select_all_button = QPushButton("Selecionar todos")
+            clear_all_button = QPushButton("Limpar seleção")
+            select_all_button.setObjectName("jsonSelectionAction")
+            clear_all_button.setObjectName("jsonSelectionAction")
+            selection_row.addWidget(select_all_button)
+            selection_row.addWidget(clear_all_button)
+            selection_row.addStretch(1)
+            selection_row.addWidget(selection_count)
+            layout.addLayout(selection_row)
+
+            def checked_items() -> list[QListWidgetItem]:
+                return [
+                    checklist_list.item(row)
+                    for row in range(checklist_list.count())
+                    if checklist_list.item(row).checkState() == Qt.CheckState.Checked
+                ]
+
+            def update_selection_state(*_args: object) -> None:
+                count = len(checked_items())
+                selection_count.setText(
+                    f"{count} selecionado" if count == 1 else f"{count} selecionados"
+                )
+                export_button.setEnabled(count > 0)
+
+            def set_all_checked(checked: bool) -> None:
+                checklist_list.blockSignals(True)
+                try:
+                    state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+                    for row in range(checklist_list.count()):
+                        checklist_list.item(row).setCheckState(state)
+                finally:
+                    checklist_list.blockSignals(False)
+                update_selection_state()
+
+            select_all_button.clicked.connect(lambda: set_all_checked(True))
+            clear_all_button.clicked.connect(lambda: set_all_checked(False))
+            checklist_list.itemChanged.connect(update_selection_state)
+            update_selection_state()
+        else:
+            export_button.setEnabled(checklist_list.currentItem() is not None)
+            checklist_list.currentItemChanged.connect(
+                lambda current, _previous: export_button.setEnabled(current is not None)
+            )
+
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return []
+
+        if multiple:
+            selected_ids = {
+                str(checklist_list.item(row).data(Qt.ItemDataRole.UserRole) or "")
+                for row in range(checklist_list.count())
+                if checklist_list.item(row).checkState() == Qt.CheckState.Checked
+            }
+        else:
+            current_item = checklist_list.currentItem()
+            selected_ids = (
+                {str(current_item.data(Qt.ItemDataRole.UserRole) or "")}
+                if current_item is not None
+                else set()
+            )
+
+        return [
+            template
+            for template in self.templates
+            if str(template.get("id") or "") in selected_ids
+        ]
+
+    def _export_checklists_json(self, templates: list[dict[str, Any]], suggested_name: str) -> None:
+        if not templates:
+            self.show_status("Nenhum checklist selecionado para exportação JSON.")
             return
 
-        suggested_name = sanitize_filename(str(template.get("title") or "checklist")) + ".json"
         file_path, _ = QFileDialog.getSaveFileName(
             self,
-            "Exportar checklist JSON",
+            "Exportar checklist(s) JSON",
             suggested_name,
             "Checklist JSON (*.json)",
         )
@@ -1817,10 +1975,40 @@ class ChecklistMainWindow(QMainWindow):
             return
 
         try:
-            output_path = export_checklist_json(template, file_path)
-            self.show_status(f"Checklist JSON exportado: {output_path}")
+            output_path = export_checklists_json(templates, file_path)
+            count = len(templates)
+            self.show_status(f"{count} checklist(s) exportado(s) em JSON: {output_path}")
         except Exception as error:
             self.show_status(f"Erro ao exportar JSON: {error}")
+
+    def export_specific_checklist_json(self) -> None:
+        selected = self._select_checklists_for_json_export(multiple=False)
+        if not selected:
+            return
+        template = selected[0]
+        suggested_name = sanitize_filename(str(template.get("title") or "checklist")) + ".json"
+        self._export_checklists_json([template], suggested_name)
+
+    def export_multiple_checklists_json(self) -> None:
+        selected = self._select_checklists_for_json_export(multiple=True)
+        if not selected:
+            return
+        self._export_checklists_json(selected, "checklists-selecionados.json")
+
+    def export_all_checklists_json(self) -> None:
+        if not self.templates:
+            self.show_status("Não há checklists para exportar.")
+            return
+        self._export_checklists_json(list(self.templates), "todos-os-checklists.json")
+
+    def export_active_checklist_json(self) -> None:
+        """Compatibility entry point retained for older actions/tests."""
+        template = self.get_active_template()
+        if not template:
+            self.show_status("Selecione um checklist para exportar em JSON.")
+            return
+        suggested_name = sanitize_filename(str(template.get("title") or "checklist")) + ".json"
+        self._export_checklists_json([template], suggested_name)
 
     def import_checklist_json(self) -> None:
         file_path, _ = QFileDialog.getOpenFileName(

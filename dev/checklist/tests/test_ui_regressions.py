@@ -41,10 +41,14 @@ def test_checklist_refresh_preserves_scroll_position():
 
 
 def test_json_import_export_is_available_from_ui():
-    assert "Importar checklist JSON…" in MAIN
-    assert "Exportar checklist ativo…" in MAIN
+    assert "Importar checklist(s) JSON…" in MAIN
+    assert "Exportar checklist específico…" in MAIN
+    assert "Exportar vários checklists…" in MAIN
+    assert "Exportar todos os checklists…" in MAIN
     assert "def import_checklist_json" in MAIN
-    assert "def export_active_checklist_json" in MAIN
+    assert "def export_specific_checklist_json" in MAIN
+    assert "def export_multiple_checklists_json" in MAIN
+    assert "def export_all_checklists_json" in MAIN
 
 
 def test_sections_have_explicit_persistent_rename_action():
@@ -53,3 +57,12 @@ def test_sections_have_explicit_persistent_rename_action():
     assert "def rename_section(self)" in MAIN
     assert 'section["title"] = new_title' in MAIN
     assert 'section_text.upper()' not in MAIN
+
+
+def test_multi_json_export_uses_checkboxes_instead_of_ctrl_shift_selection():
+    assert 'Qt.ItemFlag.ItemIsUserCheckable' in MAIN
+    assert 'item.setCheckState(' in MAIN
+    assert 'QAbstractItemView.SelectionMode.NoSelection' in MAIN
+    assert 'Selecionar todos' in MAIN
+    assert 'Limpar seleção' in MAIN
+    assert 'Selecione vários itens usando Ctrl/Shift.' not in MAIN
