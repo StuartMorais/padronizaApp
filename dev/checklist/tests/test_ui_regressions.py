@@ -66,3 +66,38 @@ def test_multi_json_export_uses_checkboxes_instead_of_ctrl_shift_selection():
     assert 'Selecionar todos' in MAIN
     assert 'Limpar seleção' in MAIN
     assert 'Selecione vários itens usando Ctrl/Shift.' not in MAIN
+
+
+def test_tutorial_page_and_navigation_exist():
+    assert "TUTORIAL_PAGE = 3" in MAIN
+    assert "def create_tutorial_page(self)" in MAIN
+    assert '("Tutorial", TUTORIAL_PAGE)' in MAIN
+    assert "Abrir checklists" in MAIN
+    assert "Abrir scanner" in MAIN
+
+
+def test_checklist_has_three_responsive_modes_and_panel_selector():
+    assert 'mode = "wide" if available_width >= 1450 else "compact" if available_width >= 1050 else "narrow"' in MAIN
+    assert '("library", "Biblioteca")' in MAIN
+    assert '("sheet", "Folha")' in MAIN
+    assert '("inspector", "Documentos")' in MAIN
+    assert "def _layout_sheet_toolbar(self, columns: int)" in MAIN
+    assert "self._layout_sheet_toolbar(5 if mode == \"wide\" else 4 if mode == \"compact\" else 3)" in MAIN
+
+
+def test_narrow_checklist_keeps_all_columns_horizontally_reachable():
+    assert "def _configure_checklist_horizontal_scroll(self, mode: str)" in MAIN
+    assert 'if mode == "narrow":' in MAIN
+    assert "QHeaderView.ResizeMode.Interactive" in MAIN
+    assert "widths = (72, 360, 240, 120, 90, 280)" in MAIN
+    assert "setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)" in MAIN
+
+
+def test_destructive_actions_use_visible_confirmation_dialogs():
+    assert "    QMessageBox," in MAIN
+    assert "def _confirm_deletion(self, title: str, message: str) -> bool" in MAIN
+    assert 'QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No' in MAIN
+    assert 'QMessageBox.StandardButton.No' in MAIN
+    assert 'self._confirm_deletion(' in MAIN
+    assert 'Clique novamente em Excluir' not in MAIN
+    assert "pending_delete_key" not in MAIN

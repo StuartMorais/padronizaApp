@@ -59,6 +59,12 @@ QPushButton[role="secondary"]:hover { background: #F4F6FB; border-color: #BFC9D8
 QPushButton[role="secondary"]:pressed { background: #EBEFF6; }
 QPushButton[role="secondary"]:focus { border: 1px solid #4F63E8; }
 QFrame#Sidebar { background: #162033; }
+QPushButton#SidebarBrandButton {
+    background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 0;
+}
+QPushButton#SidebarBrandButton:hover { background: #202D45; border-color: #40506B; }
+QPushButton#SidebarBrandButton:pressed { background: #293B59; }
+QPushButton#SidebarBrandButton:focus { border-color: #657A9A; }
 QFrame#SidebarDivider { background: #2A3750; border: none; }
 QLabel[role="brand"] { color: #F8FAFC; font-size: 20px; font-weight: 800; }
 QLabel[role="brandSubtitle"] { color: #94A3B8; font-size: 10px; }
@@ -70,6 +76,9 @@ QPushButton[role="nav"] {
 QPushButton[role="nav"]:hover { background: #202D45; color: #FFFFFF; }
 QPushButton[role="nav"]:checked { background: #293B59; color: #FFFFFF; font-weight: 700; }
 QPushButton[role="nav"]:focus { border: 1px solid #657A9A; }
+QFrame#Sidebar[compact="true"] QPushButton[role="nav"] {
+    min-width: 48px; max-width: 48px; padding: 0; text-align: center;
+}
 QComboBox#startPageCombo, QComboBox#themeCombo {
     background: #FFFFFF; color: #334155; border: 1px solid #CBD5E1;
     border-radius: 8px; padding: 6px 12px; font-size: 14px;

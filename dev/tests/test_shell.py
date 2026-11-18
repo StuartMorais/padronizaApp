@@ -209,6 +209,35 @@ class ShellTests(unittest.TestCase):
         self.assertEqual(window.home_page.horizontalScrollBar().maximum(), 0)
         self.assertGreater(window.home_page.verticalScrollBar().maximum(), 0)
 
+    def test_sidebar_can_be_manually_expanded_and_collapsed(self):
+        window = self.make_window()
+        self.assertTrue(window.sidebar.is_compact())
+        self.assertEqual(window.sidebar.width(), 76)
+
+        self.click(window.sidebar.brand_button)
+        self.assertFalse(window.sidebar.is_compact())
+        self.assertEqual(window.sidebar.width(), 224)
+
+        window.resize(1000, 700)
+        self.app.processEvents()
+        self.assertFalse(window.sidebar.is_compact())
+
+        QTest.keyClick(window, Qt.Key.Key_B, Qt.KeyboardModifier.ControlModifier)
+        self.app.processEvents()
+        self.assertTrue(window.sidebar.is_compact())
+        self.assertEqual(window.sidebar.width(), 76)
+
+        window.resize(1600, 800)
+        self.app.processEvents()
+        self.assertFalse(window.sidebar.is_compact())
+
+        self.click(window.sidebar.brand_button)
+        self.assertTrue(window.sidebar.is_compact())
+
+        window.resize(1200, 700)
+        self.app.processEvents()
+        self.assertTrue(window.sidebar.is_compact())
+
 
 if __name__ == "__main__":
     unittest.main()

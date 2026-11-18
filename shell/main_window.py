@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtGui import QCloseEvent, QKeySequence, QResizeEvent, QShortcut
 from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QMainWindow, QStackedWidget, QVBoxLayout, QWidget
 
 from adapters.contracts import WorkspaceContext, WorkspaceFactory
@@ -23,6 +23,8 @@ class OfficeMainWindow(QMainWindow):
         self.setObjectName("OfficeWindow")
         self.preferences = preferences if preferences is not None else Preferences()
         self.current_page = "home"
+        self._sidebar_manual_compact: bool | None = None
+        self._sidebar_responsive_compact: bool | None = None
         self.setMinimumSize(960, 650)
         self.resize(1280, 860)
         self.setStyleSheet(stylesheet(self.preferences.theme))
@@ -43,14 +45,15 @@ class OfficeMainWindow(QMainWindow):
         header = QFrame()
         header.setObjectName("ShellHeader")
         header.setFixedHeight(72)
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(32, 0, 32, 0)
-        header_layout.addWidget(label("Espaço de trabalho", "caption"))
-        header_layout.addWidget(label("/", "caption"))
+        self.header_layout = QHBoxLayout(header)
+        self.header_layout.setContentsMargins(32, 0, 32, 0)
+        self.header_layout.addWidget(label("Espaço de trabalho", "caption"))
+        self.header_layout.addWidget(label("/", "caption"))
         self.breadcrumb = label("Início", "breadcrumb")
-        header_layout.addWidget(self.breadcrumb)
-        header_layout.addStretch(1)
-        header_layout.addWidget(label(MODULE_MARK, "headerMark"))
+        self.header_layout.addWidget(self.breadcrumb)
+        self.header_layout.addStretch(1)
+        self.header_mark = label(MODULE_MARK, "headerMark")
+        self.header_layout.addWidget(self.header_mark)
         right_layout.addWidget(header)
 
         self.pages = QStackedWidget()
@@ -78,6 +81,7 @@ class OfficeMainWindow(QMainWindow):
             self.pages.addWidget(page)
 
         self.sidebar.navigate_requested.connect(self.navigate)
+        self.sidebar.toggle_requested.connect(self._toggle_sidebar)
         self.home_page.navigate_requested.connect(self.navigate)
         self.settings_page.preferences_saved.connect(self.apply_theme)
         self.shortcuts = []
@@ -85,6 +89,9 @@ class OfficeMainWindow(QMainWindow):
             shortcut = QShortcut(QKeySequence(keys), self)
             shortcut.activated.connect(lambda target=page: self.navigate(target))
             self.shortcuts.append(shortcut)
+        sidebar_shortcut = QShortcut(QKeySequence("Ctrl+B"), self)
+        sidebar_shortcut.activated.connect(self._toggle_sidebar)
+        self.shortcuts.append(sidebar_shortcut)
 
         geometry = self.preferences.geometry
         if self.preferences.remember_window and geometry:
@@ -98,6 +105,36 @@ class OfficeMainWindow(QMainWindow):
                 frame.moveCenter(available.center())
                 self.move(frame.topLeft())
         self.navigate(self.preferences.start_page)
+        self._apply_responsive_shell()
+
+    def _apply_responsive_shell(self) -> None:
+        responsive_compact = self.width() < 1480
+        if self._sidebar_responsive_compact is None:
+            self._sidebar_responsive_compact = responsive_compact
+        elif responsive_compact != self._sidebar_responsive_compact:
+            # Crossing the responsive breakpoint restores automatic behavior.
+            # Manual expansion/collapse remains available within the new range.
+            self._sidebar_responsive_compact = responsive_compact
+            self._sidebar_manual_compact = None
+        compact = (
+            responsive_compact
+            if self._sidebar_manual_compact is None
+            else self._sidebar_manual_compact
+        )
+        self.sidebar.set_compact(compact)
+
+        margin = 18 if compact else 32
+        self.header_layout.setContentsMargins(margin, 0, margin, 0)
+        self.header_mark.setVisible(self.width() >= 1120)
+
+    def _toggle_sidebar(self) -> None:
+        self._sidebar_manual_compact = not self.sidebar.is_compact()
+        self._apply_responsive_shell()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "sidebar") and hasattr(self, "header_layout"):
+            self._apply_responsive_shell()
 
     def navigate(self, page: str) -> bool:
         if page not in self.page_widgets:

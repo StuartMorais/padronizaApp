@@ -939,6 +939,15 @@ class MainWindow(
         self.template_manager_panel.template_use_requested.connect(
             self._use_template_from_library
         )
+        self.template_manager_panel.export_specific_json_requested.connect(
+            self._export_specific_template_json
+        )
+        self.template_manager_panel.export_multiple_json_requested.connect(
+            self._export_multiple_templates_json
+        )
+        self.template_manager_panel.export_all_json_requested.connect(
+            self._export_all_json
+        )
         layout.addWidget(self.template_manager_panel, 1)
         return page
 

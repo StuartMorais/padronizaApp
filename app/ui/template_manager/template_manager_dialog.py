@@ -44,6 +44,9 @@ from app.repositories.templates import (
 class TemplateManagerDialog(QDialog):
     library_changed = Signal()
     template_use_requested = Signal(str)
+    export_specific_json_requested = Signal()
+    export_multiple_json_requested = Signal()
+    export_all_json_requested = Signal()
 
     def __init__(
         self,
@@ -142,6 +145,9 @@ class TemplateManagerDialog(QDialog):
         self.duplicate_button = QPushButton(
             'Duplicar'
         )
+        self.json_export_button = QPushButton(
+            'Exportar JSON'
+        )
         self.more_button = QPushButton(
             'Mais ações'
         )
@@ -164,6 +170,28 @@ class TemplateManagerDialog(QDialog):
         self.refresh_button.clicked.connect(
             self._reload
         )
+
+        json_export_menu = QMenu(self.json_export_button)
+        export_specific_json = json_export_menu.addAction(
+            'Exportar modelo específico…'
+        )
+        export_specific_json.triggered.connect(
+            lambda _checked=False: self.export_specific_json_requested.emit()
+        )
+        export_multiple_json = json_export_menu.addAction(
+            'Exportar vários modelos…'
+        )
+        export_multiple_json.triggered.connect(
+            lambda _checked=False: self.export_multiple_json_requested.emit()
+        )
+        json_export_menu.addSeparator()
+        export_all_json = json_export_menu.addAction(
+            'Exportar tudo…'
+        )
+        export_all_json.triggered.connect(
+            lambda _checked=False: self.export_all_json_requested.emit()
+        )
+        self.json_export_button.setMenu(json_export_menu)
 
         self.more_menu = QMenu(self)
 
@@ -312,6 +340,9 @@ class TemplateManagerDialog(QDialog):
             self.duplicate_button
         )
         actions.addWidget(
+            self.json_export_button
+        )
+        actions.addWidget(
             self.more_button
         )
         actions.addWidget(
@@ -320,6 +351,8 @@ class TemplateManagerDialog(QDialog):
                 (
                     '<p><b>Duplicar</b> cria uma nova entrada baseada no modelo atual. '
                     '<b>Importar/Exportar</b> transfere um pacote de modelo.</p>'
+                    '<p><b>Exportar JSON</b> permite exportar um modelo, vários modelos '
+                    'selecionados ou todo o conteúdo portátil do Padroniza.</p>'
                     '<p><b>Diagnóstico</b> procura marcadores, campos e regras inválidas. '
                     '<b>Histórico de versões</b> permite restaurar uma cópia anterior.</p>'
                     '<p><b>Arquivar</b> é reversível. <b>Excluir permanentemente</b> remove '

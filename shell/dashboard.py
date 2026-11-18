@@ -63,6 +63,6 @@ class HomeDashboard(ScrollPage):
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
-        direction = QBoxLayout.Direction.TopToBottom if self.viewport().width() < 800 else QBoxLayout.Direction.LeftToRight
+        direction = QBoxLayout.Direction.TopToBottom if self.viewport().width() < 980 else QBoxLayout.Direction.LeftToRight
         if direction != self.cards_layout.direction():
             self.cards_layout.setDirection(direction)

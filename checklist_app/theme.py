@@ -109,6 +109,10 @@ QFrame#card,
 QFrame#panelCard,
 QFrame#templateHeader,
 QFrame#scannerHero,
+QFrame#responsivePanelBar,
+QFrame#tutorialHero,
+QFrame#tutorialCard,
+QFrame#tutorialTip,
 QFrame#paperPanel,
 QFrame#guidancePanel,
 QFrame#officialHeader {
@@ -117,7 +121,9 @@ QFrame#officialHeader {
     border-radius: 10px;
 }
 QFrame#homeHero,
-QFrame#scannerHero {
+QFrame#scannerHero,
+QFrame#tutorialHero,
+QFrame#tutorialTip {
     background-color: @HERO@;
     border-color: @HERO_BORDER@;
 }
@@ -222,6 +228,13 @@ QPushButton#workspaceNavButton:checked {
     font-weight: 900;
 }
 QPushButton#themeButton { min-width: 92px; }
+QPushButton[responsivePanel="true"] { min-width: 104px; }
+QPushButton[responsivePanel="true"]:checked {
+    background-color: @ACCENT@;
+    border-color: @ACCENT@;
+    color: #ffffff;
+    font-weight: 900;
+}
 
 QMenu {
     background-color: @SURFACE@;

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -15,13 +16,14 @@ from adapters.contracts import WorkspaceContext
 from checklist_app.theme import build_qss
 from shell.design import palette
 from shell.theme import normalize_theme
-from checklist_app.main_window import CHECKLIST_PAGE, HOME_PAGE, SCANNER_PAGE
+from checklist_app.main_window import CHECKLIST_PAGE, HOME_PAGE, SCANNER_PAGE, TUTORIAL_PAGE
 
 
 PAGE_INFO = {
     HOME_PAGE: ("Início", "Visão geral dos checklists e do fluxo de revisão."),
     CHECKLIST_PAGE: ("Checklists", "Revise, edite e organize os itens do checklist selecionado."),
     SCANNER_PAGE: ("Scanner", "Analise um documento e transforme sua estrutura em um checklist revisável."),
+    TUTORIAL_PAGE: ("Tutorial", "Aprenda o fluxo do Checklist e consulte dicas rápidas de uso."),
 }
 
 
@@ -41,6 +43,7 @@ class ChecklistWorkspaceWrapper(QWidget):
         self._build_ui()
         self.set_theme(self.theme)
         self._sync_state()
+        self._apply_responsive_layout()
 
     def _prepare_inner_workspace(self) -> None:
         # QMainWindow can safely live inside the wrapper when explicitly turned
@@ -148,6 +151,7 @@ class ChecklistWorkspaceWrapper(QWidget):
             (HOME_PAGE, "Início"),
             (CHECKLIST_PAGE, "Checklists"),
             (SCANNER_PAGE, "Scanner"),
+            (TUTORIAL_PAGE, "Tutorial"),
         ):
             button = QPushButton(label)
             button.setCheckable(True)
@@ -204,6 +208,15 @@ class ChecklistWorkspaceWrapper(QWidget):
         if hasattr(self, "status_strip"):
             self.status_strip.setVisible(page != HOME_PAGE)
 
+    def _apply_responsive_layout(self) -> None:
+        apply_layout = getattr(self.workspace, "apply_responsive_layout", None)
+        if callable(apply_layout):
+            apply_layout(max(0, self.width() - 40))
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._apply_responsive_layout()
+
     def set_theme(self, theme: str) -> None:
         self.theme = normalize_theme(theme)
         p = palette(self.theme)
@@ -248,6 +261,12 @@ class ChecklistWorkspaceWrapper(QWidget):
                 background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 14px;
             }}
             QFrame#scannerHero {{ background: {p['teal_soft']}; border-color: {p['teal_border']}; }}
+            QFrame#responsivePanelBar, QFrame#tutorialCard {{
+                background: {p['surface']}; border: 1px solid {p['border']}; border-radius: 12px;
+            }}
+            QFrame#tutorialHero, QFrame#tutorialTip {{
+                background: {p['teal_soft']}; border: 1px solid {p['teal_border']}; border-radius: 14px;
+            }}
             QFrame#guidancePanel {{ background: {p['surface']}; }}
             QLabel#pageTitle, QLabel#sectionTitle, QLabel#officialTitle {{ color: {p['title']}; }}
             QLabel#mutedText {{ color: {p['muted']}; }}
@@ -269,6 +288,10 @@ class ChecklistWorkspaceWrapper(QWidget):
             QPushButton#primaryButton:hover {{ background: {teal_hover}; border-color: {teal_hover}; }}
             QPushButton#dangerButton {{ background: {p['surface']}; color: {p['danger']}; border-color: {p['danger']}; }}
             QPushButton#dangerButton:hover {{ background: {p['danger_soft']}; }}
+            QPushButton[responsivePanel="true"] {{ min-width: 110px; }}
+            QPushButton[responsivePanel="true"]:checked {{
+                background: {teal}; color: {button_text}; border-color: {teal};
+            }}
             QPushButton:disabled, QLineEdit:disabled, QPlainTextEdit:disabled, QComboBox:disabled {{
                 color: {p['disabled']}; background: {p['disabled_bg']}; border-color: {p['border']};
             }}

@@ -3,13 +3,15 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 from typing import Any
-from PySide6.QtWidgets import QFileDialog, QMessageBox, QTableWidgetItem
+from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox, QTableWidgetItem
 
 from app.ui.dialogs.backup_contents_dialog import BackupContentsDialog
 from app.ui.dialogs.error_dialog import show_exception_dialog
+from app.ui.dialogs.template_json_export_dialog import TemplateJsonExportDialog
 from app.repositories.local_data import LocalDataStore
 from app.repositories.templates import TemplateRepository
 from app.services.backup import create_backup, create_scheduled_backup, inspect_backup, restore_backup
+from app.services.portable_json import export_all_portable_json, export_templates_portable_json
 from app.ui.widgets.toast import show_toast
 
 class BackupActionsMixin:
@@ -99,6 +101,135 @@ class BackupActionsMixin:
             f'Salvo em:\n{path}',
             duration=6000,
         )
+
+    def _export_all_json(self) -> None:
+        suggested = self.project_root / (
+            f"padroniza-completo-{date.today().isoformat()}.json"
+        )
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exportar tudo do Padroniza em JSON",
+            str(suggested),
+            "Arquivo JSON (*.json)",
+        )
+        if not filename:
+            return
+
+        settings_export = {
+            key: self.settings.value(key)
+            for key in self.settings.allKeys()
+        }
+        try:
+            path = export_all_portable_json(
+                self.project_root,
+                Path(filename),
+                settings=settings_export,
+            )
+        except Exception as exc:
+            show_exception_dialog(
+                self,
+                "Falha na exportação JSON",
+                str(exc),
+                exc,
+                stage="portable_json_export",
+                context={"destination": filename},
+            )
+            return
+
+        self.local_store.add_audit(
+            "portable_json_exported",
+            path.name,
+            {"path": str(path)},
+        )
+        self._refresh_audit_page()
+        show_toast(
+            self,
+            "JSON portátil exportado",
+            f"Salvo em:\n{path}",
+            duration=6000,
+        )
+
+    def _select_templates_for_json_export(self, *, multiple: bool) -> list[str]:
+        if not self.templates:
+            show_toast(
+                self,
+                "Nenhum modelo disponível",
+                "Crie ou importe um modelo antes de exportar.",
+                kind="warning",
+            )
+            return []
+        dialog = TemplateJsonExportDialog(
+            self.templates,
+            active_template_id=self._active_template_id,
+            multiple=multiple,
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return []
+        return dialog.selected_template_ids()
+
+    def _export_templates_json(
+        self,
+        template_ids: list[str],
+        suggested_name: str,
+    ) -> None:
+        if not template_ids:
+            return
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exportar modelo(s) do Padroniza em JSON",
+            str(self.project_root / suggested_name),
+            "Arquivo JSON (*.json)",
+        )
+        if not filename:
+            return
+
+        try:
+            path = export_templates_portable_json(
+                self.project_root,
+                Path(filename),
+                template_ids,
+            )
+        except Exception as exc:
+            show_exception_dialog(
+                self,
+                "Falha na exportação JSON",
+                str(exc),
+                exc,
+                stage="portable_json_template_export",
+                context={
+                    "destination": filename,
+                    "template_ids": template_ids,
+                },
+            )
+            return
+
+        count = len(template_ids)
+        self.local_store.add_audit(
+            "portable_json_templates_exported",
+            path.name,
+            {
+                "path": str(path),
+                "template_ids": list(template_ids),
+            },
+        )
+        self._refresh_audit_page()
+        show_toast(
+            self,
+            "Modelo exportado" if count == 1 else "Modelos exportados",
+            f"{count} modelo(s) salvo(s) em:\n{path}",
+            duration=6000,
+        )
+
+    def _export_specific_template_json(self) -> None:
+        selected = self._select_templates_for_json_export(multiple=False)
+        if selected:
+            self._export_templates_json(selected, f"{selected[0]}.json")
+
+    def _export_multiple_templates_json(self) -> None:
+        selected = self._select_templates_for_json_export(multiple=True)
+        if selected:
+            self._export_templates_json(selected, "padroniza-modelos-selecionados.json")
 
     def _choose_backup_archive(
         self,

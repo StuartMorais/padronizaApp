@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QTimer, Qt
-from PySide6.QtGui import QAction, QColor, QFont, QIcon
+from PySide6.QtGui import QAction, QColor, QFont, QIcon, QResizeEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QMenu,
+    QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -58,6 +59,7 @@ from .theme import apply_theme, get_saved_theme, save_theme
 HOME_PAGE = 0
 CHECKLIST_PAGE = 1
 SCANNER_PAGE = 2
+TUTORIAL_PAGE = 3
 
 CHECKLIST_COLUMNS = [
     "Item",
@@ -93,7 +95,7 @@ class ChecklistMainWindow(QMainWindow):
 
         self.setWindowTitle("Checklist Application — Python")
         self.resize(1500, 900)
-        self.setMinimumSize(1160, 740)
+        self.setMinimumSize(760, 620)
 
         icon_path = resource_path("assets/icon.ico")
 
@@ -104,7 +106,6 @@ class ChecklistMainWindow(QMainWindow):
         self.active_checklist_id: str | None = None
         self.active_section_index = 0
         self.active_item_index = -1
-        self.pending_delete_key: str | None = None
         self.checklist_row_map: list[dict[str, int | str]] = []
         self.loading_controls = False
         self.loading_table = False
@@ -140,6 +141,7 @@ class ChecklistMainWindow(QMainWindow):
         self.pages.addWidget(self.create_home_page())
         self.pages.addWidget(self.create_checklist_page())
         self.pages.addWidget(self.create_scanner_page())
+        self.pages.addWidget(self.create_tutorial_page())
 
         root = QWidget()
         root_layout = QVBoxLayout(root)
@@ -152,6 +154,7 @@ class ChecklistMainWindow(QMainWindow):
         self.create_statusbar_message()
         self.navigate_to(CHECKLIST_PAGE)
         self.update_theme_button()
+        self.apply_responsive_layout(self.width())
 
     def create_statusbar_message(self) -> None:
         self.status_label = QLabel("Pronto")
@@ -220,6 +223,7 @@ class ChecklistMainWindow(QMainWindow):
             ("Início", HOME_PAGE),
             ("Checklists", CHECKLIST_PAGE),
             ("Scanner", SCANNER_PAGE),
+            ("Tutorial", TUTORIAL_PAGE),
         ]:
             button = QPushButton(text)
             button.setObjectName("workspaceNavButton")
@@ -292,7 +296,7 @@ class ChecklistMainWindow(QMainWindow):
         if not hasattr(self, "pages"):
             return
 
-        page = page if page in {HOME_PAGE, CHECKLIST_PAGE, SCANNER_PAGE} else HOME_PAGE
+        page = page if page in {HOME_PAGE, CHECKLIST_PAGE, SCANNER_PAGE, TUTORIAL_PAGE} else HOME_PAGE
         self.pages.setCurrentIndex(page)
         self.sync_workspace_navigation()
 
@@ -487,6 +491,32 @@ class ChecklistMainWindow(QMainWindow):
 
         page_layout.addWidget(self.create_checklist_header())
 
+        self.responsive_panel_bar = QFrame()
+        self.responsive_panel_bar.setObjectName("responsivePanelBar")
+        panel_bar_layout = QHBoxLayout(self.responsive_panel_bar)
+        panel_bar_layout.setContentsMargins(8, 8, 8, 8)
+        panel_bar_layout.setSpacing(6)
+        self.responsive_panel_group = QButtonGroup(self)
+        self.responsive_panel_group.setExclusive(True)
+        self.responsive_panel_buttons: dict[str, QPushButton] = {}
+        for panel_key, panel_label in (
+            ("library", "Biblioteca"),
+            ("sheet", "Folha"),
+            ("inspector", "Documentos"),
+        ):
+            panel_button = QPushButton(panel_label)
+            panel_button.setCheckable(True)
+            panel_button.setProperty("responsivePanel", True)
+            panel_button.clicked.connect(
+                lambda _checked=False, key=panel_key: self._select_responsive_panel(key)
+            )
+            self.responsive_panel_group.addButton(panel_button)
+            self.responsive_panel_buttons[panel_key] = panel_button
+            panel_bar_layout.addWidget(panel_button)
+        self.responsive_panel_buttons["sheet"].setChecked(True)
+        self.responsive_panel_bar.hide()
+        page_layout.addWidget(self.responsive_panel_bar)
+
         # Three-pane working layout:
         # library | verification sheet | selected-item inspector.
         # The old bottom inspector consumed most of the vertical space and left
@@ -496,13 +526,13 @@ class ChecklistMainWindow(QMainWindow):
         self.body_splitter.setObjectName("checklistBodySplitter")
         self.body_splitter.setChildrenCollapsible(False)
 
-        library = self.create_library_panel()
-        sheet = self.create_checklist_sheet_panel()
-        inspector = self.create_selected_item_panel()
+        self.library_panel = self.create_library_panel()
+        self.sheet_panel = self.create_checklist_sheet_panel()
+        self.inspector_panel = self.create_selected_item_panel()
 
-        self.body_splitter.addWidget(library)
-        self.body_splitter.addWidget(sheet)
-        self.body_splitter.addWidget(inspector)
+        self.body_splitter.addWidget(self.library_panel)
+        self.body_splitter.addWidget(self.sheet_panel)
+        self.body_splitter.addWidget(self.inspector_panel)
         self.body_splitter.setStretchFactor(0, 0)
         self.body_splitter.setStretchFactor(1, 1)
         self.body_splitter.setStretchFactor(2, 0)
@@ -553,11 +583,16 @@ class ChecklistMainWindow(QMainWindow):
         self.btn_save_metadata.setObjectName("primaryButton")
         self.btn_save_metadata.clicked.connect(self.save_metadata)
 
-        form_row.addWidget(QLabel("Nome"), 0, 0)
+        self.metadata_name_label = QLabel("Nome")
+        self.metadata_subtitle_label = QLabel("Subtítulo")
+        self.metadata_base_label = QLabel("Base legal")
+        self.metadata_layout = form_row
+
+        form_row.addWidget(self.metadata_name_label, 0, 0)
         form_row.addWidget(self.title_input, 0, 1)
-        form_row.addWidget(QLabel("Subtítulo"), 0, 2)
+        form_row.addWidget(self.metadata_subtitle_label, 0, 2)
         form_row.addWidget(self.subtitle_input, 0, 3)
-        form_row.addWidget(QLabel("Base legal"), 0, 4)
+        form_row.addWidget(self.metadata_base_label, 0, 4)
         form_row.addWidget(self.base_legal_input, 0, 5)
         form_row.addWidget(self.btn_save_metadata, 0, 6)
 
@@ -705,15 +740,13 @@ class ChecklistMainWindow(QMainWindow):
         sheet_scanner_menu.addAction(report_action)
         self.btn_sheet_scanner_tools.setMenu(sheet_scanner_menu)
 
-        buttons = [
+        self.sheet_toolbar_layout = tools
+        self.sheet_toolbar_buttons = [
             self.btn_expand_all, self.btn_collapse_all, self.btn_add_section,
             self.btn_rename_section, self.btn_add_item, self.btn_delete_section,
             self.btn_delete_item, self.btn_sheet_scanner_tools, self.btn_export_pdf,
         ]
-        for index, button in enumerate(buttons):
-            tools.addWidget(button, index // 5, index % 5)
-        for column in range(5):
-            tools.setColumnStretch(column, 1)
+        self._layout_sheet_toolbar(5)
         layout.addWidget(tools_panel)
 
         self.checklist_table = QTableWidget()
@@ -728,6 +761,7 @@ class ChecklistMainWindow(QMainWindow):
         self.checklist_table.setMinimumHeight(360)
         self.checklist_table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.checklist_table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.checklist_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.checklist_table.verticalScrollBar().setSingleStep(14)
         self.checklist_table.verticalScrollBar().setPageStep(260)
         self.checklist_table.horizontalScrollBar().setSingleStep(18)
@@ -815,6 +849,225 @@ class ChecklistMainWindow(QMainWindow):
         self.btn_save_item.clicked.connect(self.save_item)
         layout.addWidget(self.btn_save_item)
         return panel
+
+    def _layout_sheet_toolbar(self, columns: int) -> None:
+        columns = max(1, int(columns))
+        while self.sheet_toolbar_layout.count():
+            self.sheet_toolbar_layout.takeAt(0)
+        for index, button in enumerate(self.sheet_toolbar_buttons):
+            self.sheet_toolbar_layout.addWidget(button, index // columns, index % columns)
+        for column in range(5):
+            self.sheet_toolbar_layout.setColumnStretch(column, 1 if column < columns else 0)
+
+    def _configure_checklist_horizontal_scroll(self, mode: str) -> None:
+        """Keep every checklist column reachable when the sheet is narrow."""
+        header = self.checklist_table.horizontalHeader()
+        if mode == "narrow":
+            header.setStretchLastSection(False)
+            widths = (72, 360, 240, 120, 90, 280)
+            for column, width in enumerate(widths):
+                header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
+                self.checklist_table.setColumnWidth(column, width)
+            return
+
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+
+    def _layout_metadata_header(self, mode: str) -> None:
+        while self.metadata_layout.count():
+            self.metadata_layout.takeAt(0)
+        for column in range(7):
+            self.metadata_layout.setColumnStretch(column, 0)
+
+        if mode == "wide":
+            widgets = (
+                (self.metadata_name_label, 0), (self.title_input, 1),
+                (self.metadata_subtitle_label, 2), (self.subtitle_input, 3),
+                (self.metadata_base_label, 4), (self.base_legal_input, 5),
+                (self.btn_save_metadata, 6),
+            )
+            for widget, column in widgets:
+                self.metadata_layout.addWidget(widget, 0, column)
+            self.metadata_layout.setColumnStretch(1, 2)
+            self.metadata_layout.setColumnStretch(3, 2)
+            self.metadata_layout.setColumnStretch(5, 3)
+        elif mode == "compact":
+            self.metadata_layout.addWidget(self.metadata_name_label, 0, 0)
+            self.metadata_layout.addWidget(self.title_input, 0, 1)
+            self.metadata_layout.addWidget(self.metadata_subtitle_label, 0, 2)
+            self.metadata_layout.addWidget(self.subtitle_input, 0, 3)
+            self.metadata_layout.addWidget(self.metadata_base_label, 1, 0)
+            self.metadata_layout.addWidget(self.base_legal_input, 1, 1, 1, 2)
+            self.metadata_layout.addWidget(self.btn_save_metadata, 1, 3)
+            self.metadata_layout.setColumnStretch(1, 2)
+            self.metadata_layout.setColumnStretch(3, 2)
+        else:
+            self.metadata_layout.addWidget(self.metadata_name_label, 0, 0)
+            self.metadata_layout.addWidget(self.title_input, 1, 0)
+            self.metadata_layout.addWidget(self.metadata_subtitle_label, 2, 0)
+            self.metadata_layout.addWidget(self.subtitle_input, 3, 0)
+            self.metadata_layout.addWidget(self.metadata_base_label, 4, 0)
+            self.metadata_layout.addWidget(self.base_legal_input, 5, 0)
+            self.metadata_layout.addWidget(self.btn_save_metadata, 6, 0)
+            self.metadata_layout.setColumnStretch(0, 1)
+
+    def _select_responsive_panel(self, panel: str) -> None:
+        if panel not in self.responsive_panel_buttons:
+            panel = "sheet"
+        self._narrow_panel = panel
+        self.responsive_panel_buttons[panel].setChecked(True)
+        if getattr(self, "_responsive_mode", "wide") == "narrow":
+            self._apply_narrow_panel_selection()
+
+    def _apply_narrow_panel_selection(self) -> None:
+        panel = getattr(self, "_narrow_panel", "sheet")
+        self.sheet_panel.show()
+        if panel == "library":
+            self.library_panel.show()
+            self.inspector_panel.hide()
+            self.body_splitter.setSizes([230, 760, 0])
+        elif panel == "inspector":
+            self.library_panel.hide()
+            self.inspector_panel.show()
+            self.body_splitter.setSizes([0, 720, 290])
+        else:
+            self.library_panel.hide()
+            self.inspector_panel.hide()
+            self.body_splitter.setSizes([0, 1000, 0])
+
+    def apply_responsive_layout(self, width: int | None = None) -> None:
+        if not hasattr(self, "body_splitter"):
+            return
+        available_width = max(0, self.width() if width is None else int(width))
+        mode = "wide" if available_width >= 1450 else "compact" if available_width >= 1050 else "narrow"
+        self._responsive_mode = mode
+        self.responsive_panel_bar.setVisible(mode == "narrow")
+        self.btn_rename_section.setText("Renomear seção" if mode == "wide" else "Renomear")
+        self._layout_metadata_header(mode)
+        self._layout_sheet_toolbar(5 if mode == "wide" else 4 if mode == "compact" else 3)
+        self._configure_checklist_horizontal_scroll(mode)
+
+        if mode == "wide":
+            self.library_panel.setMinimumWidth(220)
+            self.library_panel.setMaximumWidth(275)
+            self.sheet_panel.setMinimumWidth(540)
+            self.inspector_panel.setMinimumWidth(320)
+            self.inspector_panel.setMaximumWidth(430)
+            self.library_panel.show()
+            self.sheet_panel.show()
+            self.inspector_panel.show()
+            self.body_splitter.setSizes([245, 920, 365])
+        elif mode == "compact":
+            self.library_panel.setMinimumWidth(180)
+            self.library_panel.setMaximumWidth(225)
+            self.sheet_panel.setMinimumWidth(480)
+            self.inspector_panel.setMinimumWidth(240)
+            self.inspector_panel.setMaximumWidth(320)
+            self.library_panel.show()
+            self.sheet_panel.show()
+            self.inspector_panel.show()
+            center = max(520, available_width - 195 - 270 - 40)
+            self.body_splitter.setSizes([195, center, 270])
+        else:
+            self.library_panel.setMinimumWidth(180)
+            self.library_panel.setMaximumWidth(230)
+            self.sheet_panel.setMinimumWidth(360)
+            self.inspector_panel.setMinimumWidth(240)
+            self.inspector_panel.setMaximumWidth(320)
+            self._apply_narrow_panel_selection()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self.apply_responsive_layout(event.size().width())
+
+    def create_tutorial_page(self) -> QWidget:
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        self.configure_scroll_area(scroll)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(24, 22, 24, 28)
+        layout.setSpacing(14)
+
+        hero = QFrame()
+        hero.setObjectName("tutorialHero")
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(24, 22, 24, 22)
+        hero_layout.setSpacing(8)
+        eyebrow = QLabel("TUTORIAL DO CHECKLIST")
+        eyebrow.setObjectName("mutedText")
+        title = QLabel("Do checklist vazio à conferência final")
+        title.setObjectName("pageTitle")
+        intro = QLabel(
+            "Aprenda o fluxo completo para estruturar, conferir, documentar e exportar seus checklists."
+        )
+        intro.setObjectName("mutedText")
+        intro.setWordWrap(True)
+        actions = QHBoxLayout()
+        open_checklists = QPushButton("Abrir checklists")
+        open_checklists.setObjectName("primaryButton")
+        open_checklists.clicked.connect(lambda: self.navigate_to(CHECKLIST_PAGE))
+        open_scanner = QPushButton("Abrir scanner")
+        open_scanner.clicked.connect(self.open_scanner_workspace)
+        actions.addWidget(open_checklists)
+        actions.addWidget(open_scanner)
+        actions.addStretch()
+        hero_layout.addWidget(eyebrow)
+        hero_layout.addWidget(title)
+        hero_layout.addWidget(intro)
+        hero_layout.addLayout(actions)
+        layout.addWidget(hero)
+
+        sections = (
+            ("1. Biblioteca e seleção", "Use a Biblioteca para criar, pesquisar, copiar e selecionar checklists. Em telas menores, use o seletor Biblioteca / Folha / Documentos acima da área de trabalho para alternar os painéis sem perder espaço da folha."),
+            ("2. Estrutura: seções e itens", "Adicione seções para organizar etapas do processo e itens para cada documento ou verificação. Renomeie a seção ativa e salve as alterações."),
+            ("3. Conferência na folha", "Preencha situação, folha e observação diretamente na folha. Use Expandir e Recolher para controlar a visualização das seções."),
+            ("4. Documentos necessários", "Selecione um item para registrar descrição, documentos mínimos e observações de conferência no painel Documentos."),
+            ("5. Scanner", "Analise PDF, DOCX ou DOCM, revise os itens detectados e confirme a estrutura antes de criar um novo checklist."),
+            ("6. JSON e portabilidade", "Exporte um checklist específico, vários checklists marcados por caixas de seleção ou toda a biblioteca em um único JSON. Use Importar para recuperar arquivos compatíveis."),
+            ("7. PDF e salvamento", "Salve o trabalho durante a revisão e gere o PDF final quando os dados, situações e orientações estiverem conferidos."),
+        )
+        for section_title, section_text in sections:
+            card = QFrame()
+            card.setObjectName("tutorialCard")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(18, 16, 18, 16)
+            card_title = QLabel(section_title)
+            card_title.setObjectName("sectionTitle")
+            card_text = QLabel(section_text)
+            card_text.setObjectName("mutedText")
+            card_text.setWordWrap(True)
+            card_layout.addWidget(card_title)
+            card_layout.addWidget(card_text)
+            layout.addWidget(card)
+
+        tip = QFrame()
+        tip.setObjectName("tutorialTip")
+        tip_layout = QVBoxLayout(tip)
+        tip_layout.setContentsMargins(18, 16, 18, 16)
+        tip_title = QLabel("Dicas rápidas")
+        tip_title.setObjectName("sectionTitle")
+        tip_text = QLabel(
+            "Em notebooks, mantenha a Folha como painel principal e abra Biblioteca ou Documentos quando necessário. "
+            "Faça exportações JSON periódicas da biblioteca e guarde uma cópia fora do computador."
+        )
+        tip_text.setWordWrap(True)
+        tip_layout.addWidget(tip_title)
+        tip_layout.addWidget(tip_text)
+        layout.addWidget(tip)
+        layout.addStretch()
+
+        scroll.setWidget(content)
+        page_layout.addWidget(scroll)
+        return page
 
     # ------------------------------------------------------------ scanner page
     def create_scanner_page(self) -> QWidget:
@@ -1158,8 +1411,6 @@ class ChecklistMainWindow(QMainWindow):
 
         self.active_section_index = section_index
         self.active_item_index = -1
-        self.pending_delete_key = None
-
         # Search results stay expanded so matching items remain visible.
         if normalize_text(self.sheet_search_input.text()):
             self.populate_item_editor()
@@ -1242,7 +1493,6 @@ class ChecklistMainWindow(QMainWindow):
         self.active_checklist_id = checklist_id
         self.active_section_index = 0
         self.active_item_index = -1
-        self.pending_delete_key = None
         # Every checklist starts fully collapsed. Sections are expanded only
         # when the user opens one, uses Expandir, or a search needs to reveal
         # matching rows.
@@ -1274,7 +1524,6 @@ class ChecklistMainWindow(QMainWindow):
         row_info = self.checklist_row_map[row]
         self.active_section_index = int(row_info.get("section_index", 0))
         self.active_item_index = int(row_info.get("item_index", -1))
-        self.pending_delete_key = None
         self.populate_item_editor()
 
     def on_status_combo_changed(self, section_index: int, item_index: int, value: str) -> None:
@@ -1600,14 +1849,16 @@ class ChecklistMainWindow(QMainWindow):
             self.show_status("Nenhum checklist selecionado para excluir.")
             return
 
-        key = f"checklist:{template.get('id')}"
-
-        if self.pending_delete_key != key:
-            self.pending_delete_key = key
-            self.show_status("Clique novamente em Excluir checklist para confirmar.")
+        checklist_title = str(template.get("title") or "Checklist sem nome")
+        if not self._confirm_deletion(
+            "Excluir checklist",
+            f"Deseja excluir o checklist '{checklist_title}'?\n\n"
+            "Todas as seções e itens desse checklist serão removidos. "
+            "Esta ação não pode ser desfeita.",
+        ):
+            self.show_status("Exclusão do checklist cancelada.")
             return
 
-        self.pending_delete_key = None
         self.templates = [item for item in self.templates if item.get("id") != template.get("id")]
         self.active_checklist_id = None
         self.active_section_index = 0
@@ -1621,6 +1872,16 @@ class ChecklistMainWindow(QMainWindow):
             self.show_empty_state()
 
         self.show_status("Checklist excluído.")
+
+    def _confirm_deletion(self, title: str, message: str) -> bool:
+        answer = QMessageBox.warning(
+            self,
+            title,
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
 
     def save_metadata(self) -> None:
         template = self.get_active_template()
@@ -1714,14 +1975,17 @@ class ChecklistMainWindow(QMainWindow):
             self.show_status("Selecione uma seção para excluir.")
             return
 
-        key = f"section:{self.active_section_index}"
-
-        if self.pending_delete_key != key:
-            self.pending_delete_key = key
-            self.show_status("Clique novamente em Excluir seção para confirmar. Os itens da seção também serão excluídos.")
+        section_title = str(section.get("title") or section.get("number") or "Sem título")
+        section_items = section.get("items") if isinstance(section.get("items"), list) else []
+        if not self._confirm_deletion(
+            "Excluir seção",
+            f"Deseja excluir a seção '{section_title}'?\n\n"
+            f"Os {len(section_items)} item(ns) desta seção também serão removidos. "
+            "Esta ação não pode ser desfeita.",
+        ):
+            self.show_status("Exclusão da seção cancelada.")
             return
 
-        self.pending_delete_key = None
         sections = template.get("sections", [])
         del sections[self.active_section_index]
         self.active_section_index = max(0, self.active_section_index - 1)
@@ -1794,14 +2058,16 @@ class ChecklistMainWindow(QMainWindow):
             self.show_status("Selecione um item para excluir.")
             return
 
-        key = f"item:{self.active_section_index}:{self.active_item_index}"
-
-        if self.pending_delete_key != key:
-            self.pending_delete_key = key
-            self.show_status("Clique novamente em Excluir item para confirmar.")
+        item_number = str(item_data.get("number") or "").strip()
+        item_description = str(item_data.get("documento") or "Item sem descrição").strip()
+        item_label = f"Item {item_number}: {item_description}" if item_number else item_description
+        if not self._confirm_deletion(
+            "Excluir item",
+            f"Deseja excluir '{item_label}'?\n\nEsta ação não pode ser desfeita.",
+        ):
+            self.show_status("Exclusão do item cancelada.")
             return
 
-        self.pending_delete_key = None
         items = section.get("items", [])
         del items[self.active_item_index]
         self.active_item_index = max(-1, self.active_item_index - 1)
