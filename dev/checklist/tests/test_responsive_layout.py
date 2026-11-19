@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtCore import QPoint, QRect, QSettings, QTimer, Qt
 from PySide6.QtGui import QFont, QFontDatabase
-from PySide6.QtTest import QTest
+from PySide6.QtTest import QSignalSpy, QTest
 from PySide6.QtWidgets import QApplication, QAbstractItemView
 
 from adapters.checklist import create_checklist
@@ -146,12 +146,24 @@ def test_resize_preserves_custom_column_widths_and_reading_position(wrapper, app
     assert_columns_reachable(table, wrapper, app)
 
 
-def test_wrapped_content_and_compact_actions_remain_available(wrapper, app):
+@pytest.mark.parametrize("resize_delay", [None, 200], ids=["normal", "delayed"])
+def test_wrapped_content_and_compact_actions_remain_available(wrapper, app, isolated_data, resize_delay):
     inner = wrapper.workspace
     table = inner.checklist_table
+    if resize_delay is not None:
+        inner._row_resize_timer.setInterval(resize_delay)
+
+    # Row height follows the tallest cell, so only the column being narrowed
+    # should contain long text in this row (font metrics vary across runners).
+    isolated_data["sections"][0]["items"][0]["observacao"] = "Observação curta"
+    inner.refresh_checklist_sheet()
+    settle(app)
     before = table.rowHeight(1)
+    resized = QSignalSpy(inner._row_resize_timer.timeout)
     table.setColumnWidth(1, 180)
-    QTest.qWait(90)
+    # The resize is debounced. Wait for completion rather than assuming that
+    # the CI event loop will dispatch the timer within a fixed 90 ms sleep.
+    assert resized.wait(2000), "Column resizing did not trigger the row-layout timer"
     assert table.rowHeight(1) > before
     assert table.item(1, 1).text() in table.item(1, 1).toolTip()
     actions = inner.btn_sheet_actions.menu().actions()
