@@ -228,7 +228,9 @@ QPushButton#workspaceNavButton:checked {
     font-weight: 900;
 }
 QPushButton#themeButton { min-width: 92px; }
-QPushButton[responsivePanel="true"] { min-width: 104px; }
+QPushButton[responsivePanel="true"], QFrame#sheetToolbar QPushButton {
+    min-width: 0; min-height: 20px; padding: 4px 10px;
+}
 QPushButton[responsivePanel="true"]:checked {
     background-color: @ACCENT@;
     border-color: @ACCENT@;
@@ -332,7 +334,7 @@ QScrollBar::add-line:vertical,
 QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar:horizontal {
     background: @SURFACE_ALT@;
-    height: 11px;
+    height: 16px;
     margin: 0;
 }
 QScrollBar::handle:horizontal {

@@ -25,7 +25,7 @@ class OfficeMainWindow(QMainWindow):
         self.current_page = "home"
         self._sidebar_manual_compact: bool | None = None
         self._sidebar_responsive_compact: bool | None = None
-        self.setMinimumSize(960, 650)
+        self.setMinimumSize(760, 560)
         self.resize(1280, 860)
         self.setStyleSheet(stylesheet(self.preferences.theme))
 

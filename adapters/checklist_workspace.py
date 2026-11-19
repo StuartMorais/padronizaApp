@@ -175,6 +175,7 @@ class ChecklistWorkspaceWrapper(QWidget):
         layout.setContentsMargins(14, 7, 14, 7)
         layout.setSpacing(8)
         layout.addWidget(self.workspace.status_label, 1)
+        self.workspace.status_label.show()
 
         save = QPushButton("Salvar")
         save.setProperty("statusAction", True)
@@ -209,9 +210,14 @@ class ChecklistWorkspaceWrapper(QWidget):
             self.status_strip.setVisible(page != HOME_PAGE)
 
     def _apply_responsive_layout(self) -> None:
-        apply_layout = getattr(self.workspace, "apply_responsive_layout", None)
-        if callable(apply_layout):
-            apply_layout(max(0, self.width() - 40))
+        # The inner window owns its layout using its actual allocated width.
+        # Forwarding an estimated width here caused competing breakpoint changes.
+        compact = self.width() < 1050
+        margin = 8 if compact else 20
+        self.layout().setContentsMargins(margin, 8 if compact else 16, margin, 8 if compact else 16)
+        self.layout().setSpacing(6 if compact else 12)
+        self.nav_bar.layout().setContentsMargins(12, 8 if compact else 14, 12, 8 if compact else 14)
+        self.section_hint.setVisible(not compact)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
@@ -288,7 +294,9 @@ class ChecklistWorkspaceWrapper(QWidget):
             QPushButton#primaryButton:hover {{ background: {teal_hover}; border-color: {teal_hover}; }}
             QPushButton#dangerButton {{ background: {p['surface']}; color: {p['danger']}; border-color: {p['danger']}; }}
             QPushButton#dangerButton:hover {{ background: {p['danger_soft']}; }}
-            QPushButton[responsivePanel="true"] {{ min-width: 110px; }}
+            QPushButton[responsivePanel="true"], QFrame#sheetToolbar QPushButton {{
+                min-width: 0; min-height: 20px; padding: 4px 10px;
+            }}
             QPushButton[responsivePanel="true"]:checked {{
                 background: {teal}; color: {button_text}; border-color: {teal};
             }}
@@ -323,7 +331,7 @@ class ChecklistWorkspaceWrapper(QWidget):
             QScrollBar::handle:vertical:hover {{ background: {p['scroll_hover']}; }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
             QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
-            QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px 3px; }}
+            QScrollBar:horizontal {{ background: {p['surface_alt']}; height: 16px; margin: 2px 3px; }}
             QScrollBar::handle:horizontal {{ background: {p['scroll']}; min-width: 32px; border-radius: 4px; }}
             QScrollBar::handle:horizontal:hover {{ background: {p['scroll_hover']}; }}
             QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
